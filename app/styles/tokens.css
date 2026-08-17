@@ -1,0 +1,255 @@
+/*
+ * Design tokens for the Events Board.
+ *
+ * Everything visual comes from here. Components never hardcode a colour, a
+ * radius or a shadow -- they reference a token. If you need a new value, add a
+ * token rather than a magic number, so light and dark stay in sync.
+ *
+ * Theming: light is the base. The dark palette is applied by system preference
+ * unless the document opts out with `data-theme="light"`, and always when the
+ * document sets `data-theme="dark"`. That means a theme toggle can be added
+ * later by setting one attribute on <html> -- no component changes needed.
+ */
+
+:root {
+  /* ---- Surfaces & text ------------------------------------------------- */
+  --color-bg: #f5f6f9;
+  --color-bg-subtle: #eef0f5;
+  --color-surface: #ffffff;
+  --color-surface-subtle: #f7f8fb;
+  --color-surface-hover: #f2f4f8;
+  --color-overlay: rgba(14, 17, 24, 0.45);
+
+  --color-border: #e3e6ee;
+  --color-border-strong: #ccd1de;
+
+  --color-text: #12151d;
+  --color-text-muted: #596174;
+  --color-text-subtle: #868ea0;
+  --color-text-inverse: #ffffff;
+
+  /* ---- Brand ----------------------------------------------------------- */
+  --color-primary: #4f46e5;
+  --color-primary-hover: #4338ca;
+  --color-primary-soft: #ecebfe;
+  --color-primary-soft-hover: #e0defd;
+  --color-primary-text: #3b34b5;
+  --color-primary-contrast: #ffffff;
+
+  /* ---- Semantic -------------------------------------------------------- */
+  --color-success: #0e9f6e;
+  --color-success-soft: #e4f6ef;
+  --color-success-text: #07684a;
+
+  --color-warning: #d97706;
+  --color-warning-soft: #fdf1e0;
+  --color-warning-text: #9a5307;
+
+  --color-danger: #dc2626;
+  --color-danger-hover: #b91c1c;
+  --color-danger-soft: #fdeceb;
+  --color-danger-text: #b0201d;
+
+  --color-info: #0284c7;
+  --color-info-soft: #e4f2fb;
+  --color-info-text: #075985;
+
+  --color-neutral-soft: #eef0f5;
+  --color-neutral-text: #4c5566;
+
+  /* ---- Event accents --------------------------------------------------- */
+  /* Every event carries an `accent` key; cards and detail headers tint from it. */
+  --accent-violet: #6d5cf5;
+  --accent-blue: #2f7fed;
+  --accent-emerald: #0ea472;
+  --accent-amber: #e08800;
+  --accent-rose: #e0447a;
+  --accent-cyan: #0ba5b7;
+
+  /* ---- Focus ----------------------------------------------------------- */
+  --color-focus-ring: rgba(79, 70, 229, 0.4);
+
+  /* ---- Elevation ------------------------------------------------------- */
+  --shadow-sm: 0 1px 2px rgba(16, 20, 30, 0.06), 0 1px 1px rgba(16, 20, 30, 0.04);
+  --shadow-md: 0 4px 14px rgba(16, 20, 30, 0.08), 0 1px 3px rgba(16, 20, 30, 0.05);
+  --shadow-lg: 0 14px 38px rgba(16, 20, 30, 0.13), 0 3px 10px rgba(16, 20, 30, 0.06);
+
+  /* ---- Spacing (4px scale) --------------------------------------------- */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-10: 2.5rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+
+  /* ---- Radii ----------------------------------------------------------- */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+  --radius-full: 999px;
+
+  /* ---- Typography ------------------------------------------------------ */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.8125rem;
+  --text-base: 0.9375rem;
+  --text-md: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.375rem;
+  --text-2xl: 1.75rem;
+  --text-3xl: 2.25rem;
+
+  --leading-tight: 1.2;
+  --leading-snug: 1.35;
+  --leading-normal: 1.55;
+
+  --weight-normal: 400;
+  --weight-medium: 500;
+  --weight-semibold: 600;
+  --weight-bold: 700;
+
+  --tracking-tight: -0.015em;
+  --tracking-wide: 0.04em;
+
+  /* ---- Motion ---------------------------------------------------------- */
+  --transition-fast: 120ms cubic-bezier(0.2, 0, 0.2, 1);
+  --transition-base: 200ms cubic-bezier(0.2, 0, 0.2, 1);
+
+  /* ---- Layout ---------------------------------------------------------- */
+  --layout-max: 1180px;
+  --layout-gutter: var(--space-6);
+  --topbar-height: 60px;
+}
+
+/*
+ * Dark palette. Declared once as a custom-property block that both selectors
+ * below pull in via `@media` / attribute duplication -- CSS has no mixin, so
+ * the two rules stay literally identical. Edit both when you change a colour.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+
+    --color-bg: #0a0c11;
+    --color-bg-subtle: #10131a;
+    --color-surface: #14171f;
+    --color-surface-subtle: #191d26;
+    --color-surface-hover: #1e222c;
+    --color-overlay: rgba(0, 0, 0, 0.6);
+
+    --color-border: #262c38;
+    --color-border-strong: #364052;
+
+    --color-text: #e9ecf3;
+    --color-text-muted: #a2aabb;
+    --color-text-subtle: #737d90;
+    --color-text-inverse: #0a0c11;
+
+    --color-primary: #7b74f2;
+    --color-primary-hover: #8f89f6;
+    --color-primary-soft: #1d1e33;
+    --color-primary-soft-hover: #262841;
+    --color-primary-text: #b6b1fb;
+    --color-primary-contrast: #0a0c11;
+
+    --color-success: #10b981;
+    --color-success-soft: #0c241c;
+    --color-success-text: #5fe3b2;
+
+    --color-warning: #f0a02a;
+    --color-warning-soft: #281c09;
+    --color-warning-text: #fbcf72;
+
+    --color-danger: #f0524f;
+    --color-danger-hover: #f47472;
+    --color-danger-soft: #2b1315;
+    --color-danger-text: #fca5a3;
+
+    --color-info: #38bdf8;
+    --color-info-soft: #0b1f2b;
+    --color-info-text: #82d4fa;
+
+    --color-neutral-soft: #1e222c;
+    --color-neutral-text: #b3bbcb;
+
+    --accent-violet: #8d80f8;
+    --accent-blue: #5c9bf3;
+    --accent-emerald: #2cc48f;
+    --accent-amber: #f0a92e;
+    --accent-rose: #ef6d99;
+    --accent-cyan: #2cc0d2;
+
+    --color-focus-ring: rgba(123, 116, 242, 0.5);
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 14px 38px rgba(0, 0, 0, 0.55), 0 3px 10px rgba(0, 0, 0, 0.35);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --color-bg: #0a0c11;
+  --color-bg-subtle: #10131a;
+  --color-surface: #14171f;
+  --color-surface-subtle: #191d26;
+  --color-surface-hover: #1e222c;
+  --color-overlay: rgba(0, 0, 0, 0.6);
+
+  --color-border: #262c38;
+  --color-border-strong: #364052;
+
+  --color-text: #e9ecf3;
+  --color-text-muted: #a2aabb;
+  --color-text-subtle: #737d90;
+  --color-text-inverse: #0a0c11;
+
+  --color-primary: #7b74f2;
+  --color-primary-hover: #8f89f6;
+  --color-primary-soft: #1d1e33;
+  --color-primary-soft-hover: #262841;
+  --color-primary-text: #b6b1fb;
+  --color-primary-contrast: #0a0c11;
+
+  --color-success: #10b981;
+  --color-success-soft: #0c241c;
+  --color-success-text: #5fe3b2;
+
+  --color-warning: #f0a02a;
+  --color-warning-soft: #281c09;
+  --color-warning-text: #fbcf72;
+
+  --color-danger: #f0524f;
+  --color-danger-hover: #f47472;
+  --color-danger-soft: #2b1315;
+  --color-danger-text: #fca5a3;
+
+  --color-info: #38bdf8;
+  --color-info-soft: #0b1f2b;
+  --color-info-text: #82d4fa;
+
+  --color-neutral-soft: #1e222c;
+  --color-neutral-text: #b3bbcb;
+
+  --accent-violet: #8d80f8;
+  --accent-blue: #5c9bf3;
+  --accent-emerald: #2cc48f;
+  --accent-amber: #f0a92e;
+  --accent-rose: #ef6d99;
+  --accent-cyan: #2cc0d2;
+
+  --color-focus-ring: rgba(123, 116, 242, 0.5);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 14px 38px rgba(0, 0, 0, 0.55), 0 3px 10px rgba(0, 0, 0, 0.35);
+}
