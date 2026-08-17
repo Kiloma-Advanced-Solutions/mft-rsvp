@@ -1,0 +1,55 @@
+.bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-4) var(--space-6);
+  padding: var(--space-4) var(--space-5);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  transition: opacity var(--transition-base);
+}
+
+/* Navigation is a server round-trip, so say that something is happening. */
+.bar[aria-busy="true"] {
+  opacity: 0.6;
+}
+
+.category {
+  min-width: 200px;
+}
+
+.access {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Matches the label a `Field` renders, but as plain text — the segmented
+   control is a radiogroup and must not be wrapped in a <label>. */
+.groupLabel {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text-muted);
+}
+
+/* Sits on the same baseline as the two controls rather than their labels. */
+.clear {
+  margin-inline-start: auto;
+}
+
+@media (max-width: 640px) {
+  .bar {
+    align-items: stretch;
+  }
+
+  .category {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .clear {
+    margin-inline-start: 0;
+  }
+}

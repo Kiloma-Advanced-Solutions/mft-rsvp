@@ -1,0 +1,59 @@
+.page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.resultLine {
+  margin-block-start: calc(var(--space-2) * -1);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+/* Past events are still readable, just not competing with what is coming up. */
+.sectionMuted {
+  composes: section;
+  padding-block-start: var(--space-6);
+  border-block-start: 1px solid var(--color-border);
+}
+
+.sectionMuted .sectionTitle {
+  color: var(--color-text-muted);
+}
+
+.sectionHead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.sectionTitle {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+  color: var(--color-text);
+}
+
+.sectionCount {
+  min-width: 1.5rem;
+  padding: 0 var(--space-2);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5rem;
+  text-align: center;
+  color: var(--color-neutral-text);
+  background: var(--color-neutral-soft);
+  border-radius: var(--radius-full);
+}
+
+.sectionNote {
+  font-size: var(--text-base);
+  color: var(--color-text-muted);
+}
