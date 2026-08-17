@@ -88,6 +88,22 @@ export const CATEGORY_ORDER: EventCategory[] = [
   "company",
 ];
 
+/* ------------------------------------------------------------------- board */
+
+/**
+ * The board's own vocabulary. Kept here so a "my events" screen splits its
+ * lists with the same two words this one does.
+ */
+export const BOARD_LABELS = {
+  upcoming: "Upcoming",
+  past: "Past",
+  category: "Category",
+  access: "Access",
+  allCategories: "All categories",
+  allAccess: "All",
+  clearFilters: "Clear filters",
+} as const;
+
 /* ---------------------------------------------------------------- location */
 
 /** "Studio B", "Zoom", "Training Room + Google Meet". */
