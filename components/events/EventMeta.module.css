@@ -1,0 +1,159 @@
+/* ---- date block --------------------------------------------------------- */
+
+.dateBlock {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 52px;
+  padding: var(--space-2) 0;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  line-height: 1;
+  overflow: hidden;
+}
+
+.dateBlockMonth {
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-wide);
+  text-transform: uppercase;
+  color: var(--accent-color, var(--color-primary));
+}
+
+.dateBlockDay {
+  margin: 3px 0 2px;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: var(--tracking-tight);
+}
+
+.dateBlockWeekday {
+  font-size: 10px;
+  font-weight: var(--weight-medium);
+  color: var(--color-text-subtle);
+}
+
+.dateBlockLg {
+  width: 68px;
+  padding: var(--space-3) 0;
+}
+
+.dateBlockLg .dateBlockDay {
+  font-size: var(--text-2xl);
+}
+
+.dateBlockLg .dateBlockMonth,
+.dateBlockLg .dateBlockWeekday {
+  font-size: var(--text-xs);
+}
+
+/* ---- meta lines --------------------------------------------------------- */
+
+.metaList {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-1) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+}
+
+.metaItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.metaIcon {
+  flex: none;
+  opacity: 0.7;
+  font-size: var(--text-xs);
+}
+
+.metaText {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.metaStack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.metaStack .metaItem {
+  align-items: flex-start;
+  font-size: var(--text-base);
+  color: var(--color-text);
+}
+
+.metaStack .metaText {
+  white-space: normal;
+}
+
+.metaSub {
+  display: block;
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
+}
+
+.metaLink {
+  color: var(--color-primary-text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ---- capacity ----------------------------------------------------------- */
+
+.capacity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-width: 140px;
+}
+
+.capacityRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.capacityCount {
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
+.capacityRemaining {
+  font-size: var(--text-xs);
+  color: var(--color-text-subtle);
+}
+
+.capacityFull {
+  color: var(--color-warning-text);
+  font-weight: var(--weight-medium);
+}
+
+.capacityTrack {
+  height: 6px;
+  border-radius: var(--radius-full);
+  background: var(--color-bg-subtle);
+  overflow: hidden;
+}
+
+.capacityFill {
+  height: 100%;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  transition: width var(--transition-base);
+}
+
+.capacityFill[data-full="true"] {
+  background: var(--color-warning);
+}

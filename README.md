@@ -1,36 +1,77 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Events Board
 
-## Getting Started
+An internal events board: organizers publish events, everyone else finds them
+and registers. Events open up in one of three ways — freely, behind an approval
+step, or by invitation only.
 
-First, run the development server:
+This repository is the **starting point for a Claude Code workshop**. The design
+system, UI kit, data layer, session handling and API conventions are done. The
+product is not.
+
+- **The brief:** [`TASKS.md`](TASKS.md)
+- **The house style:** [`CLAUDE.md`](CLAUDE.md)
+
+## Getting started
+
+```bash
+npm install
+```
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open <http://localhost:3000>. The start page explains what is built and what
+is yours, and `/styleguide` renders every component in the kit with real data.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Scripts
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Dev server on port 3000 |
+| `npm run build` | Production build |
+| `npm run typecheck` | Generate route types, then `tsc --noEmit` |
+| `npm run lint` | ESLint |
 
-## Learn More
+## How it fits together
 
-To learn more about Next.js, take a look at the following resources:
+```
+app/
+  page.tsx              Start here — what is built, what is yours
+  events/               The board and the event detail screen  ← your work
+  styleguide/           Every component, rendered
+  api/session/          Persona switching, and the API house style to copy
+  api/dev/reset/        Reload the fixtures without restarting
+  styles/tokens.css     Design tokens, light and dark
+components/
+  ui/                   Generic primitives
+  events/               Event cards, badges, date blocks, capacity meters
+  layout/               App shell, nav, persona switcher
+lib/
+  types.ts              The domain model
+  db.ts                 In-memory store (server only)
+  seed.ts               12 events, 5 people, every state covered
+  session.ts            Who the current user is
+  api.ts                Route handler and fetch helpers
+  labels.ts             User-facing copy
+  date.ts               Date formatting and grouping
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## There is no authentication
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+You "sign in" by picking a persona from the top right, which sets a cookie the
+server reads on every request. Switching persona is how you verify the
+visibility rules — an invite-only event should disappear entirely for someone
+who was not invited.
 
-## Deploy on Vercel
+## There is no database
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Data lives in memory and resets when the dev server restarts. `lib/db.ts` is
+async and shaped like a real repository, so replacing it later would be a change
+of implementation rather than a change of every call site.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+To reload the fixtures without restarting:
+
+```bash
+curl -X POST http://localhost:3000/api/dev/reset
+```
