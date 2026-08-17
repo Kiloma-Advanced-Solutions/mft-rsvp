@@ -46,7 +46,7 @@ A **host** is the event's `organizerId` or anyone in `coHostIds`.
   d. published + invite -> host and admin can do everything, invited member can view and request to register, not invited member cannot is denied from accessing this event.
   e. cancelled -> host and admin can do everything, member (invited or not invited) - as in published. 
 
-.2. Render the events with the existing `EventCard` inside `EventGrid`. **No replacement card is to be written.**
+2. Render the events with the existing `EventCard` inside `EventGrid`. **No replacement card is to be written.**
 3. Show upcoming events first, soonest first. Past events in a separate section below.
 4. Each card shows the viewer's own registration status where one exists.
 5. Filter by category and by access mode.
@@ -68,19 +68,19 @@ There is no authentication for now. The persona switcher in the top right
 sets a cookie the server reads on every request; `getCurrentUser()` in `lib/session.ts` is the only source of identity on the server. Switching persona
 is the means by which visibility rules are verified.
 
-**Open decisions — to settle together before any code is written.** These are
-genuine forks, not defaults to assume. Each is recorded here once decided, and
-repeated in the PR.
+**Decisions we made together.** Settled before any code is written, and repeated
+in the PR. Anything not covered here is still an open question — ask, do not
+assume.
 
-| # | Decision | Status |
+| # | Decision | Consequence |
 | --- | --- | --- |
-| D1 | Where filter state lives: URL search params (server filters, page stays a Server Component) or client-side state (browser filters an already-fetched list). | **Open** |
-| D2 | Whether the access-mode filter offers a fixed list of all three modes, or only the modes present in what this viewer can see. | **Open** |
-| D3 | Whether a host's own `draft` appears among their upcoming events, sits in its own section, or stays off the board entirely. | **Open** |
+| **D1** | Filter state lives in the **URL search params** (`?category=…&access=…`). | The page stays a Server Component and filters on the server. Filtered views are linkable and survive a reload. Each filter change is a server round-trip — acceptable. |
+| **D2** | The access-mode filter offers **only the modes present in what this viewer can see**. | Priya and Tom are never offered "Invite only". The control's shape varies by persona, which is accepted. |
+| **D3** | A host's own `draft` events sit in **their own section**, separate from the board proper. | Three sections on the page: drafts (hosts/admins only, and only when they have some), upcoming, past. Unpublished work is never mixed in with things people can register for. |
 
-Note on D1: it interacts with the leak constraint. Client-side filtering of a
-list the server already sent is fine for *category*, but the permitted set must
-still be decided on the server — that part is not a choice.
+Note on D1: it interacts with the leak constraint, but does not soften it. The
+*permitted set* is decided on the server regardless; D1 only settles where the
+category and access filtering happens on top of that set.
 
 ---
 
@@ -108,15 +108,15 @@ still be decided on the server — that part is not a choice.
 | File | Contents |
 | --- | --- |
 | `lib/access.ts` | **The single place that answers the permission questions.** `isHost(user, event)`, `canViewEvent(user, event)`, `canManageEvent(user, event)`, `visibleEvents(user, events)`. Server only, pure functions over `User` and `EventRecord`. Nothing else in the app re-answers these questions. |
-| `lib/events.ts` | Builds `EventWithContext` for a viewer: hosts, `goingCount` (only `going` counts — not `pending`, `cancelled`, `rejected` or `waitlisted`), `pendingCount`, the viewer's own registration, `viewerCanManage`. Also the upcoming/past split and the sort. Server only. |
-| `components/events/BoardFilters.tsx` + `.module.css` | `"use client"` leaf. Category and access-mode controls. Labels come from `lib/labels.ts`. **Where it writes filter state, and how its option list is built, depend on D1 and D2 — do not implement until those are settled.** |
-| `app/events/events.module.css` | Page-level layout: the two sections, the past-events heading, the de-emphasis. Tokens only. |
+| `lib/events.ts` | Builds `EventWithContext` for a viewer: hosts, `goingCount` (only `going` counts — not `pending`, `cancelled`, `rejected` or `waitlisted`), `pendingCount`, the viewer's own registration, `viewerCanManage`. Also the three-way split (drafts / upcoming / past, per D3) and the sort. Server only. |
+| `components/events/BoardFilters.tsx` + `.module.css` | `"use client"` leaf. Category and access-mode controls that write to the URL search params (D1). Labels come from `lib/labels.ts`. Presentational: it is handed its option lists, which the server derives from the viewer's visible set (D2). |
+| `app/events/events.module.css` | Page-level layout: the three sections, their headings, and the de-emphasis on past events. Tokens only. |
 
 ### To change
 
 | File | Change |
 | --- | --- |
-| `app/events/page.tsx` | Replace the stub. Server Component: `getCurrentUser()` → load → `visibleEvents()` → split upcoming/past → sort → render `PageHeader`, `BoardFilters`, two `EventGrid`s, `EmptyState`. Where the category/access filtering is applied depends on D1. |
+| `app/events/page.tsx` | Replace the stub. Server Component: `getCurrentUser()` → load → `visibleEvents()` → derive the filter options (D2) → apply the search-param filters (D1) → split drafts / upcoming / past (D3) → sort → render `PageHeader`, `BoardFilters`, up to three `EventGrid`s, `EmptyState`. |
 
 ### Not to be touched in M1
 
@@ -139,13 +139,18 @@ The seed has 12 events: one `draft` (Internal Hack Day, hosted by Maya), two
 Review Sync — Sara hosts, Maya invited), two in the past (Sprint 42 Retro,
 New Hire Welcome Breakfast) and one upcoming `cancelled` (Checkout Postmortem).
 
-| Persona | Role | Total visible | Upcoming | Past | Must **not** see |
-| --- | --- | --- | --- | --- | --- |
-| Maya Cohen | organizer | 12 | 10 | 2 | — |
-| Daniel Ross | organizer | 10 | 8 | 2 | Compensation Review Sync, Internal Hack Day |
-| Priya Nair | member | 9 | 7 | 2 | both invite-only events, Internal Hack Day |
-| Tom Alvarez | member | 9 | 7 | 2 | both invite-only events, Internal Hack Day |
-| Sara Klein | admin | 12 | 10 | 2 | — |
+Sections per D3: drafts, then upcoming, then past.
+
+| Persona | Role | Total visible | Drafts | Upcoming | Past | Must **not** see |
+| --- | --- | --- | --- | --- | --- | --- |
+| Maya Cohen | organizer | 12 | 1 | 9 | 2 | — |
+| Daniel Ross | organizer | 10 | 0 | 8 | 2 | Compensation Review Sync, Internal Hack Day |
+| Priya Nair | member | 9 | 0 | 7 | 2 | both invite-only events, Internal Hack Day |
+| Tom Alvarez | member | 9 | 0 | 7 | 2 | both invite-only events, Internal Hack Day |
+| Sara Klein | admin | 12 | 1 | 9 | 2 | — |
+
+Where a persona has no drafts, the drafts section is absent entirely — not an
+empty heading.
 
 **The headline check:** switching Maya → Priya removes the two invite-only
 events from the board and the count changes.
@@ -165,8 +170,9 @@ events from the board and the count changes.
 - Past events sit in their own clearly-labelled, visually de-emphasised section.
 - The cancelled Checkout Postmortem is still listed (it is upcoming) and reads
   as cancelled via `EventStatusBadge`.
-- *Pending D3:* where Maya's own draft appears, and that it is badged as a draft
-  wherever it lands. Priya and Tom never see it, whatever we decide.
+- As Maya and as Sara, Internal Hack Day appears in the drafts section only —
+  never among upcoming events — badged as a draft.
+- As Daniel, Priya and Tom, there is no drafts section at all.
 
 ### 4. The viewer's own status on the card
 
@@ -183,9 +189,12 @@ events from the board and the count changes.
 - Filters combine and can be cleared.
 - Filtering to an empty result shows the "no matches" empty state with a way to
   clear the filters — not the "nothing visible" one.
-- *Pending D2:* what "Invite only" does on Priya's board — either absent from
-  the options, or present and empty.
-- *Pending D1:* whether filters survive a page reload.
+- As Priya and Tom, "Invite only" is **not offered** as an access-mode option
+  (D2). As Maya it is offered, because she can see two of them.
+- Filters appear in the URL and survive a reload; pasting a filtered URL into a
+  new tab reproduces the same view (D1).
+- Pasting Maya's filtered URL while switched to Priya still shows only Priya's
+  permitted events — the URL selects a view, it never widens the permitted set.
 
 ### 6. Empty state
 
