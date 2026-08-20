@@ -107,3 +107,10 @@ export const LOCATION_KIND_LABELS: Record<EventLocation["kind"], string> = {
   online: "Online",
   hybrid: "Hybrid",
 };
+
+/* -------------------------------------------------------------------- board */
+
+/** "12 events you can see, hosting and attending included." */
+export function boardVisibleCountLabel(count: number): string {
+  return `${count} event${count === 1 ? "" : "s"} you can see, hosting and attending included.`;
+}

@@ -1,35 +1,28 @@
-import { EmptyState, PageHeader } from "@/components/ui";
-import { db } from "@/lib/db";
+import { EventBoard } from "@/components/events/EventBoard";
+import { PageHeader } from "@/components/ui";
+import { getVisibleEventsWithContext } from "@/lib/events";
+import { boardVisibleCountLabel } from "@/lib/labels";
+import { getCurrentUser } from "@/lib/session";
 
 export const metadata = {
   title: "Board",
 };
 
 /**
- * MILESTONE 1 — replace everything below.
- *
- * This stub exists so the route is real and so you can see the page
- * conventions: a Server Component that reads the store directly, a
- * `PageHeader`, and page-level actions in its `actions` slot.
- *
- * What the board has to do is in TASKS.md. The short version: show the events
- * this person is allowed to see, and nothing else.
+ * The events this person is allowed to see -- visibility is decided once, on
+ * the server, in `getVisibleEventsWithContext` (which calls
+ * `lib/permissions.ts`). Category and access-mode filtering happen client-side
+ * in `EventBoard`, on top of a list that is already safe to show.
  */
 export default async function BoardPage() {
-  const events = await db.events.list();
+  const currentUser = await getCurrentUser();
+  const events = await getVisibleEventsWithContext(currentUser);
 
   return (
     <div>
-      <PageHeader
-        title="Board"
-        description="Everything you can register for, and everything you host."
-      />
+      <PageHeader title="Board" description={boardVisibleCountLabel(events.length)} />
 
-      <EmptyState
-        icon="◳"
-        title="The board is yours to build"
-        description={`The store already has ${events.length} seeded events waiting behind db.events.list(). Milestone 1 in TASKS.md describes what belongs here — filtering by what the viewer is allowed to see comes first, the calendar view comes later.`}
-      />
+      <EventBoard events={events} />
     </div>
   );
 }
