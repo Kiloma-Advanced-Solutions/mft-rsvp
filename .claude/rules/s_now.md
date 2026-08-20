@@ -22,7 +22,7 @@ trusting it.
 ## In flight
 
 - 2026-08-20 — Branch `claude/project-memory-setup-75a477` (worktree): this
-  memory setup. Nothing committed yet.
+  memory setup (committed).
 - 2026-08-20 — `docs/BRIEF-M1-board.md` is the agreed brief for the next
   milestone (the `/events` board) with three settled decisions: filter state in
   URL search params; access-mode filter offers only modes the viewer can see;
