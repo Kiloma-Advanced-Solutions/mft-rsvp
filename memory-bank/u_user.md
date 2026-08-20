@@ -5,7 +5,7 @@ as it becomes relevant.
 
 ## Who
 
-- Yaniv Rabin — `yaniv@kiloma.com`.
+- Yaniv Rabin — GitHub: [@YanivRabin](https://github.com/YanivRabin).
 
 ## Machine / tooling
 

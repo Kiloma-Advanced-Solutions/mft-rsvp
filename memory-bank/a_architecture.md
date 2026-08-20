@@ -45,10 +45,10 @@ authorization boundary in one obvious layer. Follow the pattern in
 Client code calls `fetchJson` from `lib/api.ts`, which unwraps the payload
 and throws the server's message on failure.
 
-Permission checks live in the route handler, not just in the UI. `lib/
-visibility.ts` is the one shared place that answers "can this person see
-this event" and "can this person manage this event" — call it from both
-pages and API routes so they can't drift apart.
+Permission checks live in the route handler, not just in the UI.
+`lib/visibility.ts` is the one shared place that answers "can this person
+see this event" and "can this person manage this event" — call it from
+both pages and API routes so they can't drift apart.
 
 ## Package / build conventions
 
