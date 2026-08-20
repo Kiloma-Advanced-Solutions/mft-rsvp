@@ -104,6 +104,7 @@ cmd_link() {
 
 cmd_check() {
   local problems=0
+  local populated=1
 
   # 1. The symlink itself.
   if [ ! -L "$HOME_LINK" ]; then
@@ -125,6 +126,14 @@ cmd_check() {
     fi
   fi
 
+  # The link can resolve by name and still point at nothing.
+  if [ ! -d "$BANK" ]; then
+    bad "the link target does not exist: $BANK"
+    say "        writes through the link will fail. The bank arrives when the"
+    say "        branch that adds memory/ is merged into the main clone."
+    problems=$((problems + 1))
+  fi
+
   # 2. The inode check — proof, not assumption.
   probe="$BANK/MEMORY.md"
   if [ -f "$probe" ] && [ -f "$HOME_LINK/MEMORY.md" ]; then
@@ -137,6 +146,7 @@ cmd_check() {
     fi
   elif [ ! -f "$probe" ]; then
     warn "no MEMORY.md in the bank yet — skipping the inode check"
+    populated=0
   fi
 
   # 3. Fragmentation: a stray real memory/ under any other project directory.
@@ -179,6 +189,11 @@ cmd_check() {
   fi
 
   say ""
+  if [ "$problems" -eq 0 ] && [ "$populated" -eq 0 ]; then
+    say "memory bank linked, but not populated yet"
+    [ "$QUIET" -eq 1 ] && printf 'memory bank: linked but empty (%s)\n' "$BANK"
+    return 0
+  fi
   if [ "$problems" -eq 0 ]; then
     say "memory bank healthy"
     [ "$QUIET" -eq 1 ] && printf 'memory bank: healthy (%s)\n' "$BANK"

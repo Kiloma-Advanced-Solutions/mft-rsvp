@@ -14,6 +14,34 @@ Ids are stable and never reused: `D-YYYYMMDD-NN` for decisions,
 The engine. Each entry moves from a specific symptom to a rule the team can
 apply somewhere it has never been. **The `Generalize:` line is the payload.**
 
+## L-20260820-05 — A symlink can resolve by name and still point at nothing
+
+**Symptom.** `memory-bank.sh check` reported "memory bank healthy" against a
+symlink whose target directory had just been deleted. Any write through it would
+have failed — the exact false confidence the tool exists to remove.
+
+**Root cause.** The check compared `readlink`'s output to the expected path and
+stopped there. That answers "does the link say the right thing", not "does the
+link lead anywhere". The inode comparison that would have caught it was skipped,
+because the probe file it stats did not exist — a missing input was treated as
+"nothing to check" rather than as evidence.
+
+**Fix.** `check` now tests `-d "$BANK"` and fails on a dangling target, and
+distinguishes three states in its summary: healthy, linked-but-empty, and
+broken. Found by deliberately deleting the target during setup testing, not in
+review.
+
+**Generalize:** A verification step that can silently skip its own check is
+worse than no check, because it reports success. Whenever a check depends on an
+input that might be absent, decide explicitly what absence means — and if it
+means "unverified", say so in the result rather than passing. Exercise the
+failure paths of any tool whose job is to detect failure; a checker is the one
+thing you cannot validate by watching it succeed.
+
+*Context:* found 2026-08-20 while testing the setup · `scripts/memory-bank.sh` · relates to `D-20260820-03`
+
+---
+
 ## L-20260820-04 — A git ignore rule in `.git/info/exclude` protects only you
 
 **Symptom.** `.claude/worktrees/` was correctly ignored on this machine, and the
