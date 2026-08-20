@@ -28,12 +28,20 @@ export async function getVisibleEventsWithContext(
 
   const usersById = new Map(users.map((user) => [user.id, user]));
 
+  const registrationsByEventId = new Map<string, typeof registrations>();
+  for (const registration of registrations) {
+    const existing = registrationsByEventId.get(registration.eventId);
+    if (existing) {
+      existing.push(registration);
+    } else {
+      registrationsByEventId.set(registration.eventId, [registration]);
+    }
+  }
+
   return events
     .filter((event) => canUserSeeEvent(currentUser, event))
     .map((event): EventWithContext => {
-      const eventRegistrations = registrations.filter(
-        (registration) => registration.eventId === event.id,
-      );
+      const eventRegistrations = registrationsByEventId.get(event.id) ?? [];
       const hosts = [event.organizerId, ...event.coHostIds]
         .map((id) => usersById.get(id))
         .filter((user): user is User => Boolean(user));

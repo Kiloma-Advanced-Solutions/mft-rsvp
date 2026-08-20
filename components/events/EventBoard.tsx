@@ -51,21 +51,34 @@ export function EventBoard({ events }: { events: EventWithContext[] }) {
     [filtered],
   );
 
+  // Each filter's counts reflect the *other* active filter, not itself --
+  // picking "Engineering" should update how many "Invite only" events there
+  // are, not vanish once you have already narrowed by category.
+  const matchingAccess = useMemo(
+    () => events.filter(({ event }) => access === "all" || event.access === access),
+    [events, access],
+  );
+  const matchingCategory = useMemo(
+    () =>
+      events.filter(({ event }) => category === "all" || event.category === category),
+    [events, category],
+  );
+
   const categoryOptions: Array<SegmentOption<CategoryFilter>> = [
-    { value: "all", label: "All categories", count: events.length },
+    { value: "all", label: "All categories", count: matchingAccess.length },
     ...CATEGORY_ORDER.map((value) => ({
       value,
       label: CATEGORY_LABELS[value],
-      count: events.filter(({ event }) => event.category === value).length,
+      count: matchingAccess.filter(({ event }) => event.category === value).length,
     })),
   ];
 
   const accessOptions: Array<SegmentOption<AccessFilter>> = [
-    { value: "all", label: "All access", count: events.length },
+    { value: "all", label: "All access", count: matchingCategory.length },
     ...ACCESS_ORDER.map((value) => ({
       value,
       label: ACCESS_LABELS[value],
-      count: events.filter(({ event }) => event.access === value).length,
+      count: matchingCategory.filter(({ event }) => event.access === value).length,
     })),
   ];
 

@@ -1,6 +1,7 @@
 import { EventBoard } from "@/components/events/EventBoard";
 import { PageHeader } from "@/components/ui";
 import { getVisibleEventsWithContext } from "@/lib/events";
+import { boardVisibleCountLabel } from "@/lib/labels";
 import { getCurrentUser } from "@/lib/session";
 
 export const metadata = {
@@ -19,10 +20,7 @@ export default async function BoardPage() {
 
   return (
     <div>
-      <PageHeader
-        title="Board"
-        description={`${events.length} event${events.length === 1 ? "" : "s"} you can see, hosting and attending included.`}
-      />
+      <PageHeader title="Board" description={boardVisibleCountLabel(events.length)} />
 
       <EventBoard events={events} />
     </div>
