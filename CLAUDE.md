@@ -1,65 +1,59 @@
 @AGENTS.md
 
-# Events Board — project conventions
+# Events Board
 
-The brief is in `TASKS.md`. This file is the house style: how code in this repo
-is written, so you do not have to say it again in every prompt.
+An internal events board: organizers publish events, everyone else finds them and
+registers. Every event opens up in one of three ways — freely, behind an approval
+step, or by invitation only. This repo is a Claude Code workshop starting point:
+the design system, UI kit, data layer, session and API conventions are built; the
+product is not. The specification is [`TASKS.md`](TASKS.md).
 
 ## Stack
 
-Next.js App Router, React, TypeScript, **CSS Modules**. No Tailwind, no CSS-in-JS,
-no component library. If a dependency seems necessary, say why before adding it.
+Next.js 16 App Router · React 19 · TypeScript (strict) · CSS Modules.
+No other runtime dependencies, no test runner, no CI.
 
-## Styling
+## Commands
 
-- Every colour, space, radius, shadow and font size comes from a token in
-  `app/styles/tokens.css`. No hex codes and no magic pixel values in components.
-- One `.module.css` next to each component. Nothing new goes in `app/globals.css`.
-- Check `/styleguide` before building a new component — it probably exists.
-- Both themes have to work. Tokens handle that automatically if you use them.
+| Command | What it does |
+| --- | --- |
+| `npm run dev` | Dev server on port 3000 |
+| `npm run typecheck` | `next typegen && tsc --noEmit` |
+| `npm run lint` | ESLint |
+| `npm run build` | Production build |
+| `curl -X POST http://localhost:3000/api/dev/reset` | Reload fixtures without restarting |
 
-## Components
+All three of typecheck, lint and build must be clean before anything is called
+done — then click through as at least one organizer and one member.
 
-- `components/ui/` — generic primitives that know nothing about events.
-- `components/events/` — anything that understands the domain.
-- `components/layout/` — the app frame.
-- Server Components by default. Add `"use client"` only at the leaf that actually
-  needs state, an effect or an event handler — not at the top of a page.
-- Props are explicit. No prop spreading through several layers.
+## Where things are written down
 
-## Data and permissions
+Detail lives in `.claude/rules/`, one file per topic. The prefix says what kind
+of thing it is and how much to trust it:
 
-- `lib/db.ts` and `lib/seed.ts` are **server only**. A Client Component that
-  needs data calls an API route.
-- `getCurrentUser()` from `lib/session.ts` is the only source of identity on the
-  server. Never take a `userId` from a request body and trust it.
-- Every rule in section 4 of `TASKS.md` is enforced in the route handler.
-  Hiding a button is a UX affordance, not a permission check.
-- Answer "can this person see this event" and "can this person manage this event"
-  in one shared place, and call it from both the pages and the API.
+| Prefix | Kind | Read it when |
+| --- | --- | --- |
+| `a_*` | **Architecture** — how the system is built. Stable. | Touching the area it is scoped to. |
+| `c_*` | **Conventions** — how we work: gates, verification, git. | Before running checks, or before any git operation. |
+| `d_*` | **Domain** — terminology and reference. | Any time the product vocabulary appears. |
+| `dec_*` | **Decisions** — one per call already made, with its rationale. | Before proposing a different approach. |
+| `s_*` | **State** — what is in flight. Volatile; check the date on it. | At the start of a session. |
+| `r_*` | **References** — links out to external truth. | When you need the repo, a PR, or the brief PDF. |
 
-## API routes
+Files: `a_app-structure`, `a_data-and-session`, `a_api-conventions`, `a_ui-kit`,
+`a_styling` · `c_workflow`, `c_quality-gates`, `c_testing` · `d_glossary` ·
+`dec_001_css-modules-only` … `dec_006_zero-runtime-dependencies` · `s_now` ·
+`r_links`. `CLAUDE.local.md` is personal and gitignored.
 
-Follow `app/api/session/route.ts`. Every handler is wrapped in
-`withErrorHandling`; bodies are read with `readJson`; anything the caller got
-wrong is thrown as an `ApiError`; success returns a plain object. Client code
-calls `fetchJson` from `lib/api.ts`, which unwraps the payload and throws the
-server's message on failure.
+## Two rules that override convenience
 
-Route handlers, not Server Actions — that is the convention here, so the
-authorisation boundary is a single obvious layer.
+1. **Never `git add`, `commit`, `push`, or open a PR without asking first.**
+   Every time — approval of one commit is not approval of the next.
+2. **Never settle a decision alone.** Surface the fork, recommend, wait.
 
-## Copy
+Both are elaborated in the file imported below, along with the vocabulary every
+screen shares.
 
-User-facing words live in `lib/labels.ts`. Import them rather than typing
-strings into JSX, so the board and the detail page never disagree about what to
-call a pending request.
+@.claude/rules/c_workflow.md
 
-## Before you say you are done
-
-```bash
-npm run typecheck && npm run lint && npm run build
-```
-
-Then click through the app as at least two personas — one organizer and one
-member. Most of the bugs in this project are visible only when you switch.
+@.claude/rules/d_glossary.md

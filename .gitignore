@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# personal notes — project memory that is not shared
+CLAUDE.local.md
+.claude/worktrees
