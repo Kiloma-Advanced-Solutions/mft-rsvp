@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# claude code — disposable per-session worktrees (see memory/c_worktrees.md)
+.claude/worktrees/

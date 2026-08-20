@@ -22,7 +22,23 @@
       "Bash(find:*)",
       "Bash(curl http://localhost:3000/*)",
       "Bash(curl -X POST http://localhost:3000/*)",
-      "Bash(curl -s http://localhost:3000/*)"
+      "Bash(curl -s http://localhost:3000/*)",
+      "Bash(./scripts/memory-bank.sh:*)",
+      "Bash(npm run memory:*)",
+      "Bash(git worktree:*)",
+      "Bash(stat:*)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "[ -x ./scripts/memory-bank.sh ] && ./scripts/memory-bank.sh check --quiet || true"
+          }
+        ]
+      }
     ]
   }
 }
