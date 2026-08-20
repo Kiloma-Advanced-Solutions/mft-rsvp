@@ -1,5 +1,39 @@
 @AGENTS.md
 
+# The memory bank — read this first
+
+This project has a persistent, git-tracked memory bank at [`memory/`](memory/).
+It is the shared brain: what the project knows that is not in the code, carried
+across every session, machine and teammate.
+
+**Start every session there.** [`memory/MEMORY.md`](memory/MEMORY.md) is the
+index; the reading order it prescribes takes under a minute:
+
+1. `memory/s_status.md` — what is shipping, blocked or in flight right now
+2. `memory/s_backlog.md` — what to pick up next
+3. `memory/u_<operator>.md` + `memory/c_conventions.md` — constraints and house rules
+4. Drill down via the index for the `a_` / `dec_` / `d_` docs the task needs
+
+**Before writing to memory, prove the symlink resolves:**
+
+```bash
+./scripts/memory-bank.sh check
+```
+
+The bank lives once, in the main clone. A worktree has its own `memory/`
+checkout, and editing *that* is the orphan-edit trap — the write is silently
+lost. Full explanation: [`memory/c_worktrees.md`](memory/c_worktrees.md).
+
+**A session is not done when the code merges. It is done when the lesson is
+pinned.** How to write one, and the memory wrap PR that ships it:
+[`memory/c_memory_protocol.md`](memory/c_memory_protocol.md).
+
+> The rest of this file is the short version of
+> [`memory/c_conventions.md`](memory/c_conventions.md), kept here because
+> `CLAUDE.md` is loaded automatically and the bank is not. **That file is
+> canonical — if the two disagree, it wins** and this one gets corrected in the
+> next memory wrap PR.
+
 # Events Board — project conventions
 
 The brief is in `TASKS.md`. This file is the house style: how code in this repo

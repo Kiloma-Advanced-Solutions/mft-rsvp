@@ -1,0 +1,10 @@
+# Append-only memory logs: two branches each adding an entry must merge without
+# a conflict. `union` keeps both sides' insertions.
+#
+# Two consequences, documented in memory/c_memory_protocol.md:
+#   1. Entries must be self-contained blocks — relative order after a union
+#      merge is arbitrary.
+#   2. Union merge is not conflict detection. If two branches edit the SAME
+#      entry you silently get both. Never rewrite an entry; supersede it.
+memory/dec_log.md       merge=union
+memory/r_pr_history.md  merge=union
