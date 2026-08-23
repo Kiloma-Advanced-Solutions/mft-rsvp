@@ -80,6 +80,38 @@ the thing it describes changes. Adding a fifth memory file needs a reason that
 
 ---
 
+## 2026-08-23 — Complete taxonomy and move MEMORY.md into memory/
+
+Context: after reviewing the Memory Bank methodology, we decided to represent all
+seven taxonomy categories rather than only the four the previous entry selected.
+The concern that drove that earlier choice — files whose content is a paraphrase of
+an authoritative source — is answered by keeping the additional files lightweight
+and routing-oriented rather than by omitting them.
+
+Decision: `MEMORY.md` lives inside `memory/`, so the Memory Bank is one directory
+with a single entry point and no root-level duplicate. All seven taxonomy
+categories are represented: `a_system.md`, `c_conventions.md`, `d_glossary.md`,
+`dec_log.md`, `s_status.md`, `r_references.md` and `u_environment.md`.
+`c_conventions.md`, `r_references.md` and `u_environment.md` are intentionally
+lightweight and primarily point to authoritative repository sources rather than
+explaining anything themselves.
+
+Rationale: this preserves the full Memory Bank taxonomy while still enforcing the
+principles that made the reduced structure attractive — one home per fact,
+references over duplication, progressive disclosure in the reading order, and
+existing repository files as the authoritative sources of truth. A category earns
+a file; it does not earn content it does not own.
+
+Consequences: this entry supersedes the Memory Bank structure described in the
+2026-08-20 entry above, which does not invalidate that entry's historical
+rationale — the reasoning about paraphrase and staleness still governs how the
+three added files are kept small. `MEMORY.md` is referenced as `memory/MEMORY.md`
+from here on, and the three lightweight files are held to a routing-only standard:
+if one starts explaining rather than pointing, the explanation belongs in its
+authoritative source instead.
+
+---
+
 No product decisions are recorded yet because M1 has not been implemented. Future
 entries should be added only after a significant implementation decision has been
 approved and implemented. The decision log records decisions after they are made;
