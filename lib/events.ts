@@ -1,0 +1,68 @@
+/**
+ * Derived event data for the screens. SERVER ONLY.
+ *
+ * `EventWithContext` in `lib/types.ts` is the shape every event screen wants:
+ * the event plus its hosts, the counts, the viewer's own registration and
+ * whether they may manage it. This module is what builds one.
+ *
+ * Visibility is applied here, before any context is derived, so an event the
+ * viewer may not see never reaches a page or a payload at all. The rules come
+ * from `lib/permissions.ts`; this file only decides what to load.
+ *
+ * The three collections are read once and indexed in memory rather than queried
+ * per event. The store is async precisely so it can be swapped for a real
+ * database later, and a per-event lookup is the thing that becomes N+1 the day
+ * it is.
+ *
+ * Never import this from a Client Component — it reaches the store.
+ */
+
+import { db } from "./db";
+import { canManageEvent, canViewEvent } from "./permissions";
+import type { EventWithContext, Registration, User } from "./types";
+
+/**
+ * Every event `viewer` is allowed to see, each with its board context.
+ *
+ * Returned in store order; ordering for display is the caller's decision.
+ */
+export async function getVisibleEventsWithContext(
+  viewer: User,
+): Promise<EventWithContext[]> {
+  const [events, users, registrations] = await Promise.all([
+    db.events.list(),
+    db.users.list(),
+    db.registrations.list(),
+  ]);
+
+  const usersById = new Map(users.map((user) => [user.id, user]));
+  const registrationsByEvent = new Map<string, Registration[]>();
+  for (const registration of registrations) {
+    const rows = registrationsByEvent.get(registration.eventId);
+    if (rows) {
+      rows.push(registration);
+    } else {
+      registrationsByEvent.set(registration.eventId, [registration]);
+    }
+  }
+
+  return events
+    .filter((event) => canViewEvent(event, viewer))
+    .map((event) => {
+      const rows = registrationsByEvent.get(event.id) ?? [];
+
+      return {
+        event,
+        // Organizer first, then co-hosts, skipping anyone no longer in the
+        // user list so a stale id cannot put a hole in the array.
+        hosts: [event.organizerId, ...event.coHostIds]
+          .map((id) => usersById.get(id))
+          .filter((user): user is User => user !== undefined),
+        // Only `going` counts against capacity — see TASKS.md section 4.
+        goingCount: rows.filter((row) => row.status === "going").length,
+        pendingCount: rows.filter((row) => row.status === "pending").length,
+        viewerRegistration: rows.find((row) => row.userId === viewer.id) ?? null,
+        viewerCanManage: canManageEvent(event, viewer),
+      };
+    });
+}
