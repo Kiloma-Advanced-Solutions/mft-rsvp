@@ -36,6 +36,9 @@ export const ACCESS_TONES: Record<EventAccess, BadgeTone> = {
   invite: "primary",
 };
 
+/** Fixed order for access filters and pickers, so the options never shuffle. */
+export const ACCESS_ORDER: EventAccess[] = ["open", "approval", "invite"];
+
 /* ------------------------------------------------------------------ status */
 
 export const EVENT_STATUS_LABELS: Record<EventStatus, string> = {
@@ -107,3 +110,33 @@ export const LOCATION_KIND_LABELS: Record<EventLocation["kind"], string> = {
   online: "Online",
   hybrid: "Hybrid",
 };
+
+/* ------------------------------------------------------------------- board */
+
+/** The board's own words: its sections, its filters and its empty states. */
+export const BOARD_LABELS = {
+  title: "Board",
+  upcoming: "Upcoming",
+  past: "Past",
+  categoryFilter: "Category",
+  accessFilter: "Access",
+  allCategories: "All categories",
+  allAccessModes: "All access modes",
+  clearFilters: "Clear filters",
+  emptyTitle: "Nothing on the board for you yet",
+  emptyDescription:
+    "There are no events you can see right now. Events appear here once a host publishes one, or invites you to one.",
+  noMatchesTitle: "No events match these filters",
+  noMatchesDescription:
+    "Nothing you can see matches that combination. Clear the filters to get the whole board back.",
+};
+
+/**
+ * The board's headline count. `shown` is what the filters left on the board,
+ * `total` is everything the viewer is allowed to see.
+ */
+export function eventCountLabel(shown: number, total: number): string {
+  const noun = total === 1 ? "event" : "events";
+  if (shown === total) return `${total} ${noun} you can see.`;
+  return `Showing ${shown} of ${total} ${noun} you can see.`;
+}

@@ -1,0 +1,15 @@
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.filter {
+  width: 200px;
+}
+
+@media (max-width: 560px) {
+  .filter {
+    width: 100%;
+  }
+}
