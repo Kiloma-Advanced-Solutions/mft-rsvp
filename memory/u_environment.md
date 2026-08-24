@@ -50,9 +50,9 @@ in this repository — the npm scripts, common read-only git commands, and
 
 Development happens on a personal feature branch;
 [TASKS.md](../TASKS.md) §2 states the `<yourname>/events-board` convention. Claude
-Code sessions may work in isolated `claude/*` branches, each in its own worktree
-under `.claude/worktrees/`, based on the development branch — so a session's work
-stays separable until it is deliberately brought back.
+Code sessions may work in isolated task branches, each in its own worktree under
+`.claude/worktrees/`, based on the current development or task branch — so a
+session's work stays separable until it is deliberately brought back.
 
 Which branch is current is state, not configuration: see
 [s_status.md](s_status.md).

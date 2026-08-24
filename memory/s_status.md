@@ -5,14 +5,29 @@ progresses — it is current state, not a changelog.
 
 ## Active milestone
 
-**M1 — The Board** (`must`) — the events list at `/events`.
-Authoritative requirements and done-condition: [TASKS.md](../TASKS.md) §5.
+**M1 — The Board** is complete. **M2 — The event detail screen** (`must`) is the
+next milestone and has not started. Authoritative requirements and done-condition
+for both: [TASKS.md](../TASKS.md) §5.
 
 ## Status
 
-M1 has not started; `app/events/page.tsx` is still the supplied board stub, and no
-M1 implementation has been merged into `yarden/events-board`. The detail-page
-implementation belongs to a later milestone.
+`/events` is implemented. It is a Server Component that resolves the viewer,
+loads only the events that viewer may see, and then filters, sorts and groups
+them; the category and access filters live in the URL.
+
+The derived layer M1 needed now exists, and later milestones build on it rather
+than rebuilding it:
+
+- [lib/permissions.ts](../lib/permissions.ts) — the shared answer to "may this
+  person see this event" and "may this person manage it".
+- [lib/events.ts](../lib/events.ts) — builds `EventWithContext`, with visibility
+  applied before any context is derived.
+
+The shape and the boundaries between them are in [a_system.md](a_system.md).
+
+`/events/[id]` is still the supplied stub, and it deliberately renders any event
+it finds with **no visibility check** — that is M2's first job, not a bug to
+report.
 
 ## What is actually implemented
 
@@ -26,26 +41,18 @@ Everything that is not the product was supplied. Do not rebuild it — see
 - `/api/session` (the API house-style example) and `/api/dev/reset`.
 - `/styleguide` and the start page at `/`.
 
-## Immediate next step
-
-Implement M1 at `/events`: show the events the viewer is allowed to see, using
-`EventCard` inside `EventGrid`. See [TASKS.md](../TASKS.md) §5 for the criteria.
+M1 replaced the `/events` stub and added `lib/permissions.ts`, `lib/events.ts`
+and `components/events/BoardFilters.tsx`.
 
 ## Blockers
 
 None.
 
-Two open seams that milestone work will need to fill, described in
-[a_system.md](a_system.md):
-
-- no shared visibility/manageability helper exists yet;
-- nothing constructs an `EventWithContext`.
-
 ## Branches and worktrees
 
-- Development branch: **`yarden/events-board`**.
-- Claude Code sessions may work in isolated `claude/*` worktree branches based on
-  it. The workflow and its conventions are in [u_environment.md](u_environment.md).
+- Integration branch: **`yardenah/events-board`**. Milestone branches are created
+  from it, and merged back through their own PR.
+- The workflow and its conventions are in [u_environment.md](u_environment.md).
 
 ## Before saying you are done
 
@@ -55,4 +62,4 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-08-20 — Memory Bank initialised; M1 not started.
+Last updated: 2026-08-24 — M1 complete and merged; M2 not started.

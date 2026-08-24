@@ -112,18 +112,51 @@ and dark (via `prefers-color-scheme` and a `data-theme` attribute). Components
 each have one `.module.css` beside them. The rules governing all of this are in
 [CLAUDE.md](../CLAUDE.md).
 
-## Where the derived layer is missing
+## The derived layer — `lib/permissions.ts` and `lib/events.ts`
 
-Two seams are deliberately unbuilt, so a fresh session does not assume it failed
-to find them:
+Between the store and the screens sit two modules with deliberately different
+jobs. The split is what keeps authorisation reviewable in one place.
 
-- **`EventWithContext`** exists in [lib/types.ts](../lib/types.ts) — event plus
-  hosts, counts, the viewer's registration and whether they can manage it — but
-  nothing constructs one yet.
-- **No shared visibility/manageability helper exists.** Nothing currently answers
-  "can this person see this event" or "can this person manage it". `CLAUDE.md`
-  requires those answers to live in one shared place, called from both pages and
-  API routes, and [TASKS.md](../TASKS.md) §10 makes it a review criterion.
+### Permission rules — `lib/permissions.ts`
+
+`canViewEvent()` and `canManageEvent()` are the single implementation of
+visibility and manageability, called from both pages and route handlers so the
+two can never drift apart. They are **pure and synchronous** — no store, no
+session, no I/O: the caller resolves the viewer through `getCurrentUser()` and
+passes it in, which keeps the trusted-identity boundary at
+[lib/session.ts](../lib/session.ts) rather than spreading it.
+
+The rules themselves are specified in [TASKS.md](../TASKS.md) §4, which is
+authoritative and is not restated here or in the module.
+
+### Context derivation — `lib/events.ts`
+
+**Server only.** Builds the `EventWithContext` declared in
+[lib/types.ts](../lib/types.ts) — the event plus hosts, counts, the viewer's own
+registration and whether they may manage it.
+
+The ordering is the point: **visibility is applied before any context is
+derived**, so an event the viewer may not see never reaches a page or a payload
+at all. This is the "board must never leak" constraint, enforced structurally
+rather than by remembering to filter.
+
+```
+page (server) → getCurrentUser() → lib/events → canViewEvent() → lib/db
+                                              ↓
+                                   EventWithContext[]
+```
+
+### The board — `/events`
+
+Server-rendered end to end. It asks `lib/events.ts` for what the viewer may see,
+then filters, sorts and groups that already-authorised set. Filters live in the
+URL, so the query string can only narrow what the viewer was already allowed to
+see — never widen it.
+
+[components/events/BoardFilters.tsx](../components/events/BoardFilters.tsx) is
+the page's only client leaf. It holds no state and makes no decisions; it turns a
+choice into a navigation. Why the filters work this way:
+[dec_log.md](dec_log.md).
 
 Current position: [s_status.md](s_status.md).
 
@@ -133,6 +166,8 @@ Current position: [s_status.md](s_status.md).
 | --- | --- |
 | Identity | [lib/session.ts](../lib/session.ts) — server only |
 | Data access | [lib/db.ts](../lib/db.ts) — server only |
+| Visibility and manageability | [lib/permissions.ts](../lib/permissions.ts) — pure, shared by pages and routes |
+| Derived event context | [lib/events.ts](../lib/events.ts) — server only |
 | Fixtures / personas | [lib/seed.ts](../lib/seed.ts) |
 | API helpers | [lib/api.ts](../lib/api.ts) |
 | API house style, worked example | [app/api/session/route.ts](../app/api/session/route.ts) |

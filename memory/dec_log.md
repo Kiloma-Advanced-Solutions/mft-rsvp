@@ -112,7 +112,48 @@ authoritative source instead.
 
 ---
 
-No product decisions are recorded yet because M1 has not been implemented. Future
-entries should be added only after a significant implementation decision has been
-approved and implemented. The decision log records decisions after they are made;
-it does not predict them.
+## 2026-08-24 — Permission rules kept separate from event loading
+
+Context: M1 was the first code that had to answer "may this viewer see this
+event". The check could have lived in the board page, in the module that loads
+events, or in a module of its own.
+
+Decision: [lib/permissions.ts](../lib/permissions.ts) holds `canViewEvent()` and
+`canManageEvent()` as pure functions of (event, viewer).
+[lib/events.ts](../lib/events.ts) loads data and calls them; it decides nothing
+itself.
+
+Rationale: every later milestone asks the same two questions from somewhere else
+— the detail-page 404, host-only controls, the registration routes — and
+[CLAUDE.md](../CLAUDE.md) requires a single shared answer for both pages and API
+routes. Keeping the rules free of the store and the session lets them be read
+against [TASKS.md](../TASKS.md) §4 on their own, and stops a route handler from
+reaching a different answer than a page.
+
+Consequences: M2 and M3 extend these functions instead of writing their own
+checks, and a rule change has one place to land. Anything that needs the store
+belongs in `lib/events.ts`, not here.
+
+---
+
+## 2026-08-24 — Board filters in the URL, applied on the server, with no `/api/events`
+
+Context: M1 needs category and access filters. The alternatives were client-side
+filtering over a fetched list, local component state, or filter values in the
+query string applied during the server render.
+
+Decision: filters live in the URL and are applied on the server to the set the
+viewer is already authorised to see. No `/api/events` endpoint was added;
+`BoardFilters` is a client leaf that only navigates.
+
+Rationale: filtering in the browser would mean sending events the viewer may not
+see and hiding them there — exactly the leak [TASKS.md](../TASKS.md) §1 forbids.
+Applying filters after authorisation means the query string can only narrow what
+the viewer could already see, never widen it. The URL also keeps the page a
+Server Component, and makes a filtered board shareable and the Back button
+meaningful. No M1 requirement needed an endpoint, and adding one early would have
+created a second place for visibility to be enforced.
+
+Consequences: route handlers arrive in M3, when mutations genuinely need them,
+reusing `lib/permissions.ts`. If a later board feature does need an endpoint, it
+goes through the same permission helpers rather than re-deriving visibility.
