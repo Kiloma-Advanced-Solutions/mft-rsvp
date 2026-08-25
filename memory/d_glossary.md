@@ -89,7 +89,7 @@ interacts with each access mode.
   distinct is what stops "can see" from creeping into "can change".
 - **`EventWithContext`** — the derived view-model an event screen usually needs:
   the event plus its hosts, the going and pending counts, the viewer's own
-  registration, and whether the viewer may manage it. Nothing builds one yet; see
-  [a_system.md](a_system.md).
+  registration, and whether the viewer may manage it. Built by
+  [lib/events.ts](../lib/events.ts), after visibility has been applied.
 
 → [TASKS.md](../TASKS.md) §4 for the authoritative visibility and action tables.
