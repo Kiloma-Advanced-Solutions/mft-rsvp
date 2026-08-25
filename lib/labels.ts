@@ -12,6 +12,8 @@ import type {
   EventCategory,
   EventLocation,
   EventStatus,
+  RegistrationAvailability,
+  RegistrationClosedReason,
   RegistrationStatus,
 } from "./types";
 
@@ -139,4 +141,69 @@ export function eventCountLabel(shown: number, total: number): string {
   const noun = total === 1 ? "event" : "events";
   if (shown === total) return `${total} ${noun} you can see.`;
   return `Showing ${shown} of ${total} ${noun} you can see.`;
+}
+
+/* ------------------------------------------------------------------ detail */
+
+/** The event detail screen's own words: its sections and its host tools. */
+export const DETAIL_LABELS = {
+  back: "Back to board",
+  about: "About this event",
+  hosts: "Hosted by",
+  attendees: "Who is going",
+  noAttendees: "Nobody has registered yet.",
+  hostTools: "Host tools",
+  hostToolsDescription: "Only you and other hosts see this.",
+  edit: "Edit event",
+  publish: "Publish draft",
+  /** Said about controls that are in place but not yet wired up. */
+  notYetActive: "Not active yet — this arrives in a later milestone.",
+  factPending: "Awaiting approval",
+  factInvited: "Invited",
+};
+
+/**
+ * What the registration panel says, for one availability. The rule that
+ * produced the availability lives in `lib/permissions.ts`; this only dresses it.
+ */
+type RegistrationCtaCopy = {
+  /** The primary action's label, or `null` when there is nothing to offer. */
+  action: string | null;
+  /** One line telling the viewer where they stand. */
+  note: string;
+};
+
+const CLOSED_NOTES: Record<RegistrationClosedReason, string> = {
+  draft: "This event is still a draft, so nobody can register yet.",
+  cancelled: "This event was cancelled, so registration is closed.",
+  started: "This event has passed.",
+  full: "This event is full.",
+  rejected:
+    "Your request was not approved. A host can still approve you from their queue.",
+  not_invited: "This event is invite only, and you are not on the invite list.",
+};
+
+export function registrationCtaCopy(
+  availability: RegistrationAvailability,
+): RegistrationCtaCopy {
+  switch (availability.state) {
+    case "open":
+      return availability.action === "request"
+        ? {
+            action: "Request a place",
+            note: "A host decides who gets in, so this creates a request.",
+          }
+        : { action: "Register", note: "You will be confirmed straight away." };
+
+    case "registered":
+      return availability.status === "going"
+        ? { action: "Withdraw", note: "You have a confirmed place." }
+        : {
+            action: "Withdraw",
+            note: "Your request is waiting for a host to decide.",
+          };
+
+    case "closed":
+      return { action: null, note: CLOSED_NOTES[availability.reason] };
+  }
 }

@@ -158,3 +158,38 @@ export type EventWithContext = {
   /** Whether the current viewer may edit or delete this event. */
   viewerCanManage: boolean;
 };
+
+/**
+ * Whether the viewer may act on their own registration, and if not, why.
+ *
+ * The shape is a union rather than a bag of booleans so a screen cannot render
+ * "register" and "this event is full" at the same time. Produced by
+ * `getRegistrationAvailability()` in `lib/permissions.ts` from the rules in
+ * `TASKS.md` section 4.
+ */
+export type RegistrationClosedReason =
+  | "draft"
+  | "cancelled"
+  | "started"
+  | "full"
+  | "rejected"
+  | "not_invited";
+
+export type RegistrationAvailability =
+  /** Nothing stands in the way. `request` is the `approval` flavour. */
+  | { state: "open"; action: "register" | "request" }
+  /** Already in, and may step back out again. */
+  | { state: "registered"; action: "withdraw"; status: "going" | "pending" }
+  /** No action to offer. `reason` decides what the screen says instead. */
+  | { state: "closed"; reason: RegistrationClosedReason };
+
+/**
+ * What the detail screen needs on top of `EventWithContext`: the people who are
+ * actually going, not just how many. Deliberately a separate type -- the board
+ * wants the counts and not the bodies, and making this field part of
+ * `EventWithContext` would have it assembled for every card that ignores it.
+ */
+export type EventDetailContext = EventWithContext & {
+  /** Confirmed (`going`) attendees, in registration order. */
+  attendees: User[];
+};
