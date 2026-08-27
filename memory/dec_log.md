@@ -157,3 +157,90 @@ created a second place for visibility to be enforced.
 Consequences: route handlers arrive in M3, when mutations genuinely need them,
 reusing `lib/permissions.ts`. If a later board feature does need an endpoint, it
 goes through the same permission helpers rather than re-deriving visibility.
+
+---
+
+## 2026-08-26 — The detail loader returns `null`; the caller chooses the response
+
+Context: M2 needed the detail route to answer for an event that does not exist
+and for one the viewer may not see. [TASKS.md](../TASKS.md) §4 settles what the
+answer is; what was open was who decides it. The loader could throw
+`notFound()` itself, return a discriminated error describing which case it hit,
+or return `null` and leave the response to its caller.
+
+Decision: `getEventDetailForViewer()` in [lib/events.ts](../lib/events.ts)
+returns `null` for missing and invisible alike, and the page calls `notFound()`.
+
+Rationale: the two cases have to be indistinguishable, so collapsing them in the
+loader is the honest shape — a discriminated error would invite a caller to
+report which one it was. Leaving the response to the caller is what keeps the
+module free of `next/navigation`, so M3's route handlers can turn the same
+answer into an `ApiError` instead of a rendered page, from the same single
+authorisation decision. Throwing from the loader would have forced M3 either to
+re-check visibility or to write a second loader.
+
+Consequences: the visibility check has one home for both the page and the future
+routes, and this is the 2026-08-24 entry's principle — permission rules separate
+from event loading — applied to a second loader rather than a new decision.
+`null` now carries meaning at that boundary; a caller that treats it as "not
+found" only is still correct, and a caller that leaks the difference is not.
+
+---
+
+## 2026-08-26 — Registration availability lives in the shared rules layer
+
+Context: M2 had to render "register", "request a place", "withdraw", "this event
+is full" and "this event has passed" correctly, which meant implementing
+§4's registering and withdrawing rules for the first time. They could have gone
+inline in the detail page, into a new `lib/registration.ts`, or alongside the
+existing checks in [lib/permissions.ts](../lib/permissions.ts).
+
+Decision: `getRegistrationAvailability()` joined the existing two functions in
+`lib/permissions.ts`, returning a union of the states rather than a set of
+booleans. The page calls it and chooses wording from
+[lib/labels.ts](../lib/labels.ts); it derives nothing.
+
+Rationale: M3 has to enforce the same rules on the server, and a page-local copy
+is exactly the duplication [CLAUDE.md](../CLAUDE.md) and §10 warn about — the
+question would then be answered twice and could diverge. A separate module would
+have split one section of the specification across two files for no gain. The
+union shape is what makes it impossible to render an action and a reason not to
+act at the same time. This is also the 2026-08-24 entry's stated expectation
+arriving: later milestones extend these functions rather than writing their own.
+
+Consequences: the module is no longer strictly pure — availability reads the
+clock through `isPast` to decide whether an event has started. Still no store
+and no session, so the trusted-identity boundary is unmoved, but the "no I/O,
+no side inputs" description it once had is not accurate any more. M3 reuses
+this function rather than restating the rules.
+
+---
+
+## 2026-08-26 — Invite-only registration admits invited users or managers
+
+Context: [TASKS.md](../TASKS.md) §4 is genuinely ambiguous for a host of an
+invite-only event who is not on its invite list. Its action table grants hosts
+"register: yes"; its registering table confirms people who were invited. The
+seeded leadership offsite is exactly this case — its organizer is not among its
+invited users.
+
+Decision: for `invite` access, registration is available to an explicitly
+invited user **or** to anyone `canManageEvent()` allows. A host or admin may
+therefore take a place at an invite-only event without appearing on its invite
+list.
+
+Rationale: the alternative reading — that a host must add themselves to the
+invite list first — makes the organizer of an event unable to attend it until
+they edit it, which reads as a bug rather than a rule. Whoever may manage the
+event could add themselves to that list anyway, so refusing them is a formality
+with no protection behind it. This is a product decision taken where the
+specification is silent, which §4 explicitly permits.
+
+Consequences: M3's registration route must enforce the same reading, and M4's
+access-mode editing should not assume the invite list is the only path in. The
+availability union keeps a `not_invited` state that the current UI cannot reach:
+an uninvited non-manager cannot see the event at all, so the route 404s before
+availability is ever computed. It is kept deliberately — it is the negative half
+of the same rule, and without it the function would answer "register" if it were
+ever called without a prior visibility check. M4 makes it reachable, when hosts
+can change an event's access mode under people who were already registered.

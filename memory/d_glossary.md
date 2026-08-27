@@ -87,6 +87,11 @@ interacts with each access mode.
   on this event?" A separate question with a separate answer: visibility is about
   discovery, manageability is about being a host or an admin. Keeping them
   distinct is what stops "can see" from creeping into "can change".
+- **registration availability** — "may this person take a place at this event
+  right now, and if not, why not?" The third question, and again a separate one:
+  seeing an event, and even being able to manage it, does not mean being able to
+  register for it. What closes registration, and what registering produces, are
+  in [TASKS.md](../TASKS.md) §4.
 - **`EventWithContext`** — the derived view-model an event screen usually needs:
   the event plus its hosts, the going and pending counts, the viewer's own
   registration, and whether the viewer may manage it. Built by

@@ -5,29 +5,37 @@ progresses — it is current state, not a changelog.
 
 ## Active milestone
 
-**M1 — The Board** is complete. **M2 — The event detail screen** (`must`) is the
-next milestone and has not started. Authoritative requirements and done-condition
-for both: [TASKS.md](../TASKS.md) §5.
+**M2 — The event detail screen** is complete and merged. **M3 — Register and
+respond** (`must`) is next and has not started. Authoritative requirements and
+done-conditions for every milestone: [TASKS.md](../TASKS.md) §5.
 
 ## Status
 
-`/events` is implemented. It is a Server Component that resolves the viewer,
-loads only the events that viewer may see, and then filters, sorts and groups
-them; the category and access filters live in the URL.
+Both screens exist and are server-rendered end to end.
 
-The derived layer M1 needed now exists, and later milestones build on it rather
-than rebuilding it:
+`/events` resolves the viewer, loads only the events that viewer may see, and
+then filters, sorts and groups them; the category and access filters live in the
+URL.
+
+`/events/[id]` shows one event to whoever may see it. An event that does not
+exist and an event the viewer may not see produce the same 404, so the page
+cannot confirm that a hidden event exists. The viewer's call to action and the
+host-only tools each show the correct state for that viewer, but neither acts
+yet: the mutations behind them belong to M3 and M4.
+
+The derived layer both screens share:
 
 - [lib/permissions.ts](../lib/permissions.ts) — the shared answer to "may this
-  person see this event" and "may this person manage it".
-- [lib/events.ts](../lib/events.ts) — builds `EventWithContext`, with visibility
-  applied before any context is derived.
+  person see this event", "may this person manage it", and "may this person take
+  a place at it".
+- [lib/events.ts](../lib/events.ts) — builds the context for a board of events
+  and for a single one, with visibility applied before any context is derived.
 
 The shape and the boundaries between them are in [a_system.md](a_system.md).
 
-`/events/[id]` is still the supplied stub, and it deliberately renders any event
-it finds with **no visibility check** — that is M2's first job, not a bug to
-report.
+**There is no registration API yet.** `app/api/` holds `/api/session` and
+`/api/dev/reset` and nothing else; nothing in the app writes a registration.
+That is where M3 begins.
 
 ## What is actually implemented
 
@@ -41,8 +49,10 @@ Everything that is not the product was supplied. Do not rebuild it — see
 - `/api/session` (the API house-style example) and `/api/dev/reset`.
 - `/styleguide` and the start page at `/`.
 
-M1 replaced the `/events` stub and added `lib/permissions.ts`, `lib/events.ts`
-and `components/events/BoardFilters.tsx`.
+The product built on top of that: M1 replaced the `/events` stub and added
+`lib/permissions.ts`, `lib/events.ts` and `components/events/BoardFilters.tsx`;
+M2 replaced the `/events/[id]` stub and added
+`components/events/RegistrationPanel.tsx`.
 
 ## Blockers
 
@@ -62,4 +72,4 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-08-24 — M1 complete and merged; M2 not started.
+Last updated: 2026-08-26 — M2 complete and merged; M3 not started.
