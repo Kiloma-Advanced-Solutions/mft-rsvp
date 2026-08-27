@@ -96,9 +96,10 @@ copy; the helpers are in [lib/api.ts](../lib/api.ts).
 
 - `ui/` — generic primitives that know nothing about events. Import from the
   barrel: [components/ui/index.ts](../components/ui/index.ts).
-- `events/` — anything that understands the domain: `EventCard`, `EventGrid`, and
-  the `EventMeta` family (`DateBlock`, `AccessBadge`, `EventStatusBadge`,
-  `RegistrationBadge`, `EventMetaLine`, `EventMetaDetails`, `CapacityMeter`).
+- `events/` — anything that understands the domain: `EventCard`, `EventGrid`,
+  `BoardFilters`, `RegistrationPanel`, and the `EventMeta` family (`DateBlock`,
+  `AccessBadge`, `EventStatusBadge`, `RegistrationBadge`, `EventMetaLine`,
+  `EventMetaDetails`, `CapacityMeter`).
 - `layout/` — the app frame: `AppShell`, `NavLink`, `PersonaSwitcher`.
 
 `EventCard` renders only what it is passed — deriving counts, attendees and the
@@ -119,31 +120,42 @@ jobs. The split is what keeps authorisation reviewable in one place.
 
 ### Permission rules — `lib/permissions.ts`
 
-`canViewEvent()` and `canManageEvent()` are the single implementation of
-visibility and manageability, called from both pages and route handlers so the
-two can never drift apart. They are **pure and synchronous** — no store, no
-session, no I/O: the caller resolves the viewer through `getCurrentUser()` and
-passes it in, which keeps the trusted-identity boundary at
-[lib/session.ts](../lib/session.ts) rather than spreading it.
+`canViewEvent()`, `canManageEvent()` and `getRegistrationAvailability()` are the
+single implementation of three separate questions — may this person see the
+event, may they manage it, and may they take a place at it — called from both
+pages and route handlers so no two callers can drift apart.
+
+They are **synchronous, with no store and no session**: the caller resolves the
+viewer through `getCurrentUser()` and passes it in along with any counts, which
+keeps the trusted-identity boundary at [lib/session.ts](../lib/session.ts)
+rather than spreading it. The one impurity is the clock — availability reads
+`isPast` to decide whether an event has already started.
 
 The rules themselves are specified in [TASKS.md](../TASKS.md) §4, which is
 authoritative and is not restated here or in the module.
 
 ### Context derivation — `lib/events.ts`
 
-**Server only.** Builds the `EventWithContext` declared in
+**Server only.** Builds the context declared in
 [lib/types.ts](../lib/types.ts) — the event plus hosts, counts, the viewer's own
-registration and whether they may manage it.
+registration and whether they may manage it — for a whole board of events, and
+for a single one with its attendees.
 
 The ordering is the point: **visibility is applied before any context is
 derived**, so an event the viewer may not see never reaches a page or a payload
-at all. This is the "board must never leak" constraint, enforced structurally
-rather than by remembering to filter.
+at all. This is the never-leak constraint in [TASKS.md](../TASKS.md) §1, which
+M2 extended from the board to a single event, enforced structurally rather than
+by remembering to filter.
+
+The single-event loader returns **`null` for an event that is missing and for one
+the viewer may not see alike**, and leaves the response to its caller. That is
+what lets a page answer with a 404 while a route handler answers with an API
+error, from one authorisation decision. Why: [dec_log.md](dec_log.md).
 
 ```
 page (server) → getCurrentUser() → lib/events → canViewEvent() → lib/db
                                               ↓
-                                   EventWithContext[]
+                                   context, or null
 ```
 
 ### The board — `/events`
@@ -158,6 +170,22 @@ the page's only client leaf. It holds no state and makes no decisions; it turns 
 choice into a navigation. Why the filters work this way:
 [dec_log.md](dec_log.md).
 
+### The detail screen — `/events/[id]`
+
+Server-rendered, with no client leaf. It resolves the viewer, asks
+`lib/events.ts` for that one event, and calls `notFound()` when the answer is
+`null` — so a hidden event and a nonexistent one are indistinguishable, which
+[TASKS.md](../TASKS.md) §4 requires. Nothing about an event the viewer may not
+see is ever assembled, let alone rendered.
+
+The page decides nothing itself. It calls `getRegistrationAvailability()` for the
+viewer's state and consumes the `viewerCanManage` the loader already derived;
+[components/events/RegistrationPanel.tsx](../components/events/RegistrationPanel.tsx)
+is presentation only, and the host-only section is gated on manageability and
+absent from the markup for everyone else — hiding it in CSS would still ship it.
+Nothing on this screen writes: the mutation layer its controls will call does not
+exist yet.
+
 Current position: [s_status.md](s_status.md).
 
 ## Source-of-truth locations
@@ -166,7 +194,7 @@ Current position: [s_status.md](s_status.md).
 | --- | --- |
 | Identity | [lib/session.ts](../lib/session.ts) — server only |
 | Data access | [lib/db.ts](../lib/db.ts) — server only |
-| Visibility and manageability | [lib/permissions.ts](../lib/permissions.ts) — pure, shared by pages and routes |
+| Visibility, manageability and registration availability | [lib/permissions.ts](../lib/permissions.ts) — shared by pages and routes |
 | Derived event context | [lib/events.ts](../lib/events.ts) — server only |
 | Fixtures / personas | [lib/seed.ts](../lib/seed.ts) |
 | API helpers | [lib/api.ts](../lib/api.ts) |
