@@ -1,5 +1,5 @@
-import { Button, Card } from "@/components/ui";
-import { DETAIL_LABELS, registrationCtaCopy } from "@/lib/labels";
+import { Card } from "@/components/ui";
+import { registrationCtaCopy } from "@/lib/labels";
 import type {
   EventRecord,
   Registration,
@@ -7,6 +7,7 @@ import type {
 } from "@/lib/types";
 
 import { CapacityMeter, RegistrationBadge } from "./EventMeta";
+import { RegistrationActions } from "./RegistrationActions";
 import styles from "./RegistrationPanel.module.css";
 
 /**
@@ -18,10 +19,9 @@ import styles from "./RegistrationPanel.module.css";
  * same contract `EventCard` follows, so the rule has one home and this file
  * only chooses how to say it.
  *
- * The action is deliberately inert for now — the button is in its final place
- * and shows the right label, and the note under it says so. Wiring it to the
- * registration endpoint is M3's job, and is the only change this component
- * needs then.
+ * A Server Component. The one interactive part is `RegistrationActions`, which
+ * gets the label chosen here rather than choosing its own, so the wording still
+ * comes from `lib/labels.ts` alone.
  */
 export function RegistrationPanel({
   event,
@@ -29,7 +29,7 @@ export function RegistrationPanel({
   goingCount,
   viewerRegistration,
 }: {
-  event: Pick<EventRecord, "capacity">;
+  event: Pick<EventRecord, "id" | "capacity">;
   availability: RegistrationAvailability;
   goingCount: number;
   viewerRegistration: Registration | null;
@@ -48,22 +48,14 @@ export function RegistrationPanel({
         <CapacityMeter going={goingCount} capacity={event.capacity} />
 
         {copy.action && (
-          <Button
-            variant={
-              availability.state === "registered" ? "secondary" : "primary"
-            }
-            fullWidth
-            disabled
-          >
-            {copy.action}
-          </Button>
+          <RegistrationActions
+            eventId={event.id}
+            availability={availability}
+            label={copy.action}
+          />
         )}
 
         <p className={styles.note}>{copy.note}</p>
-
-        {copy.action && (
-          <p className={styles.inactive}>{DETAIL_LABELS.notYetActive}</p>
-        )}
       </div>
     </Card>
   );
