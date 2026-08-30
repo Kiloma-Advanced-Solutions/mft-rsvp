@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useState, useTransition } from "react";
 
 import { Button, useToast } from "@/components/ui";
 import { fetchJson } from "@/lib/api";
@@ -22,6 +22,11 @@ import type { RegistrationAvailability } from "@/lib/types";
  * `router.refresh()` runs after a failure as well as a success. A refusal
  * usually means the page it was clicked from is out of date -- the event filled
  * up, or started -- and the refresh is what replaces it with the truth.
+ *
+ * The refresh goes through a transition, and the button stays busy for it as
+ * well as for the request. Re-enabling on the response alone would leave the
+ * button clickable while it still showed the previous render's label, and a
+ * second click there would send an action the viewer has already taken.
  */
 export function RegistrationActions({
   eventId,
@@ -34,10 +39,14 @@ export function RegistrationActions({
   label: string;
 }) {
   const [submitting, setSubmitting] = useState(false);
+  const [refreshing, startTransition] = useTransition();
   const router = useRouter();
   const toast = useToast();
 
   const withdrawing = availability.state === "registered";
+  // Busy until the request has answered *and* the server has re-rendered, so
+  // the label the button shows is never one the store has already moved past.
+  const busy = submitting || refreshing;
 
   async function submit() {
     setSubmitting(true);
@@ -54,8 +63,10 @@ export function RegistrationActions({
         error instanceof Error ? error.message : undefined,
       );
     } finally {
+      // Both updates land in one batch, so `busy` stays true throughout: the
+      // transition is already pending by the time `submitting` clears.
       setSubmitting(false);
-      router.refresh();
+      startTransition(() => router.refresh());
     }
   }
 
@@ -63,7 +74,7 @@ export function RegistrationActions({
     <Button
       variant={withdrawing ? "secondary" : "primary"}
       fullWidth
-      loading={submitting}
+      loading={busy}
       onClick={submit}
     >
       {label}

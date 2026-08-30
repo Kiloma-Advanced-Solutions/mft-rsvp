@@ -124,9 +124,12 @@ export const POST = withErrorHandling(
     const registration = existing
       ? await db.registrations.update(existing.id, {
           status,
-          // A revived row starts a new cycle. Leaving the previous decision on
-          // it would show a host in the approval queue as having already
-          // decided a request that has only just been made.
+          // A revived row starts a new cycle, so nothing from the previous one
+          // carries over. A stale decision would show a host in the approval
+          // queue as having already decided a request that has only just been
+          // made, and a stale message would put words the requester wrote for
+          // the last cycle under a request they have not written one for.
+          message: undefined,
           decidedBy: undefined,
           decidedAt: undefined,
         })
