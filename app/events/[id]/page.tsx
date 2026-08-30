@@ -36,8 +36,10 @@ import styles from "./detail.module.css";
  * the event reaches the markup.
  *
  * Visibility and manageability are not decided here. They come from
- * `lib/permissions.ts`, which the board and the future registration routes also
- * call, so there is one answer to "can this person see this" in the codebase.
+ * `lib/permissions.ts`, which the board and the registration route also call,
+ * so there is one answer to "can this person see this" in the codebase — and
+ * the route works that answer out again from the store before it writes, so a
+ * stale page cannot talk it into anything.
  */
 export default async function EventDetailPage({
   params,
