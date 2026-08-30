@@ -244,3 +244,128 @@ availability is ever computed. It is kept deliberately — it is the negative ha
 of the same rule, and without it the function would answer "register" if it were
 ever called without a prior visibility check. M4 makes it reachable, when hosts
 can change an event's access mode under people who were already registered.
+
+---
+
+## 2026-08-30 — One registration row per person and event, transitioned rather than replaced
+
+Context: M3 had to make withdrawal and re-registration work.
+[TASKS.md](../TASKS.md) §4 settles the statuses — withdrawing sets `cancelled`,
+and someone who withdrew may register again — but not what happens to the row.
+`db.registrations` offers `remove()` as well as `update()`, so deleting and
+recreating was available, as was leaving the withdrawn row alone and creating a
+second one on the way back in.
+
+Decision: a person has at most one registration per event, and it is transitioned
+in place. Withdrawing updates the row to `cancelled` instead of deleting it, and
+registering again revives that same row rather than adding another. A revived row
+starts a new cycle, so the previous cycle's `decidedBy`, `decidedAt` and `message`
+are cleared as part of the same update.
+
+Rationale: `db.registrations.find()` is built on "at most one per event", and a
+second row would break the invariant every count and lookup already assumes —
+`goingCount`, the viewer's own status, the attendee list. Deleting instead of
+transitioning would throw away the fact that the person was once going, which is
+history a host may want and which §4 does not ask us to discard. Clearing the
+carried-over fields is what makes the revived row honest: a stale decision would
+show M5's queue a request as already decided when it has only just been made, and
+a stale message would put words the requester wrote for the previous cycle under a
+request they have not written one for.
+
+Consequences: capacity and the attendee list stay correct across any number of
+withdraw/re-register cycles without special cases. M5 reads `decidedBy`/`decidedAt`
+and the message to build its queue, and can trust that anything present belongs to
+the current cycle.
+
+---
+
+## 2026-08-30 — Mutations in a focused client leaf, with the server-rendered view as the truth
+
+Context: M2 left the registration call to action inert and server-rendered. Making
+it act needed a client boundary somewhere. `RegistrationPanel` could have become a
+Client Component — its own M2 comment anticipated exactly that — or the boundary
+could be pushed down to the control itself.
+
+Decision: [components/events/RegistrationActions.tsx](../components/events/RegistrationActions.tsx)
+is a small Client Component holding interaction only; `RegistrationPanel` and the
+detail page stay server-rendered. After a mutation the leaf calls
+`router.refresh()` so the server re-renders and becomes authoritative again, and
+it does so after a failure as well as a success. The control stays busy until that
+refresh has landed. No optimistic state.
+
+Rationale: [CLAUDE.md](../CLAUDE.md) puts `"use client"` at the leaf that needs it,
+and marking the panel would have pushed the whole panel and its imports across the
+boundary for one `onClick`. Refreshing on failure matters as much as on success: a
+refusal usually means the page it was clicked from is out of date, and the refresh
+is what replaces it with the truth rather than leaving a wrong page on screen.
+Staying busy through the refresh closes the window between the response arriving
+and the new state rendering, in which the control would be clickable while still
+showing an action the store had already moved past — a second click there sends
+something the viewer has already done. Optimistic state would mean the client
+predicting an authorisation outcome, which is the opposite of what this milestone
+is for.
+
+Consequences: M4's editing and publishing controls and M5's approve/reject
+controls follow this shape — a focused leaf, the server re-derives and decides,
+the view refreshes, the control stays busy until it has. The pattern is described
+in [a_system.md](a_system.md); `PersonaSwitcher` remains the simpler example of
+the same path without an authorisation step.
+
+---
+
+## 2026-08-30 — Withdrawal is closed by the same event-level rules that close registering
+
+Context: [TASKS.md](../TASKS.md) §4 states the withdrawing rule without an
+event-state qualifier — anyone `going` or `pending` may withdraw — while
+separately closing registration on draft, cancelled and already-started events.
+Whether that closure also covers withdrawal is genuinely not stated, and the
+seeded fixtures reach it: Tom is `going` on a cancelled event, and Priya on one
+that has passed.
+
+Decision: withdrawal follows the same closure. `getRegistrationAvailability()`
+checks the event's state before the viewer's own, so a draft, a cancelled event or
+one that has already started refuses both directions, and the route inherits that
+by reusing the function.
+
+Rationale: the alternative reading needs a second, withdrawal-specific rule, and
+then the same question has two implementations that can drift — the exact
+duplication the 2026-08-26 entry created the shared rules layer to prevent. It is
+also what the M2 screen already showed: a past event you attended reads "This event
+has passed" and offers no Withdraw button, so the API agreeing with it costs
+nothing and disagreeing would be a bug. Freeing a place on an event that is over or
+cancelled achieves nothing anyway.
+
+Consequences: a stale `going` row on a cancelled or past event cannot be cleared by
+its owner; if that is ever wanted it is a host-side action, not a withdrawal. The
+UI and the API cannot disagree about whether withdrawal is offered, because one
+function answers for both. This is a product decision taken where the specification
+is silent, which §4 explicitly permits.
+
+---
+
+## 2026-08-30 — The final-seat capacity race is accepted, not solved
+
+Context: the registration route reads the `going` count and writes the row with
+`await` points in between, because [lib/db.ts](../lib/db.ts) is async by design so
+it can be swapped for a real database. Two requests for the last seat can
+therefore both pass the capacity check before either writes.
+
+Decision: M3 accepts the race and does not redesign the data layer. Two options
+were considered and rejected: re-reading the count immediately before the write,
+and adding a check-and-write store method that completes in one tick.
+
+Rationale: re-reading narrows the window without closing it — there is still an
+`await` in between — which is worse than leaving it alone, because it looks like a
+fix and would discourage a real one. A store-level reservation would close it, but
+it pushes a business rule into the storage layer that
+[lib/permissions.ts](../lib/permissions.ts) exists to keep out, and it means
+rewriting a supplied module that [TASKS.md](../TASKS.md) §3 says not to rebuild. In
+a real database this is a constraint or a transaction, not application code, so the
+honest position is to name the limitation rather than paper over it.
+
+Consequences: the limitation is documented rather than hidden, and a later session
+should not treat it as a newly discovered bug or quietly redesign the store to
+"fix" it. M5 meets the same question from the other side when it enforces that a
+host cannot approve past capacity, and should decide it deliberately rather than by
+accident. If the store is ever swapped for a real database, this is the first thing
+a constraint should cover.
