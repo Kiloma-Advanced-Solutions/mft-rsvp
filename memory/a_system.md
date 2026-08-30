@@ -202,9 +202,8 @@ next.
 
 ### Registering — `/api/events/[id]/registrations`
 
-The only path that writes domain data. `POST` registers or requests a place,
-`DELETE` withdraws, and both concern **the caller's own** registration and
-nobody else's.
+The registration write path. `POST` registers or requests a place, `DELETE`
+withdraws, and both concern **the caller's own** registration and nobody else's.
 
 The handler answers nothing itself. It takes the acting user from
 `getCurrentUser()`, the event from `lib/events.ts` — which returns `null` for
