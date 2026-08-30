@@ -5,13 +5,16 @@ progresses — it is current state, not a changelog.
 
 ## Active milestone
 
-**M2 — The event detail screen** is complete and merged. **M3 — Register and
-respond** (`must`) is next and has not started. Authoritative requirements and
-done-conditions for every milestone: [TASKS.md](../TASKS.md) §5.
+**M1 — The board**, **M2 — The event detail screen** and **M3 — Register and
+respond** are complete and merged. All three `must` milestones are done.
+**M4 — Create and edit in place** (`should`) is next and has not started.
+Authoritative requirements and done-conditions for every milestone:
+[TASKS.md](../TASKS.md) §5.
 
 ## Status
 
-Both screens exist and are server-rendered end to end.
+Both screens exist and are server-rendered end to end, and the first write path
+is in place behind them.
 
 `/events` resolves the viewer, loads only the events that viewer may see, and
 then filters, sorts and groups them; the category and access filters live in the
@@ -19,23 +22,26 @@ URL.
 
 `/events/[id]` shows one event to whoever may see it. An event that does not
 exist and an event the viewer may not see produce the same 404, so the page
-cannot confirm that a hidden event exists. The viewer's call to action and the
-host-only tools each show the correct state for that viewer, but neither acts
-yet: the mutations behind them belong to M3 and M4.
+cannot confirm that a hidden event exists.
 
-The derived layer both screens share:
+The viewer's call to action now **acts**: registering, requesting a place and
+withdrawing all go through
+[app/api/events/\[id\]/registrations/route.ts](../app/api/events/[id]/registrations/route.ts),
+which enforces the [TASKS.md](../TASKS.md) §4 rules on the server and refuses a
+hidden event exactly as it refuses a missing one. How that path is assembled is
+in [a_system.md](a_system.md). The host-only tools still do not act — editing
+and publishing are M4, and the approval queue is M5.
+
+The derived layer all three share:
 
 - [lib/permissions.ts](../lib/permissions.ts) — the shared answer to "may this
   person see this event", "may this person manage it", and "may this person take
-  a place at it".
+  a place at it". M3 reused all three unchanged.
 - [lib/events.ts](../lib/events.ts) — builds the context for a board of events
   and for a single one, with visibility applied before any context is derived.
 
-The shape and the boundaries between them are in [a_system.md](a_system.md).
-
-**There is no registration API yet.** `app/api/` holds `/api/session` and
-`/api/dev/reset` and nothing else; nothing in the app writes a registration.
-That is where M3 begins.
+The shape and the boundaries between them, including the registration write
+path, are in [a_system.md](a_system.md).
 
 ## What is actually implemented
 
@@ -52,7 +58,20 @@ Everything that is not the product was supplied. Do not rebuild it — see
 The product built on top of that: M1 replaced the `/events` stub and added
 `lib/permissions.ts`, `lib/events.ts` and `components/events/BoardFilters.tsx`;
 M2 replaced the `/events/[id]` stub and added
-`components/events/RegistrationPanel.tsx`.
+`components/events/RegistrationPanel.tsx`; M3 added
+`app/api/events/[id]/registrations/route.ts` and
+`components/events/RegistrationActions.tsx`, the detail screen's only client
+leaf.
+
+Not implemented: creating, editing, publishing and deleting events (M4), the
+approval queue (M5), and every stretch goal, including the waitlist.
+
+## Known limitations
+
+Two simultaneous registrations for the final seat can race, because the supplied
+in-memory store offers no atomic capacity reservation. M3 accepted this rather
+than redesigning the data layer; it is **not** solved. The reasoning and what it
+means for M5's approval path are in [dec_log.md](dec_log.md).
 
 ## Blockers
 
@@ -72,4 +91,4 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-08-26 — M2 complete and merged; M3 not started.
+Last updated: 2026-08-30 — M3 complete; M4 not started.

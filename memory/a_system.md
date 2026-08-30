@@ -51,9 +51,13 @@ client leaf → fetchJson → route handler → getCurrentUser() → lib/db
                               router.refresh() re-runs the server render
 ```
 
+There are two worked examples.
 [components/layout/PersonaSwitcher.tsx](../components/layout/PersonaSwitcher.tsx)
-is the existing worked example of this whole path, including the `router.refresh()`
-step — without it the page keeps rendering the previous persona's view.
+shows the bare path, including the `router.refresh()` step — without it the page
+keeps rendering the previous persona's view.
+[components/events/RegistrationActions.tsx](../components/events/RegistrationActions.tsx)
+shows the same path when the mutation has to be **authorised**, and is the one to
+copy for a new one; see "Registering" below.
 
 ## Layers
 
@@ -90,7 +94,14 @@ layer. Every handler is wrapped in `withErrorHandling`, reads bodies with
 plain object on success. Client code always goes through `fetchJson`, which
 unwraps the payload and throws the server's message.
 [app/api/session/route.ts](../app/api/session/route.ts) is the worked example to
-copy; the helpers are in [lib/api.ts](../lib/api.ts).
+copy for the house style; the helpers are in [lib/api.ts](../lib/api.ts).
+
+For a handler that has to **authorise** before it writes, the example is
+[app/api/events/\[id\]/registrations/route.ts](../app/api/events/[id]/registrations/route.ts).
+It answers none of the three questions itself — identity, visibility and the
+registration rules all come from the shared modules the pages use — so the only
+logic that lives in the route is turning that answer into a status code. See
+"Registering" below.
 
 ### Component layers — `components/`
 
@@ -172,7 +183,7 @@ choice into a navigation. Why the filters work this way:
 
 ### The detail screen — `/events/[id]`
 
-Server-rendered, with no client leaf. It resolves the viewer, asks
+Server-rendered, with one client leaf. It resolves the viewer, asks
 `lib/events.ts` for that one event, and calls `notFound()` when the answer is
 `null` — so a hidden event and a nonexistent one are indistinguishable, which
 [TASKS.md](../TASKS.md) §4 requires. Nothing about an event the viewer may not
@@ -181,10 +192,51 @@ see is ever assembled, let alone rendered.
 The page decides nothing itself. It calls `getRegistrationAvailability()` for the
 viewer's state and consumes the `viewerCanManage` the loader already derived;
 [components/events/RegistrationPanel.tsx](../components/events/RegistrationPanel.tsx)
-is presentation only, and the host-only section is gated on manageability and
-absent from the markup for everyone else — hiding it in CSS would still ship it.
-Nothing on this screen writes: the mutation layer its controls will call does not
-exist yet.
+is presentation only and stays a Server Component, and the host-only section is
+gated on manageability and absent from the markup for everyone else — hiding it
+in CSS would still ship it. Which of its controls act, and which are still
+inert, is current state rather than structure: see [s_status.md](s_status.md).
+
+The registration call to action acts through the one client leaf, described
+next.
+
+### Registering — `/api/events/[id]/registrations`
+
+The only write path in the app. `POST` registers or requests a place, `DELETE`
+withdraws, and both concern **the caller's own** registration and nobody else's.
+
+The handler answers nothing itself. It takes the acting user from
+`getCurrentUser()`, the event from `lib/events.ts` — which returns `null` for
+missing and invisible alike, so both refuse identically and the API cannot
+confirm a hidden event exists — and what the viewer may do from
+`getRegistrationAvailability()`. All three are re-derived from the store on every
+request, so a stale page, a re-enabled button or a hand-written `curl` all get
+the same answer: **the API is authoritative, not the UI**. Nothing in the request
+body influences who acts, what status results, or whether the action is allowed.
+
+Registering yields `going`, or `pending` where the access mode is `approval` —
+the mode decides, never the caller. A person has at most one registration per
+event, so withdrawing **transitions the row to `cancelled` rather than deleting
+it**, and registering again revives that same row; a revived row starts a new
+cycle, so the previous cycle's decision fields and message are cleared. Nothing
+here writes `waitlisted`.
+
+```
+RegistrationActions (client) → fetchJson → route handler
+      ↓                                        ↓
+  toast + router.refresh()          getCurrentUser() → lib/events → lib/permissions → lib/db
+```
+
+[components/events/RegistrationActions.tsx](../components/events/RegistrationActions.tsx)
+is the client leaf, and it holds interaction only — it picks the method, reports
+what came back, and asks the server to re-render. The refresh runs after a
+failure as well as a success, because a refusal usually means the page it was
+clicked from is out of date, and the control stays busy until that refresh has
+landed, so an action the store has already moved past cannot briefly become
+clickable again. No optimistic state: the server-rendered view is the truth.
+
+Why each of these was decided this way, including the accepted capacity race:
+[dec_log.md](dec_log.md).
 
 Current position: [s_status.md](s_status.md).
 
@@ -199,6 +251,7 @@ Current position: [s_status.md](s_status.md).
 | Fixtures / personas | [lib/seed.ts](../lib/seed.ts) |
 | API helpers | [lib/api.ts](../lib/api.ts) |
 | API house style, worked example | [app/api/session/route.ts](../app/api/session/route.ts) |
+| Registration writes, and the authorised-mutation example | [app/api/events/\[id\]/registrations/route.ts](../app/api/events/[id]/registrations/route.ts) |
 | Domain model | [lib/types.ts](../lib/types.ts) |
 | User-facing copy | [lib/labels.ts](../lib/labels.ts) |
 | Date formatting and grouping | [lib/date.ts](../lib/date.ts) |
