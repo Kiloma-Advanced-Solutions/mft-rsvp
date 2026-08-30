@@ -207,3 +207,40 @@ export function registrationCtaCopy(
       return { action: null, note: CLOSED_NOTES[availability.reason] };
   }
 }
+
+/**
+ * The same sentence the panel shows for a closed registration, for a route
+ * handler that has to refuse the action.
+ *
+ * The rule that produced the reason lives in `lib/permissions.ts`. Reading the
+ * wording from here means the API and the screen cannot describe the same
+ * refusal differently.
+ */
+export function registrationClosedNote(
+  reason: RegistrationClosedReason,
+): string {
+  return CLOSED_NOTES[reason];
+}
+
+/**
+ * What register, request and withdraw say once they have been attempted.
+ *
+ * The refusals are thrown by the registrations route; the toasts are shown by
+ * `RegistrationActions` after the server has answered. They share this object
+ * so a refusal is worded the same wherever it surfaces.
+ */
+export const REGISTRATION_ACTION_COPY = {
+  /* Server refusals for the two states `RegistrationClosedReason` cannot name. */
+  alreadyRegistered: "You already have a place at this event.",
+  nothingToWithdraw: "You do not have a place to withdraw from.",
+  /** The registration changed underneath the request. */
+  stale: "Your registration has changed. Reload the page and try again.",
+
+  /* Toast titles. The server's own message goes underneath as the description. */
+  registered: "You are going",
+  requested: "Request sent",
+  withdrawn: "You have withdrawn",
+  registerFailed: "Could not register",
+  requestFailed: "Could not send your request",
+  withdrawFailed: "Could not withdraw",
+};
