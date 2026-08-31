@@ -335,10 +335,20 @@ export function EventForm({
       )}
 
       <div className={styles.actions}>
+        {/*
+          A link cannot be `disabled`, and `aria-disabled` alone still leaves it
+          clickable -- which would abandon a save that is already in flight. So
+          while busy it also leaves the tab order and stops taking pointer
+          events, and `aria-disabled` is what tells assistive tech why.
+        */}
         <Link
           href={cancelHref}
-          className={buttonClass({ variant: "ghost" })}
+          className={buttonClass({
+            variant: "ghost",
+            className: busy ? styles.linkBusy : undefined,
+          })}
           aria-disabled={busy}
+          tabIndex={busy ? -1 : undefined}
         >
           {MANAGE_LABELS.cancel}
         </Link>

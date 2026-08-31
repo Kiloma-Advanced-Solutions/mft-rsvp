@@ -24,12 +24,15 @@ import { parseEventBody } from "@/lib/eventInput";
 import { EVENT_FORM_ERRORS, MANAGE_ACTION_COPY } from "@/lib/labels";
 import { canManageEvent } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
-import type { EventDetailContext, User } from "@/lib/types";
+import type { EventDetailContext } from "@/lib/types";
 
 type Context = RouteContext<"/api/events/[id]">;
 
 /**
- * The viewer, and the event if they are allowed to see *and* manage it.
+ * The event, if the caller is allowed to see *and* manage it.
+ *
+ * The acting user is resolved here but not returned: neither handler needs an
+ * identity of its own once the two questions below have been answered.
  *
  * Two refusals, in this order, and the order is the security property:
  *
@@ -46,7 +49,7 @@ type Context = RouteContext<"/api/events/[id]">;
  */
 async function loadManageableEvent(
   context: Context,
-): Promise<{ viewer: User; detail: EventDetailContext }> {
+): Promise<EventDetailContext> {
   const [viewer, { id }] = await Promise.all([
     getCurrentUser(),
     context.params,
@@ -59,7 +62,7 @@ async function loadManageableEvent(
     throw ApiError.forbidden(MANAGE_ACTION_COPY.cannotManage);
   }
 
-  return { viewer, detail };
+  return detail;
 }
 
 /**
@@ -72,7 +75,7 @@ async function loadManageableEvent(
  */
 export const PATCH = withErrorHandling(
   async (request: Request, context: Context) => {
-    const { detail } = await loadManageableEvent(context);
+    const detail = await loadManageableEvent(context);
 
     const body = await readJson(request);
     const parsed = parseEventBody(body, detail.event);
@@ -96,7 +99,7 @@ export const PATCH = withErrorHandling(
  */
 export const DELETE = withErrorHandling(
   async (_request: Request, context: Context) => {
-    const { detail } = await loadManageableEvent(context);
+    const detail = await loadManageableEvent(context);
 
     const deleted = await db.events.remove(detail.event.id);
     // Only reachable if it disappeared between the load and here, which is the

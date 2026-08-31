@@ -110,8 +110,15 @@ export function parseEventForm(values: EventFormValues): ParseResult {
   const endsAt = parseTimestamp(values.endsAt);
   if (endsAt === null) {
     errors.endsAt = EVENT_FORM_ERRORS.endsAtInvalid;
-  } else if (startsAt !== null && endsAt <= startsAt) {
-    // `EventRecord.endsAt` is documented as always after `startsAt`.
+  } else if (
+    startsAt !== null &&
+    // Compared as instants, not as strings. `toISOString()` is only
+    // fixed-width for years 0000-9999 -- outside that range it emits an
+    // expanded `+YYYYYY` year, and lexicographic order stops matching
+    // chronological order. `EventRecord.endsAt` is documented as always after
+    // `startsAt`, so the check has to hold for anything that parses.
+    Date.parse(endsAt) <= Date.parse(startsAt)
+  ) {
     errors.endsAt = EVENT_FORM_ERRORS.endsAtBeforeStart;
   }
 
@@ -185,8 +192,11 @@ export function parseEventBody(
     title: pick(raw, "title", base.title),
     summary: pick(raw, "summary", base.summary),
     description: pick(raw, "description", base.description),
-    startsAt: pickTimestamp(raw, "startsAt", base.startsAt),
-    endsAt: pickTimestamp(raw, "endsAt", base.endsAt),
+    // An API caller sends ISO timestamps where the form sends
+    // `datetime-local` values; `parseTimestamp` accepts either, so both go
+    // through `pick` unchanged.
+    startsAt: pick(raw, "startsAt", base.startsAt),
+    endsAt: pick(raw, "endsAt", base.endsAt),
     category: pick(raw, "category", base.category),
     access: pick(raw, "access", base.access),
     capacity: pickCapacity(raw, base.capacity),
@@ -258,20 +268,6 @@ function pick(
   return typeof raw[key] === "string" ? (raw[key] as string) : "";
 }
 
-/**
- * An API caller sends ISO timestamps, not `datetime-local` values, so an
- * absent field falls back to the stored ISO string and a present one is passed
- * through for `parseTimestamp` to judge.
- */
-function pickTimestamp(
-  raw: Record<string, unknown>,
-  key: string,
-  fallback: string,
-): string {
-  if (!(key in raw)) return fallback;
-  return typeof raw[key] === "string" ? (raw[key] as string) : "";
-}
-
 /** `null` is the documented "unlimited", which the form spells as "". */
 function pickCapacity(
   raw: Record<string, unknown>,
@@ -288,6 +284,13 @@ function pickCapacity(
 /**
  * Location arrives as a nested object over the wire and as flat fields from the
  * form. Flattening it here keeps one set of rules for both.
+ *
+ * A supplied `location` **replaces the whole object**: every sub-field is read
+ * from the request, so one the caller omits is cleared rather than kept.
+ * Omitting `location` entirely preserves the stored value. It is one value
+ * describing one place, so a half-updated location is not a state worth
+ * representing -- this is the one field where "the stored record supplies what
+ * the request left out" applies to the field and not to its parts.
  */
 function pickLocation(
   raw: Record<string, unknown>,

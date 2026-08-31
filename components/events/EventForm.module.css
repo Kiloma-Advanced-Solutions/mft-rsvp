@@ -52,3 +52,14 @@
   padding-top: var(--space-6);
   border-top: 1px solid var(--color-border);
 }
+
+/**
+ * Applied to the Cancel link while a save is in flight.
+ *
+ * Only `pointer-events`, because that is the one part the kit cannot do:
+ * `Button.module.css` already dims `[aria-disabled="true"]` and sets
+ * `cursor: not-allowed`, so repeating either here would be dead CSS.
+ */
+.linkBusy {
+  pointer-events: none;
+}

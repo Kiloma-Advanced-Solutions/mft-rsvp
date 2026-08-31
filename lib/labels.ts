@@ -259,6 +259,8 @@ export const MANAGE_LABELS = {
   createDescription:
     "It starts as a draft, so nobody else can see it until you publish.",
   createSubmit: "Create draft",
+  /** Leaves edit mode without leaving the event. */
+  backToEvent: "Back to event",
   editTitle: "Editing this event",
   editDescription: "Everyone still sees the same screen. You just see more of it.",
   editSubmit: "Save changes",

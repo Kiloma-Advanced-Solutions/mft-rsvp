@@ -85,8 +85,13 @@ export default async function EventDetailPage({
   return (
     <div>
       <PageHeader
-        backHref="/events"
-        backLabel={DETAIL_LABELS.back}
+        /*
+          In edit mode the back action leaves edit mode rather than the event,
+          so it cannot be mistaken for a way out of the form and quietly
+          discard unsaved changes. Outside edit mode it is the board, as before.
+        */
+        backHref={editing ? `/events/${event.id}` : "/events"}
+        backLabel={editing ? MANAGE_LABELS.backToEvent : DETAIL_LABELS.back}
         eyebrow={CATEGORY_LABELS[event.category]}
         title={editing ? MANAGE_LABELS.editTitle : event.title}
         description={editing ? MANAGE_LABELS.editDescription : event.summary}
