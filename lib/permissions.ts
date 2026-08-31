@@ -60,6 +60,17 @@ export function canManageEvent(event: EventRecord, user: User): boolean {
 }
 
 /**
+ * May this person create an event at all?
+ *
+ * The only one of these questions that is not about a particular event, so it
+ * takes just the user. Whoever creates one becomes its organizer and therefore
+ * its host, which is what `canManageEvent()` answers from then on.
+ */
+export function canCreateEvent(user: User): boolean {
+  return user.role === "admin" || user.role === "organizer";
+}
+
+/**
  * Is this event full? Only `going` counts against capacity, and a `null`
  * capacity is unlimited. Private for now — nothing outside this file needs to
  * ask yet, and `TASKS.md` section 7 does not want unused exports.
