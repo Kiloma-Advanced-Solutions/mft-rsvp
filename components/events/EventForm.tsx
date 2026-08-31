@@ -17,7 +17,7 @@ import {
   useToast,
 } from "@/components/ui";
 import { fetchJson } from "@/lib/api";
-import { parseEventForm } from "@/lib/eventInput";
+import { UNLIMITED, parseEventForm } from "@/lib/eventInput";
 import type { EventFieldErrors, EventFormValues } from "@/lib/eventInput";
 import {
   ACCESS_DESCRIPTIONS,
@@ -67,7 +67,9 @@ export function EventForm({
 }) {
   const [locationKind, setLocationKind] = useState(initialValues.locationKind);
   const [access, setAccess] = useState(initialValues.access);
-  const [unlimited, setUnlimited] = useState(initialValues.capacity === "");
+  const [unlimited, setUnlimited] = useState(
+    initialValues.capacityUnlimited !== "",
+  );
 
   const [errors, setErrors] = useState<EventFieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -305,6 +307,11 @@ export function EventForm({
 
         <div className={styles.capacity}>
           <Checkbox
+            // Submitted, not merely local state: `capacity: null` now requires
+            // this to be ticked, so clearing the number box below cannot be
+            // mistaken for choosing "no limit".
+            name="capacityUnlimited"
+            value={UNLIMITED}
             label={EVENT_FORM_LABELS.capacityUnlimited}
             checked={unlimited}
             onChange={(changed) => setUnlimited(changed.target.checked)}
@@ -424,6 +431,7 @@ function readForm(data: FormData): EventFormValues {
     category: read("category"),
     access: read("access"),
     capacity: read("capacity"),
+    capacityUnlimited: read("capacityUnlimited"),
     locationKind: read("locationKind"),
     locationVenue: read("locationVenue"),
     locationAddress: read("locationAddress"),

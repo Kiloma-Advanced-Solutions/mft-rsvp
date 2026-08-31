@@ -261,6 +261,7 @@ function HostTools({
           eventId={event.id}
           isDraft={event.status === "draft"}
           goingCount={goingCount}
+          pendingCount={pendingCount}
         />
 
         {/*

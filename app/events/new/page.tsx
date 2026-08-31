@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 
 import { EventForm } from "@/components/events/EventForm";
 import { Card, PageHeader } from "@/components/ui";
+import { UNLIMITED } from "@/lib/eventInput";
 import type { EventFormValues } from "@/lib/eventInput";
 import { MANAGE_LABELS } from "@/lib/labels";
 import { canCreateEvent } from "@/lib/permissions";
@@ -66,7 +67,10 @@ const BLANK_EVENT: EventFormValues = {
   endsAt: "",
   category: "",
   access: "open",
+  // No limit to start with, and said explicitly: a blank number box on its own
+  // no longer means unlimited.
   capacity: "",
+  capacityUnlimited: UNLIMITED,
   locationKind: "in_person",
   locationVenue: "",
   locationAddress: "",

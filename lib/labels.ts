@@ -356,14 +356,26 @@ export const DELETE_DIALOG = {
 };
 
 /**
- * The same warning when people would lose a confirmed place. Deleting an event
- * deletes its registrations too, so saying how many is the difference between a
- * real confirmation and a formality.
+ * The same warning, naming what is actually destroyed alongside the event.
+ *
+ * `db.events.remove()` deletes **every** registration for the event, not only
+ * the confirmed ones, so a pending request disappears as surely as a place
+ * does. Counting only the confirmed ones understated an irreversible action --
+ * a host looking at "Awaiting approval 2" in the same card was told nothing
+ * about those two.
  */
-export function deleteDialogMessage(goingCount: number): string {
-  if (goingCount === 0) return DELETE_DIALOG.message;
+export function deleteDialogMessage(
+  goingCount: number,
+  pendingCount: number,
+): string {
+  const parts = [
+    goingCount > 0 &&
+      `${goingCount} confirmed ${goingCount === 1 ? "place" : "places"}`,
+    pendingCount > 0 &&
+      `${pendingCount} pending ${pendingCount === 1 ? "request" : "requests"}`,
+  ].filter((part): part is string => part !== false);
 
-  const people = goingCount === 1 ? "1 person" : `${goingCount} people`;
-  const have = goingCount === 1 ? "has" : "have";
-  return `This cannot be undone. ${people} ${have} a confirmed place and will lose it.`;
+  if (parts.length === 0) return DELETE_DIALOG.message;
+
+  return `This cannot be undone. ${parts.join(" and ")} will be deleted with the event.`;
 }

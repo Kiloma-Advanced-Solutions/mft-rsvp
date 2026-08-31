@@ -32,12 +32,15 @@ export function HostEventActions({
   eventId,
   isDraft,
   goingCount,
+  pendingCount,
 }: {
   eventId: string;
   /** Publishing only ever applies to a draft. */
   isDraft: boolean;
   /** How many people lose a confirmed place if this is deleted. */
   goingCount: number;
+  /** And how many pending requests go with it -- deletion takes those too. */
+  pendingCount: number;
 }) {
   const [publishing, setPublishing] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -120,7 +123,7 @@ export function HostEventActions({
         onConfirm={remove}
         title={DELETE_DIALOG.title}
         // Names the consequence: deleting an event deletes its registrations.
-        message={deleteDialogMessage(goingCount)}
+        message={deleteDialogMessage(goingCount, pendingCount)}
         confirmLabel={DELETE_DIALOG.confirm}
         cancelLabel={DELETE_DIALOG.cancel}
         destructive

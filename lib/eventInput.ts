@@ -65,14 +65,32 @@ export type EventFormValues = {
   endsAt: string;
   category: string;
   access: string;
-  /** Empty string means unlimited, which becomes `capacity: null`. */
+  /**
+   * The number of seats, as typed. Only meaningful when `capacityUnlimited` is
+   * empty -- blank here with a limit still wanted is a mistake, not "unlimited".
+   */
   capacity: string;
+  /**
+   * The "No limit" checkbox, as a form value: non-empty means checked.
+   *
+   * Form intent only, and the **only** way to reach `capacity: null`. It is
+   * never persisted -- `EventContentFields` has no such field -- because what
+   * the store records is the absence of a limit, not that somebody ticked a box.
+   */
+  capacityUnlimited: string;
   locationKind: string;
   locationVenue: string;
   locationAddress: string;
   locationUrl: string;
   locationPlatform: string;
 };
+
+/**
+ * What a ticked "No limit" box submits. `"on"` is what a checkbox with no
+ * explicit `value` sends, so the form and this module agree without either
+ * having to special-case the other.
+ */
+export const UNLIMITED = "on";
 
 const LOCATION_KINDS: EventLocation["kind"][] = [
   "in_person",
@@ -128,7 +146,7 @@ export function parseEventForm(values: EventFormValues): ParseResult {
   const access = ACCESS_ORDER.find((option) => option === values.access);
   if (!access) errors.access = EVENT_FORM_ERRORS.accessInvalid;
 
-  const capacity = parseCapacity(values.capacity);
+  const capacity = parseCapacity(values.capacity, values.capacityUnlimited);
   if (capacity === "invalid") errors.capacity = EVENT_FORM_ERRORS.capacityInvalid;
 
   const location = parseLocation(values, errors);
@@ -199,7 +217,10 @@ export function parseEventBody(
     endsAt: pick(raw, "endsAt", base.endsAt),
     category: pick(raw, "category", base.category),
     access: pick(raw, "access", base.access),
-    capacity: pickCapacity(raw, base.capacity),
+    // The wire contract is unchanged: `capacity: null` (or absent on an event
+    // stored without a limit) is what says "no limit". This turns that into the
+    // explicit intent the form now supplies, so both callers meet the same rule.
+    ...pickCapacity(raw, base),
     ...pickLocation(raw, base),
   });
 }
@@ -235,6 +256,7 @@ function toFallbackValues(event: EventContentFields): EventFormValues {
     category: event.category,
     access: event.access,
     capacity: event.capacity === null ? "" : String(event.capacity),
+    capacityUnlimited: event.capacity === null ? UNLIMITED : "",
     locationKind: event.location.kind,
     locationVenue: event.location.venue ?? "",
     locationAddress: event.location.address ?? "",
@@ -252,6 +274,7 @@ const EMPTY_FORM_VALUES: EventFormValues = {
   category: "",
   access: "",
   capacity: "",
+  capacityUnlimited: "",
   locationKind: "",
   locationVenue: "",
   locationAddress: "",
@@ -268,17 +291,39 @@ function pick(
   return typeof raw[key] === "string" ? (raw[key] as string) : "";
 }
 
-/** `null` is the documented "unlimited", which the form spells as "". */
+/**
+ * `capacity` over the wire, as the two form values the rule is written against.
+ *
+ * `null` is the documented "unlimited", and an omitted field falls back to
+ * whatever the event already had -- so an API caller keeps the contract it has
+ * always had, and neither an absent field nor an explicit `null` is mistaken
+ * for a blank number box.
+ */
 function pickCapacity(
   raw: Record<string, unknown>,
-  fallback: string,
-): string {
-  if (!("capacity" in raw)) return fallback;
+  base: EventFormValues,
+): Pick<EventFormValues, "capacity" | "capacityUnlimited"> {
+  if (!("capacity" in raw)) {
+    return {
+      capacity: base.capacity,
+      capacityUnlimited: base.capacityUnlimited,
+    };
+  }
+
   const value = raw.capacity;
-  if (value === null) return "";
-  if (typeof value === "number") return String(value);
-  if (typeof value === "string") return value;
-  return "not-a-number";
+  // `null` and `""` both mean "no limit" to an API caller, as before.
+  if (value === null) return { capacity: "", capacityUnlimited: UNLIMITED };
+  if (typeof value === "string" && value.trim() === "") {
+    return { capacity: "", capacityUnlimited: UNLIMITED };
+  }
+
+  if (typeof value === "number") {
+    return { capacity: String(value), capacityUnlimited: "" };
+  }
+  if (typeof value === "string") return { capacity: value, capacityUnlimited: "" };
+
+  // Any other type is refused by the rule rather than crashing here.
+  return { capacity: "not-a-number", capacityUnlimited: "" };
 }
 
 /**
@@ -345,12 +390,24 @@ function parseTimestamp(value: string): string | null {
 }
 
 /**
- * `""` is unlimited. Anything else has to be a whole number of seats, and at
- * least one -- `0` would mean an event that is permanently full.
+ * How many seats, or `null` for no limit.
+ *
+ * `null` comes only from an explicit "no limit", never from an empty field.
+ * Inferring it from a blank box meant that clearing the number -- the ordinary
+ * gesture before typing a new one -- silently removed an event's limit while
+ * the checkbox still said the event had one.
+ *
+ * Anything else has to be a whole number of seats, and at least one: `0` would
+ * describe an event that is permanently full.
  */
-function parseCapacity(value: string): number | null | "invalid" {
+function parseCapacity(
+  value: string,
+  unlimited: string,
+): number | null | "invalid" {
+  if (unlimited !== "") return null;
+
   const trimmed = value.trim();
-  if (trimmed === "") return null;
+  if (trimmed === "") return "invalid";
 
   const parsed = Number(trimmed);
   if (!Number.isInteger(parsed) || parsed < 1) return "invalid";
