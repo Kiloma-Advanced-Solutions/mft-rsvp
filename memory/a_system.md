@@ -65,9 +65,10 @@ copy for a new one; see "Registering" below.
 
 Routes and composition. The default is a Server Component, with the client
 boundary pushed down to the leaf that needs it — [CLAUDE.md](../CLAUDE.md) states
-the rule. `/events` is the board,
-`/events/[id]` the detail screen, `/styleguide` the live component reference, and
-`/` the start page. Placement rules: [CLAUDE.md](../CLAUDE.md).
+the rule. `/events` is the board, `/events/[id]` the detail screen — which is
+also where hosts manage and edit — `/events/new` the one route that exists
+because there is nothing yet to edit in place, `/styleguide` the live component
+reference, and `/` the start page. Placement rules: [CLAUDE.md](../CLAUDE.md).
 
 ### Identity boundary — `lib/session.ts`
 
@@ -108,9 +109,10 @@ logic that lives in the route is turning that answer into a status code. See
 - `ui/` — generic primitives that know nothing about events. Import from the
   barrel: [components/ui/index.ts](../components/ui/index.ts).
 - `events/` — anything that understands the domain: `EventCard`, `EventGrid`,
-  `BoardFilters`, `RegistrationPanel`, and the `EventMeta` family (`DateBlock`,
-  `AccessBadge`, `EventStatusBadge`, `RegistrationBadge`, `EventMetaLine`,
-  `EventMetaDetails`, `CapacityMeter`).
+  `BoardFilters`, `RegistrationPanel`, `RegistrationActions`, `EventForm`,
+  `HostEventActions`, and the `EventMeta` family (`DateBlock`, `AccessBadge`,
+  `EventStatusBadge`, `RegistrationBadge`, `EventMetaLine`, `EventMetaDetails`,
+  `CapacityMeter`).
 - `layout/` — the app frame: `AppShell`, `NavLink`, `PersonaSwitcher`.
 
 `EventCard` renders only what it is passed — deriving counts, attendees and the
@@ -131,10 +133,13 @@ jobs. The split is what keeps authorisation reviewable in one place.
 
 ### Permission rules — `lib/permissions.ts`
 
-`canViewEvent()`, `canManageEvent()` and `getRegistrationAvailability()` are the
-single implementation of three separate questions — may this person see the
-event, may they manage it, and may they take a place at it — called from both
-pages and route handlers so no two callers can drift apart.
+`canViewEvent()`, `canManageEvent()`, `canCreateEvent()` and
+`getRegistrationAvailability()` are the single implementation of four separate
+questions — may this person see the event, may they manage it, may they create
+one at all, and may they take a place at it — called from both pages and route
+handlers so no two callers can drift apart. `canCreateEvent()` is the one that
+takes only a user: creation is role-based, because there is no event yet to be a
+host of.
 
 They are **synchronous, with no store and no session**: the caller resolves the
 viewer through `getCurrentUser()` and passes it in along with any counts, which
@@ -194,11 +199,15 @@ viewer's state and consumes the `viewerCanManage` the loader already derived;
 [components/events/RegistrationPanel.tsx](../components/events/RegistrationPanel.tsx)
 is presentation only and stays a Server Component, and the host-only section is
 gated on manageability and absent from the markup for everyone else — hiding it
-in CSS would still ship it. Which of its controls act, and which are still
-inert, is current state rather than structure: see [s_status.md](s_status.md).
+in CSS would still ship it.
 
-The registration call to action acts through the one client leaf, described
-next.
+This one route serves both audiences and both modes: it is the attendee's screen,
+the host's management screen, and — under `?edit=1` — the edit form. "Managing
+events" below describes that half. Which controls a given viewer gets is
+manageability; what is not built yet is current state, in
+[s_status.md](s_status.md).
+
+The registration call to action acts through a client leaf, described next.
 
 ### Registering — `/api/events/[id]/registrations`
 
@@ -238,6 +247,86 @@ clickable again. No optimistic state: the server-rendered view is the truth.
 Why each of these was decided this way, including the accepted capacity race:
 [dec_log.md](dec_log.md).
 
+### Managing events — creating, editing, publishing, deleting
+
+The host half of the product. Four write paths, all authorised the same way:
+
+```
+POST   /api/events               create, always as a draft
+PATCH  /api/events/[id]          the event's editable content
+POST   /api/events/[id]/publish  draft -> published, no request body
+DELETE /api/events/[id]          delete, taking its registrations with it
+```
+
+**Where creation and editing live.** A new event is created at its own route,
+`/events/new`, because there is no detail page to edit in place until the event
+exists. It arrives as a `draft` — visible to its hosts and to admins, nobody
+else — and the host then lands on `/events/[id]` and continues in the ordinary
+detail workflow. An *existing* event is edited **in place** on `/events/[id]`,
+with edit mode carried in the URL as `?edit=1` the way the board carries its
+filters. There is no separate edit route and no second management screen; the
+detail page stays the canonical screen for every audience.
+
+Both use the same `EventForm`. A single `mode` prop decides only which endpoint
+to call, what the submit button says, and where success goes — so the fields and
+the rules cannot drift between creating and editing.
+
+**Shared validation.** [lib/eventInput.ts](../lib/eventInput.ts) turns untrusted
+input into a valid event, and is deliberately free of the store, the session and
+HTTP so the form and the route handlers can both run it. The form runs it to put
+a message next to the field that caused it; the API runs it again and does not
+trust the client having passed. Its rules come from the contracts documented in
+[lib/types.ts](../lib/types.ts) and nothing else — notably `summary`'s "around
+110 characters" is guidance for whoever writes one, shown as a form hint, and is
+**not** enforced anywhere.
+
+**Authorisation.** Identity from `getCurrentUser()`, visibility from
+`lib/events.ts`, manageability from `canManageEvent()` — the same answers the
+pages get, re-derived from the store on the request that writes. The order is
+the security property, and it runs before any request body is read: an event
+that is missing and one the viewer may not see both answer **404**, so these
+endpoints cannot be used to discover that somebody else has a draft; only then
+does a viewer who can see the event but not manage it get **403**. Creating is
+role-based rather than per-event, so `canCreateEvent()` answers it and refuses
+with a 403. Host controls in the UI are affordances; they are absent from the
+markup for everyone else, but the refusal that matters is the handler's.
+
+**What a host may change.** `PATCH` accepts nine content fields — title,
+summary, description, start, end, location, category, capacity and access.
+Everything else is **absent from the parser**, so `status`, `accent`,
+`organizerId`, `coHostIds` and `invitedUserIds` cannot be reached by any request
+body; the store owns `id` and the timestamps. The protection is that the field
+does not exist there, not that it is checked.
+
+**Lifecycle.** Publishing is its own bodyless route rather than a `status` field
+on `PATCH`, which is what keeps the content editor free of lifecycle logic.
+`draft -> published` is the only transition the product performs.
+
+**Accent** is assigned by the server when the event is created and is not
+host-editable. It is a tint on the board card and date block, invisible on the
+event's own page, and carries no domain meaning.
+
+**Capacity.** `null` means unlimited. Over the API: `capacity: null` is
+unlimited, omitting it on create is unlimited too, and omitting it on `PATCH`
+keeps whatever is stored. In the form it takes ticking "no limit" — a blank
+number box is a validation error rather than a silent removal of the event's
+limit, so clearing the field to retype it cannot uncap the event by accident.
+Lowering capacity below the number already `going` is allowed and removes
+nobody; the event simply reads as full.
+
+**Location** is one value. Supplying it on a `PATCH` replaces the whole object,
+and fields that are not meaningful to the chosen `kind` are dropped, so an event
+moved from hybrid to online cannot keep a stale street address. Omitting it
+keeps what is stored.
+
+**Registrations survive edits.** Changing access keeps every registration row —
+including when switching to `invite`, which removes visibility for people not on
+the invite list while leaving their rows intact. Deleting is the deliberate
+exception: `db.events.remove()` removes the event's registrations along with it,
+which is why the UI puts a confirmation in front of it that names how many
+confirmed places and pending requests go too. The dialog is an affordance; the
+`DELETE` handler is what authorises and performs the deletion.
+
 Current position: [s_status.md](s_status.md).
 
 ## Source-of-truth locations
@@ -246,12 +335,15 @@ Current position: [s_status.md](s_status.md).
 | --- | --- |
 | Identity | [lib/session.ts](../lib/session.ts) — server only |
 | Data access | [lib/db.ts](../lib/db.ts) — server only |
-| Visibility, manageability and registration availability | [lib/permissions.ts](../lib/permissions.ts) — shared by pages and routes |
+| Visibility, manageability, creation rights and registration availability | [lib/permissions.ts](../lib/permissions.ts) — shared by pages and routes |
 | Derived event context | [lib/events.ts](../lib/events.ts) — server only |
 | Fixtures / personas | [lib/seed.ts](../lib/seed.ts) |
 | API helpers | [lib/api.ts](../lib/api.ts) |
 | API house style, worked example | [app/api/session/route.ts](../app/api/session/route.ts) |
 | Registration writes, and the authorised-mutation example | [app/api/events/\[id\]/registrations/route.ts](../app/api/events/[id]/registrations/route.ts) |
+| Event create / edit / publish / delete | [app/api/events/route.ts](../app/api/events/route.ts) · [app/api/events/\[id\]/route.ts](../app/api/events/[id]/route.ts) · [app/api/events/\[id\]/publish/route.ts](../app/api/events/[id]/publish/route.ts) |
+| What a host may set, and the rules it must satisfy | [lib/eventInput.ts](../lib/eventInput.ts) — shared by the form and the routes |
+| The create / edit form | [components/events/EventForm.tsx](../components/events/EventForm.tsx) |
 | Domain model | [lib/types.ts](../lib/types.ts) |
 | User-facing copy | [lib/labels.ts](../lib/labels.ts) |
 | Date formatting and grouping | [lib/date.ts](../lib/date.ts) |

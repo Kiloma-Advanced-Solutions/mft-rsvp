@@ -369,3 +369,132 @@ should not treat it as a newly discovered bug or quietly redesign the store to
 host cannot approve past capacity, and should decide it deliberately rather than by
 accident. If the store is ever swapped for a real database, this is the first thing
 a constraint should cover.
+
+---
+
+## 2026-09-01 — Creating an event has its own route; editing one does not
+
+Context: [TASKS.md](../TASKS.md) §5 leaves M4's creation flow open and names three
+candidates — a `/events/new` page, a modal, or creating a draft immediately and
+landing on its detail page. §1 separately forbids a second edit screen.
+
+Decision: creation lives at `/events/new` and produces a `draft`, after which the
+host continues on `/events/[id]` like any other event. Editing an existing event
+stays on `/events/[id]`.
+
+Rationale: the no-second-screen constraint is about *editing*, and it is met — an
+event that exists is only ever edited in place. Creation is a different case,
+because there is no detail page to edit until the event exists. Of the three
+candidates, the route is the only one that writes nothing until the host has
+given valid data: creating a draft up front would have to invent `startsAt` and
+`endsAt` for an event nobody has described, and would leave abandoned untitled
+drafts behind. A modal would put creation state on a board whose state
+deliberately lives in the URL, and would give the permission no address to test —
+whereas `/events/new` is checkable the way every other rule here is, by opening
+it as a member and getting a 404.
+
+Consequences: `/events/new` is the only route outside `/events/[id]` that renders
+an event form, and it must stay that way; anything that edits an existing event
+belongs on the detail page. Both use one `EventForm`, so a new field is added
+once.
+
+---
+
+## 2026-09-01 — Edit mode is URL state on the detail page
+
+Context: the detail page had to grow an editing mode without becoming a Client
+Component or gaining a sibling route. The mode could have been a client
+`useState` flag with the read view passed in as children, or a query parameter.
+
+Decision: `?edit=1` on `/events/[id]`, gated on `canManageEvent()` during the
+server render.
+
+Rationale: this is the 2026-08-24 board-filters decision applied again — state in
+the URL, applied on the server. It keeps the page a Server Component, so the
+form's initial values come from the same render that authorises it; Cancel is a
+plain link; and refresh and Back behave. Most importantly the mode is authorised
+on the server rather than toggled in the browser: a member appending `?edit=1`
+gets the ordinary read view, and the form is absent from the markup rather than
+hidden in it.
+
+Consequences: leaving edit mode is a navigation, and Cancel discards unsaved
+input by design. A future mode on this page (M5's queue, say) should ask whether
+it is URL state before reaching for a client flag.
+
+---
+
+## 2026-09-01 — Content, lifecycle and ownership are separate write paths
+
+Context: M4 needed create, edit, publish and delete. Publishing is a one-field
+change and could have been a `status` value accepted by the content `PATCH`.
+
+Decision: `PATCH /api/events/[id]` edits content only. Publishing is its own
+bodyless `POST /api/events/[id]/publish`. Ownership and system fields —
+`status`, `accent`, `organizerId`, `coHostIds`, `invitedUserIds` — are **absent
+from the shared input parser**, so no request body can reach them.
+
+Rationale: the registrations route already established the shape — a sub-resource
+route performing one authorised transition, reading no body at all — and
+publishing is the same shape. Keeping it separate means the content editor holds
+no lifecycle logic, and one status code keeps one meaning per endpoint. The
+stronger property is structural: a field that the parser does not read cannot be
+smuggled through, which is a better guarantee than a field that is read and then
+validated.
+
+Consequences: adding a host-editable field means adding it to the parser
+deliberately, which is the point. Any further lifecycle transition — cancelling,
+for one, which M4 did not build — gets its own route rather than a `status`
+argument.
+
+---
+
+## 2026-09-01 — An event's accent is assigned by the server
+
+Context: `EventRecord.accent` is required, so creation had to produce one, and the
+obvious move was to let the host pick.
+
+Decision: the server derives it when the event is created, and it is not
+editable afterwards.
+
+Rationale: an accent is a tint on the board card and date block. It is absent
+from [TASKS.md](../TASKS.md) entirely, has no entry in
+[lib/labels.ts](../lib/labels.ts) — which holds every other enum's user-facing
+words — and the fixtures deliberately give the same category different accents,
+so it encodes nothing. Decisively, it is not rendered anywhere on
+`/events/[id]`: a host editing there would be choosing a colour whose effect they
+cannot see on that screen. Deriving it deterministically keeps the board's
+variety without adding a control, or a vocabulary entry, for a decoration.
+
+Consequences: if accent ever gains meaning, that is the point at which it earns a
+picker and a place in the product's vocabulary — not before.
+
+---
+
+## 2026-09-01 — Host edits never destroy a registration; deleting deliberately does
+
+Context: [TASKS.md](../TASKS.md) §6 raises two of these without settling them —
+what happens to the invite list and to existing attendees when access changes,
+and what deleting an event with registrations should do. Reducing capacity below
+the number already confirmed is a third, unmentioned case.
+
+Decision: editing leaves registration rows alone. Switching away from `invite`
+keeps `invitedUserIds`; switching *to* `invite` keeps every row while removing
+visibility for people not on the list; lowering capacity below the `going` count
+is allowed and evicts nobody, the event simply reading as full. Deleting is the
+exception, and it removes the event's registrations through
+`db.events.remove()` — so the UI puts a confirmation in front of it that says how
+many confirmed places and pending requests go with it.
+
+Rationale: silently cancelling somebody's confirmed place is a worse outcome than
+an over-subscribed number or a temporarily invisible event, and none of these
+edits is *asking* to remove anyone. Deletion is the one action whose stated
+purpose is removal, so there the destruction is honest and the dialog's job is to
+name it — a confirmation that undercounts what is lost is a formality rather than
+a safeguard. The invite-only case is the one the 2026-08-26 entry predicted:
+`not_invited` becomes reachable when a host changes access under people who are
+already registered.
+
+Consequences: a row can outlive the viewer's ability to see its event, and
+re-inviting the person restores it. M5 will meet the same principle from the
+other side when it decides requests, and should not assume every row it sees
+belongs to a currently visible event.
