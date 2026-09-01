@@ -188,11 +188,11 @@ choice into a navigation. Why the filters work this way:
 
 ### The detail screen — `/events/[id]`
 
-Server-rendered, with one client leaf. It resolves the viewer, asks
-`lib/events.ts` for that one event, and calls `notFound()` when the answer is
-`null` — so a hidden event and a nonexistent one are indistinguishable, which
-[TASKS.md](../TASKS.md) §4 requires. Nothing about an event the viewer may not
-see is ever assembled, let alone rendered.
+Server-rendered, with its interactive parts pushed down to client leaves. It
+resolves the viewer, asks `lib/events.ts` for that one event, and calls
+`notFound()` when the answer is `null` — so a hidden event and a nonexistent one
+are indistinguishable, which [TASKS.md](../TASKS.md) §4 requires. Nothing about
+an event the viewer may not see is ever assembled, let alone rendered.
 
 The page decides nothing itself. It calls `getRegistrationAvailability()` for the
 viewer's state and consumes the `viewerCanManage` the loader already derived;
