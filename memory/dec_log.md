@@ -384,12 +384,12 @@ stays on `/events/[id]`.
 
 Rationale: the no-second-screen constraint is about *editing*, and it is met — an
 event that exists is only ever edited in place. Creation is a different case,
-because there is no detail page to edit until the event exists. Of the three
-candidates, the route is the only one that writes nothing until the host has
-given valid data: creating a draft up front would have to invent `startsAt` and
-`endsAt` for an event nobody has described, and would leave abandoned untitled
-drafts behind. A modal would put creation state on a board whose state
-deliberately lives in the URL, and would give the permission no address to test —
+because there is no detail page to edit until the event exists. Unlike creating a
+draft up front, the route writes nothing until the host has given valid data:
+that option would have to invent `startsAt` and `endsAt` for an event nobody has
+described, and would leave abandoned untitled drafts behind. A modal would put
+creation state on a board whose state deliberately lives in the URL, and would
+give the permission no address to test —
 whereas `/events/new` is checkable the way every other rule here is, by opening
 it as a member and getting a 404.
 
@@ -458,9 +458,9 @@ editable afterwards.
 
 Rationale: an accent is a tint on the board card and date block. It is absent
 from [TASKS.md](../TASKS.md) entirely, has no entry in
-[lib/labels.ts](../lib/labels.ts) — which holds every other enum's user-facing
-words — and the fixtures deliberately give the same category different accents,
-so it encodes nothing. Decisively, it is not rendered anywhere on
+[lib/labels.ts](../lib/labels.ts) alongside the access modes, statuses and
+categories, and the fixtures deliberately give the same category different
+accents, so it encodes nothing. Decisively, it is not rendered anywhere on
 `/events/[id]`: a host editing there would be choosing a colour whose effect they
 cannot see on that screen. Deriving it deterministically keeps the board's
 variety without adding a control, or a vocabulary entry, for a decoration.

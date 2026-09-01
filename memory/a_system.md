@@ -249,7 +249,9 @@ Why each of these was decided this way, including the accepted capacity race:
 
 ### Managing events — creating, editing, publishing, deleting
 
-The host half of the product. Four write paths, all authorised the same way:
+The host half of the product. Four write paths. The three that address an
+existing event are authorised the same way; creating is role-based, because
+there is no event to check yet:
 
 ```
 POST   /api/events               create, always as a draft
@@ -267,9 +269,10 @@ with edit mode carried in the URL as `?edit=1` the way the board carries its
 filters. There is no separate edit route and no second management screen; the
 detail page stays the canonical screen for every audience.
 
-Both use the same `EventForm`. A single `mode` prop decides only which endpoint
-to call, what the submit button says, and where success goes — so the fields and
-the rules cannot drift between creating and editing.
+Both use the same `EventForm`, and a single `mode` prop is the whole difference
+between them: the endpoint and method, the submit label, the toast wording, and
+where Cancel goes. Both land on the event's detail page on success. The fields
+and the rules are shared, so they cannot drift between creating and editing.
 
 **Shared validation.** [lib/eventInput.ts](../lib/eventInput.ts) turns untrusted
 input into a valid event, and is deliberately free of the store, the session and
