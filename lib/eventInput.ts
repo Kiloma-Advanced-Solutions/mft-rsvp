@@ -274,7 +274,12 @@ const EMPTY_FORM_VALUES: EventFormValues = {
   category: "",
   access: "",
   capacity: "",
-  capacityUnlimited: "",
+  // An event being created without a `capacity` field at all has no limit --
+  // the contract `POST /api/events` has always had. Every other field here is
+  // empty so that omitting it is a validation error, but capacity is the one
+  // with a meaningful default, and `null` is it. Only reachable on create:
+  // a `PATCH` bases itself on the stored event instead.
+  capacityUnlimited: UNLIMITED,
   locationKind: "",
   locationVenue: "",
   locationAddress: "",
