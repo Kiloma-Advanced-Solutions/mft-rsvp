@@ -1,22 +1,26 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { EventForm } from "@/components/events/EventForm";
 import {
   AccessBadge,
   EventMetaDetails,
   EventStatusBadge,
 } from "@/components/events/EventMeta";
+import { HostEventActions } from "@/components/events/HostEventActions";
 import { RegistrationPanel } from "@/components/events/RegistrationPanel";
 import {
   Badge,
-  Button,
   Card,
   CardBody,
   CardHeader,
   PageHeader,
   Person,
+  buttonClass,
 } from "@/components/ui";
 import { getEventDetailForViewer } from "@/lib/events";
-import { CATEGORY_LABELS, DETAIL_LABELS } from "@/lib/labels";
+import { toFormValues } from "@/lib/eventInput";
+import { CATEGORY_LABELS, DETAIL_LABELS, MANAGE_LABELS } from "@/lib/labels";
 import { getRegistrationAvailability } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
 import type { EventRecord, User } from "@/lib/types";
@@ -43,8 +47,13 @@ import styles from "./detail.module.css";
  */
 export default async function EventDetailPage({
   params,
+  searchParams,
 }: PageProps<"/events/[id]">) {
-  const [viewer, { id }] = await Promise.all([getCurrentUser(), params]);
+  const [viewer, { id }, query] = await Promise.all([
+    getCurrentUser(),
+    params,
+    searchParams,
+  ]);
   const detail = await getEventDetailForViewer(id, viewer);
 
   if (!detail) notFound();
@@ -64,14 +73,28 @@ export default async function EventDetailPage({
     viewerRegistration,
   });
 
+  /*
+    Edit mode lives in the URL, the way the board's filters do, so the page
+    stays a Server Component and the form's starting values come from this
+    render. It is gated on manageability here, not merely styled away: a member
+    appending `?edit=1` gets the ordinary read view, and someone who may not see
+    the event at all has already 404'd above.
+  */
+  const editing = viewerCanManage && isEditing(query.edit);
+
   return (
     <div>
       <PageHeader
-        backHref="/events"
-        backLabel={DETAIL_LABELS.back}
+        /*
+          In edit mode the back action leaves edit mode rather than the event,
+          so it cannot be mistaken for a way out of the form and quietly
+          discard unsaved changes. Outside edit mode it is the board, as before.
+        */
+        backHref={editing ? `/events/${event.id}` : "/events"}
+        backLabel={editing ? MANAGE_LABELS.backToEvent : DETAIL_LABELS.back}
         eyebrow={CATEGORY_LABELS[event.category]}
-        title={event.title}
-        description={event.summary}
+        title={editing ? MANAGE_LABELS.editTitle : event.title}
+        description={editing ? MANAGE_LABELS.editDescription : event.summary}
         actions={
           <div className={styles.headerBadges}>
             <AccessBadge access={event.access} size="lg" />
@@ -80,49 +103,77 @@ export default async function EventDetailPage({
         }
       />
 
-      <div className={styles.layout}>
-        <div className={styles.main}>
-          <Card>
-            <EventMetaDetails event={event} />
-          </Card>
-
-          <section>
-            <h2 className={styles.sectionTitle}>{DETAIL_LABELS.about}</h2>
-            <Description text={event.description} />
-          </section>
-
-          <section>
-            <h2 className={styles.sectionTitle}>{DETAIL_LABELS.hosts}</h2>
-            <div className={styles.people}>
-              {hosts.map((host) => (
-                <Person key={host.id} user={host} />
-              ))}
-            </div>
-          </section>
-
-          <Attendees attendees={attendees} goingCount={goingCount} />
-        </div>
-
-        <aside className={styles.aside}>
-          <RegistrationPanel
-            event={event}
-            availability={availability}
+      {editing ? (
+        <Card>
+          <EventForm
+            mode={{ kind: "edit", eventId: event.id }}
+            // Converted on the server, so the client never recomputes a
+            // `datetime-local` value and cannot disagree about the timezone.
+            initialValues={toFormValues(event)}
             goingCount={goingCount}
-            viewerRegistration={viewerRegistration}
           />
+        </Card>
+      ) : (
+        <div className={styles.layout}>
+          <div className={styles.main}>
+            <Card>
+              <EventMetaDetails event={event} />
+            </Card>
 
-          {/*
-            Host tools exist only for whoever `canManageEvent()` allows, and are
-            absent from the markup for everyone else — hiding them in CSS would
-            still ship them to a member.
-          */}
-          {viewerCanManage && (
-            <HostTools event={event} pendingCount={pendingCount} />
-          )}
-        </aside>
-      </div>
+            <section>
+              <h2 className={styles.sectionTitle}>{DETAIL_LABELS.about}</h2>
+              <Description text={event.description} />
+            </section>
+
+            <section>
+              <h2 className={styles.sectionTitle}>{DETAIL_LABELS.hosts}</h2>
+              <div className={styles.people}>
+                {hosts.map((host) => (
+                  <Person key={host.id} user={host} />
+                ))}
+              </div>
+            </section>
+
+            <Attendees attendees={attendees} goingCount={goingCount} />
+          </div>
+
+          <aside className={styles.aside}>
+            <RegistrationPanel
+              event={event}
+              availability={availability}
+              goingCount={goingCount}
+              viewerRegistration={viewerRegistration}
+            />
+
+            {/*
+              Host tools exist only for whoever `canManageEvent()` allows, and are
+              absent from the markup for everyone else — hiding them in CSS would
+              still ship them to a member.
+            */}
+            {viewerCanManage && (
+              <HostTools
+                event={event}
+                pendingCount={pendingCount}
+                goingCount={goingCount}
+              />
+            )}
+          </aside>
+        </div>
+      )}
     </div>
   );
+}
+
+/**
+ * Whether the URL is asking for edit mode.
+ *
+ * A query value is untrusted input, and `searchParams` hands over
+ * `string | string[] | undefined`, so `?edit=1&edit=2` arrives as an array.
+ * Anything that is not exactly the expected value means "not editing" -- the
+ * same treatment the board gives its filters.
+ */
+function isEditing(value: string | string[] | undefined): boolean {
+  return value === "1";
 }
 
 /** Plain text, with blank lines separating paragraphs — see `EventRecord`. */
@@ -176,17 +227,18 @@ function Attendees({
  * The host's half of the screen — there is no separate edit screen, so this is
  * where management lives.
  *
- * The controls are in their final place and their visibility is already correct
- * (publishing only ever applies to a draft), but they do nothing yet: editing
- * and publishing are M4, and approving requests is M5. Rendering them inert now
- * keeps the gating reviewable without pretending the actions work.
+ * Edit is a `<Link>` because it navigates rather than acts: it turns on the
+ * `?edit=1` mode this same page renders. Publish and delete do act, so they
+ * live in a client leaf. Approving requests is still M5 and is absent.
  */
 function HostTools({
   event,
   pendingCount,
+  goingCount,
 }: {
   event: EventRecord;
   pendingCount: number;
+  goingCount: number;
 }) {
   return (
     <Card padding="none">
@@ -197,17 +249,20 @@ function HostTools({
 
       <CardBody>
         <div className={styles.hostActions}>
-          <Button variant="secondary" size="sm" disabled>
+          <Link
+            href={`/events/${event.id}?edit=1`}
+            className={buttonClass({ variant: "secondary", size: "sm" })}
+          >
             {DETAIL_LABELS.edit}
-          </Button>
-          {event.status === "draft" && (
-            <Button size="sm" disabled>
-              {DETAIL_LABELS.publish}
-            </Button>
-          )}
+          </Link>
         </div>
 
-        <p className={styles.inactive}>{DETAIL_LABELS.notYetActive}</p>
+        <HostEventActions
+          eventId={event.id}
+          isDraft={event.status === "draft"}
+          goingCount={goingCount}
+          pendingCount={pendingCount}
+        />
 
         {/*
           Only facts a non-host never sees. The status, the access mode and the

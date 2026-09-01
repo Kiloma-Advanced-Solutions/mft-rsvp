@@ -93,13 +93,6 @@
   gap: var(--space-2);
 }
 
-.inactive {
-  margin-top: var(--space-3);
-  font-size: var(--text-xs);
-  color: var(--color-text-subtle);
-  line-height: var(--leading-snug);
-}
-
 .facts {
   display: grid;
   gap: var(--space-2);

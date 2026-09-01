@@ -156,8 +156,7 @@ export const DETAIL_LABELS = {
   hostToolsDescription: "Only you and other hosts see this.",
   edit: "Edit event",
   publish: "Publish draft",
-  /** Said about controls that are in place but not yet wired up. */
-  notYetActive: "Not active yet — this arrives in a later milestone.",
+  delete: "Delete event",
   factPending: "Awaiting approval",
   factInvited: "Invited",
 };
@@ -244,3 +243,139 @@ export const REGISTRATION_ACTION_COPY = {
   requestFailed: "Could not send your request",
   withdrawFailed: "Could not withdraw",
 };
+
+/* ------------------------------------------------------------- management */
+
+/**
+ * Creating, editing, publishing and deleting an event.
+ *
+ * The board, the create page and the detail page's edit mode all read from
+ * here, so the same action is never called two different things.
+ */
+export const MANAGE_LABELS = {
+  /** The board's entry point into creation. */
+  create: "New event",
+  createTitle: "New event",
+  createDescription:
+    "It starts as a draft, so nobody else can see it until you publish.",
+  createSubmit: "Create draft",
+  /** Leaves edit mode without leaving the event. */
+  backToEvent: "Back to event",
+  editTitle: "Editing this event",
+  editDescription: "Everyone still sees the same screen. You just see more of it.",
+  editSubmit: "Save changes",
+  cancel: "Cancel",
+};
+
+/** The fields of the event form, and the guidance that goes with them. */
+export const EVENT_FORM_LABELS = {
+  title: "Title",
+  summary: "Summary",
+  /**
+   * Guidance, not a limit. Nothing enforces a length -- the card line-clamps a
+   * long summary, so a host is trusted to write a sensible one.
+   */
+  summaryHint: "One sentence, shown on cards. Around 110 characters reads best.",
+  description: "Description",
+  descriptionHint: "Leave a blank line between paragraphs.",
+  startsAt: "Starts",
+  endsAt: "Ends",
+  category: "Category",
+  access: "Access",
+  capacity: "Capacity",
+  capacityHint: "Confirmed attendees. Leave unlimited for no cap.",
+  capacityUnlimited: "No limit on attendees",
+  capacityPlaceholder: "e.g. 40",
+  locationKind: "How people attend",
+  venue: "Venue",
+  address: "Address",
+  addressHint: "Shown under the venue on the detail page.",
+  url: "Joining link",
+  platform: "Platform",
+  platformHint: 'e.g. "Zoom", "Google Meet".',
+  /** Warns the host what switching to invite-only does to current attendees. */
+  accessInviteWarning:
+    "Switching to invite only hides this event from anyone who is not on its invite list, including people who already have a place.",
+  sectionWhen: "When",
+  sectionWhere: "Where",
+  sectionWho: "Who can get in",
+};
+
+/**
+ * Why a submission was refused, field by field.
+ *
+ * Shared by `lib/eventInput.ts` -- which both the form and the route handlers
+ * run -- so a refusal is worded identically whether it was caught in the
+ * browser or on the server.
+ */
+export const EVENT_FORM_ERRORS = {
+  titleRequired: "Give the event a title.",
+  summaryRequired: "Write a one-sentence summary.",
+  descriptionRequired: "Describe the event.",
+  startsAtInvalid: "Choose when the event starts.",
+  endsAtInvalid: "Choose when the event ends.",
+  endsAtBeforeStart: "The end has to be after the start.",
+  categoryInvalid: "Choose a category.",
+  accessInvalid: "Choose how people get in.",
+  capacityInvalid: "Capacity has to be a whole number of seats, or unlimited.",
+  locationKindInvalid: "Choose how people attend.",
+  venueRequired: "Say where it happens.",
+  urlRequired: "Add the joining link.",
+  /** Shown when the server refuses a form the browser thought was fine. */
+  formRejected: "The server refused these changes.",
+};
+
+/** What create, edit, publish and delete say once they have been attempted. */
+export const MANAGE_ACTION_COPY = {
+  /* Server refusals. */
+  cannotCreate: "You are not allowed to create events.",
+  cannotManage: "You are not allowed to manage this event.",
+  alreadyPublished: "This event is already published.",
+  notADraft: "Only a draft can be published.",
+  /** The event moved or disappeared underneath the request. */
+  stale: "This event has changed. Reload the page and try again.",
+
+  /* Toast titles. The server's own message goes underneath as the description. */
+  created: "Draft created",
+  createFailed: "Could not create the event",
+  saved: "Changes saved",
+  saveFailed: "Could not save your changes",
+  published: "Event published",
+  publishFailed: "Could not publish this event",
+  deleted: "Event deleted",
+  deleteFailed: "Could not delete this event",
+};
+
+/** The delete confirmation. `ConfirmDialog` renders it. */
+export const DELETE_DIALOG = {
+  title: "Delete this event?",
+  confirm: "Delete event",
+  cancel: "Keep event",
+  /** No registrations to lose, so there is nothing extra to warn about. */
+  message: "This cannot be undone. The event is removed for everyone.",
+};
+
+/**
+ * The same warning, naming what is actually destroyed alongside the event.
+ *
+ * `db.events.remove()` deletes **every** registration for the event, not only
+ * the confirmed ones, so a pending request disappears as surely as a place
+ * does. Counting only the confirmed ones understated an irreversible action --
+ * a host looking at "Awaiting approval 2" in the same card was told nothing
+ * about those two.
+ */
+export function deleteDialogMessage(
+  goingCount: number,
+  pendingCount: number,
+): string {
+  const parts = [
+    goingCount > 0 &&
+      `${goingCount} confirmed ${goingCount === 1 ? "place" : "places"}`,
+    pendingCount > 0 &&
+      `${pendingCount} pending ${pendingCount === 1 ? "request" : "requests"}`,
+  ].filter((part): part is string => part !== false);
+
+  if (parts.length === 0) return DELETE_DIALOG.message;
+
+  return `This cannot be undone. ${parts.join(" and ")} will be deleted with the event.`;
+}

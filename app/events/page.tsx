@@ -14,8 +14,10 @@ import {
   ACCESS_ORDER,
   BOARD_LABELS,
   CATEGORY_ORDER,
+  MANAGE_LABELS,
   eventCountLabel,
 } from "@/lib/labels";
+import { canCreateEvent } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
 import type { EventWithContext } from "@/lib/types";
 
@@ -65,6 +67,21 @@ export default async function BoardPage({ searchParams }: PageProps<"/events">) 
       <PageHeader
         title={BOARD_LABELS.title}
         description={eventCountLabel(matching.length, visible.length)}
+        actions={
+          /*
+            Only whoever may actually create one. The link is an affordance:
+            `/events/new` and `POST /api/events` both authorise from the session
+            on their own.
+          */
+          canCreateEvent(viewer) ? (
+            <Link
+              href="/events/new"
+              className={buttonClass({ variant: "primary" })}
+            >
+              {MANAGE_LABELS.create}
+            </Link>
+          ) : undefined
+        }
       />
 
       <div className={styles.toolbar}>
