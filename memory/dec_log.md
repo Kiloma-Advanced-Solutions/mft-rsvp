@@ -496,5 +496,5 @@ already registered.
 
 Consequences: a row can outlive the viewer's ability to see its event, and
 re-inviting the person restores it. M5 will meet the same principle from the
-other side when it decides requests, and should not assume every row it sees
-belongs to a currently visible event.
+other side when it decides requests, and should not assume the person behind a
+pending row can still see the event they requested a place at.
