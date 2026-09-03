@@ -159,7 +159,6 @@ export const DETAIL_LABELS = {
   edit: "Edit event",
   publish: "Publish draft",
   delete: "Delete event",
-  factPending: "Awaiting approval",
   factInvited: "Invited",
 };
 
