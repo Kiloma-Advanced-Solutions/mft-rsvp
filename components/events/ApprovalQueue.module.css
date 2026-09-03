@@ -50,6 +50,12 @@
   font-size: var(--text-sm);
   line-height: var(--leading-normal);
   color: var(--color-text-muted);
+  /*
+    The message is somebody else's text, so it can hold an unbroken run — a URL,
+    a pasted identifier — with nowhere to wrap. Without this the blockquote is
+    sized to that run and takes the whole page into horizontal scroll with it.
+  */
+  overflow-wrap: anywhere;
 }
 
 .warning {

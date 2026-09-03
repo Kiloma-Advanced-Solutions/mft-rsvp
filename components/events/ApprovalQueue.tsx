@@ -116,6 +116,19 @@ function RequestRow({
   const canReject = requestCanBeRejected(decision);
   const note = requestDecisionNote(decision);
 
+  /*
+    A registration is transitioned in place rather than replaced, so `createdAt`
+    belongs to the row and not to the request in front of the host: somebody who
+    withdrew and asked again is still carrying the date of their first attempt.
+    Nothing but the request itself writes to a `pending` row, so its `updatedAt`
+    is when the current cycle began. A decided row's `updatedAt` is the decision,
+    so that one keeps `createdAt` and reports the decision separately.
+  */
+  const requestedAt =
+    registration.status === "pending"
+      ? registration.updatedAt
+      : registration.createdAt;
+
   return (
     <Card subtle elevation="flat" padding="sm">
       <div className={styles.row}>
@@ -123,7 +136,7 @@ function RequestRow({
           user={requester}
           size="sm"
           meta={requestTimelineLabel(
-            formatRelativeDay(registration.createdAt),
+            formatRelativeDay(requestedAt),
             registration.decidedAt
               ? formatRelativeDay(registration.decidedAt)
               : null,
