@@ -184,6 +184,53 @@ export type RegistrationAvailability =
   | { state: "closed"; reason: RegistrationClosedReason };
 
 /**
+ * What, if anything, a host may decide about one request right now.
+ *
+ * Approving and rejecting close for different reasons, so the union has a state
+ * for each combination rather than a pair of booleans: a full event still takes
+ * a rejection, and a request that was already turned down may still be approved
+ * but not turned down twice.
+ *
+ * Produced by `getRequestDecisionAvailability()` in `lib/permissions.ts` from
+ * the rules in `TASKS.md` section 4.
+ */
+export type RequestDecisionClosedReason =
+  | "draft"
+  | "cancelled"
+  | "started"
+  | "full"
+  /** The registration is not a request a host can act on any more. */
+  | "not_decidable";
+
+export type RequestDecisionAvailability =
+  /** A pending request on an event with room: both decisions are on offer. */
+  | { state: "open" }
+  /** Already turned down. A host may still approve it -- `TASKS.md` section 4. */
+  | { state: "approve_only" }
+  /** Full, so approving would go past capacity. Turning it down still works. */
+  | { state: "reject_only"; reason: "full" }
+  /** Neither decision is available. `reason` decides what the screen says. */
+  | { state: "closed"; reason: RequestDecisionClosedReason };
+
+/**
+ * One request as the host's approval queue needs it: the row, the person behind
+ * it, whether they can still see what they asked to join, and what the host may
+ * do about it.
+ *
+ * `requesterCanView` exists because a row can outlive its author's access -- a
+ * host switching an event to `invite` leaves every registration in place while
+ * removing visibility for anyone off the invite list. The queue says so rather
+ * than hiding the request or deciding it on the host's behalf.
+ */
+export type EventRequest = {
+  registration: Registration;
+  requester: User;
+  /** Whether the requester can still see the event they requested a place at. */
+  requesterCanView: boolean;
+  decision: RequestDecisionAvailability;
+};
+
+/**
  * What the detail screen needs on top of `EventWithContext`: the people who are
  * actually going, not just how many. Deliberately a separate type -- the board
  * wants the counts and not the bodies, and making this field part of
@@ -192,4 +239,13 @@ export type RegistrationAvailability =
 export type EventDetailContext = EventWithContext & {
   /** Confirmed (`going`) attendees, in registration order. */
   attendees: User[];
+  /**
+   * The `pending` and `rejected` rows a host may decide, in registration order.
+   *
+   * **Empty for anyone who may not manage the event**, so who asked and what
+   * they wrote is never assembled for a viewer who has no business seeing it.
+   * An empty array therefore means "nothing to decide, or not yours to decide";
+   * `viewerCanManage` is what tells the two apart.
+   */
+  requests: EventRequest[];
 };

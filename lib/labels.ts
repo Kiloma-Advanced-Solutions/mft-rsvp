@@ -15,6 +15,8 @@ import type {
   RegistrationAvailability,
   RegistrationClosedReason,
   RegistrationStatus,
+  RequestDecisionAvailability,
+  RequestDecisionClosedReason,
 } from "./types";
 
 /* ------------------------------------------------------------------ access */
@@ -157,7 +159,6 @@ export const DETAIL_LABELS = {
   edit: "Edit event",
   publish: "Publish draft",
   delete: "Delete event",
-  factPending: "Awaiting approval",
   factInvited: "Invited",
 };
 
@@ -242,6 +243,111 @@ export const REGISTRATION_ACTION_COPY = {
   registerFailed: "Could not register",
   requestFailed: "Could not send your request",
   withdrawFailed: "Could not withdraw",
+};
+
+/* --------------------------------------------------------- approval queue */
+
+/**
+ * The host's queue of requests on the event detail page.
+ *
+ * "Not approved" is the wording `REGISTRATION_LABELS.rejected` already uses for
+ * the status, so the group heading and the requester's own badge agree. The
+ * buttons keep the verbs from `TASKS.md` section 5 — approve and reject.
+ */
+export const QUEUE_LABELS = {
+  title: "Requests",
+  description: "Only you and other hosts see this.",
+  rejectedTitle: "Not approved",
+  emptyTitle: "No requests waiting",
+  emptyDescription:
+    "Requests to join this event show up here for you to approve or reject.",
+  approve: "Approve",
+  reject: "Reject",
+  /**
+   * The accepted consequence of a host switching an event to invite only under
+   * somebody who had already asked to come: the row survives, their access does
+   * not, and approving them does not hand it back.
+   */
+  requesterCannotView:
+    "They can no longer see this event, so approving them will not put it back on their board.",
+};
+
+/**
+ * "Requested 3 days ago", or with the decision alongside it.
+ *
+ * The relative wording is produced by `formatRelativeDay()` in `lib/date.ts`,
+ * which reads the clock and belongs in a Server Component; this only joins the
+ * sentence together so the phrasing stays in one place.
+ */
+export function requestTimelineLabel(
+  requestedRelative: string,
+  decidedRelative: string | null,
+): string {
+  const requested = `Requested ${requestedRelative.toLowerCase()}`;
+  if (!decidedRelative) return requested;
+
+  return `${requested} · Not approved ${decidedRelative.toLowerCase()}`;
+}
+
+/**
+ * Distinguishes one row's buttons from the next row's for a screen reader —
+ * a column of identical "Approve" labels says nothing about who is approved.
+ */
+export function approveRequestLabel(name: string): string {
+  return `Approve ${name}'s request`;
+}
+
+export function rejectRequestLabel(name: string): string {
+  return `Reject ${name}'s request`;
+}
+
+const REQUEST_DECISION_NOTES: Record<RequestDecisionClosedReason, string> = {
+  draft: "This event is still a draft, so there is nothing to decide yet.",
+  cancelled: "This event was cancelled, so requests can no longer be decided.",
+  started: "This event has passed, so requests can no longer be decided.",
+  full: "This event is full, so approving would go past capacity.",
+  not_decidable: "There is nothing left to decide on this request.",
+};
+
+/**
+ * Why a decision is unavailable, or `null` when nothing is standing in the way.
+ *
+ * Shared by the queue and by both decision routes, so a host reads the same
+ * sentence next to a disabled button as they get back from a `curl`. `open` and
+ * `approve_only` return `null`: the row is actionable, and a note explaining
+ * that would be noise.
+ */
+export function requestDecisionNote(
+  availability: RequestDecisionAvailability,
+): string | null {
+  switch (availability.state) {
+    case "open":
+    case "approve_only":
+      return null;
+    case "reject_only":
+    case "closed":
+      return REQUEST_DECISION_NOTES[availability.reason];
+  }
+}
+
+/**
+ * What approving and rejecting say once they have been attempted.
+ *
+ * Same split as `REGISTRATION_ACTION_COPY`: the refusals are thrown by the two
+ * decision routes, the toast titles are shown by `RequestDecisionActions` once
+ * the server has answered.
+ */
+export const REQUEST_ACTION_COPY = {
+  /* Server refusals for the states `RequestDecisionClosedReason` cannot name. */
+  alreadyRejected: "This request has already been rejected.",
+  /** The request changed underneath the decision. */
+  stale: "This request has changed. Reload the page and try again.",
+
+  /* Toast titles. The server's own message goes underneath as the description. */
+  approved: "Request approved",
+  rejected: "Request rejected",
+  approveFailed: "Could not approve this request",
+  rejectFailed: "Could not reject this request",
 };
 
 /* ------------------------------------------------------------- management */
