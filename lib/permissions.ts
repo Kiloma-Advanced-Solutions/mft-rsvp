@@ -1,10 +1,12 @@
 /**
- * Who may see an event, who may manage it, and who may take a place at it.
+ * Who may see an event, who may manage it, who may take a place at it, and what
+ * a host may decide about somebody else's request.
  *
  * The questions are deliberately separate: visibility is about discovery,
- * manageability is about being a host or an admin, and availability is about
- * one person's own place. Keeping them apart is what stops "can see" from
- * quietly becoming "can change".
+ * manageability is about being a host or an admin, availability is about one
+ * person's own place, and request decisions are about a row somebody else owns.
+ * Keeping them apart is what stops "can see" from quietly becoming "can
+ * change".
  *
  * The rules themselves are specified in `TASKS.md` section 4 — those tables are
  * authoritative and are not restated here. This file is their single
@@ -22,6 +24,7 @@ import type {
   EventRecord,
   Registration,
   RegistrationAvailability,
+  RequestDecisionAvailability,
   User,
 } from "./types";
 
@@ -72,8 +75,9 @@ export function canCreateEvent(user: User): boolean {
 
 /**
  * Is this event full? Only `going` counts against capacity, and a `null`
- * capacity is unlimited. Private for now — nothing outside this file needs to
- * ask yet, and `TASKS.md` section 7 does not want unused exports.
+ * capacity is unlimited. Private: both callers — one person's own availability
+ * and a host's decision on somebody else's request — are in this file, and
+ * `TASKS.md` section 7 does not want unused exports.
  */
 function isEventFull(
   event: Pick<EventRecord, "capacity">,
@@ -138,4 +142,78 @@ export function getRegistrationAvailability(
   return event.access === "approval"
     ? { state: "open", action: "request" }
     : { state: "open", action: "register" };
+}
+
+/**
+ * What may a host decide about one request right now?
+ *
+ * The fourth question, and again a separate one. It deliberately takes no user:
+ * *whether* the actor may decide at all is `canManageEvent()`, and every host
+ * gets the same answer here, so folding the two together would give the rule
+ * two reasons to say no and make the refusal ambiguous.
+ *
+ * It answers about a registration row, not about the event's current access
+ * mode. A request outlives an access change — a host who switches an
+ * `approval` event to `open` still has to resolve the requests already sitting
+ * there — so the row's own status is what decides, not how people get in today.
+ *
+ * Order matters and mirrors `getRegistrationAvailability()`: an event-level
+ * closure beats the row's state, and the row's state is read before capacity.
+ *
+ * Two rules from `TASKS.md` section 4 meet here. A host "cannot approve past
+ * capacity", which closes approving on a full event while leaving rejection
+ * alone; and someone rejected "may not re-request — the host can still approve
+ * them from the queue", which keeps a `rejected` row approvable.
+ */
+export function getRequestDecisionAvailability(
+  event: EventRecord,
+  {
+    goingCount,
+    registration,
+  }: { goingCount: number; registration: Registration },
+): RequestDecisionAvailability {
+  // The same closure that stops people registering stops a host deciding: a
+  // place at an event that is over or cancelled is worth nothing to give away.
+  if (event.status === "draft") return { state: "closed", reason: "draft" };
+  if (event.status === "cancelled") {
+    return { state: "closed", reason: "cancelled" };
+  }
+  if (isPast(event.startsAt)) return { state: "closed", reason: "started" };
+
+  // `going`, `cancelled` and `waitlisted` are not a host's to decide. A
+  // withdrawn row in particular is the person's own answer, not a request.
+  const { status } = registration;
+  if (status !== "pending" && status !== "rejected") {
+    return { state: "closed", reason: "not_decidable" };
+  }
+
+  const full = isEventFull(event, goingCount);
+
+  // Already turned down: approving is the only way left, and only if there is
+  // a seat. Rejecting it a second time would change nothing.
+  if (status === "rejected") {
+    return full ? { state: "closed", reason: "full" } : { state: "approve_only" };
+  }
+
+  return full ? { state: "reject_only", reason: "full" } : { state: "open" };
+}
+
+/**
+ * Whether each decision is on offer, read off the availability above.
+ *
+ * The queue and the two route handlers all ask through these rather than
+ * matching on the state themselves, so the mapping from "what state is this
+ * request in" to "which button may act" has one home and the screen cannot
+ * offer something the API will refuse.
+ */
+export function requestCanBeApproved(
+  availability: RequestDecisionAvailability,
+): boolean {
+  return availability.state === "open" || availability.state === "approve_only";
+}
+
+export function requestCanBeRejected(
+  availability: RequestDecisionAvailability,
+): boolean {
+  return availability.state === "open" || availability.state === "reject_only";
 }
