@@ -54,7 +54,13 @@ for the five seeded personas and what each is useful for.
   at most one per event, and it carries an optional message plus who decided it.
 - `going` — confirmed. The only status that counts against capacity.
 - `pending` — awaiting a host's decision. Only occurs on `approval` events.
-- `rejected` — a host declined the request.
+- `rejected` — a host declined the request. Not final from the host's side: the
+  person may not ask again, but a host may still approve them later.
+- **approval queue** — the host-only list on an event's detail page of the
+  requests still awaiting a decision, together with the ones already turned
+  down. Approving is the only host decision that removes a row: the person
+  becomes `going` and appears among the attendees instead. A row also leaves
+  when its requester withdraws, since that makes the registration `cancelled`.
 - **cancelled registration** — the person withdrew. Note the collision: a
   *cancelled event* (`EventStatus`) and a *cancelled registration*
   (`RegistrationStatus`) are unrelated things that share a word.
@@ -92,6 +98,13 @@ interacts with each access mode.
   seeing an event, and even being able to manage it, does not mean being able to
   register for it. What closes registration, and what registering produces, are
   in [TASKS.md](../TASKS.md) §4.
+- **request decision availability** — "what may a host decide about *this*
+  request right now?" The fourth question. It is about a row somebody else owns,
+  which is what separates it from registration availability, and it is answered
+  without reference to who is asking — whether the actor may decide at all is
+  manageability. Approving and rejecting close for different reasons, so the
+  answer names them separately: a full event still takes a rejection, and a
+  request already turned down may still be approved but not turned down twice.
 - **`EventWithContext`** — the derived view-model an event screen usually needs:
   the event plus its hosts, the going and pending counts, the viewer's own
   registration, and whether the viewer may manage it. Built by
