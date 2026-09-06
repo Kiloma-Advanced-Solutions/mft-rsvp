@@ -63,7 +63,7 @@ are the truth.
 | --- | --- |
 | What do "host", "invite", "pending", "full" mean? | [d_glossary.md](d_glossary.md) |
 | What are the exact domain types? | [lib/types.ts](../lib/types.ts) — **authoritative** |
-| Who may see an event? Who may manage it? What happens when someone registers? | [TASKS.md](../TASKS.md) §4 — **authoritative** for the rules · [lib/permissions.ts](../lib/permissions.ts) — the implementation of visibility, manageability and registration availability |
+| Who may see an event? Who may manage it? What happens when someone registers? What may a host decide about a request? | [TASKS.md](../TASKS.md) §4 — **authoritative** for the rules · [lib/permissions.ts](../lib/permissions.ts) — the implementation of visibility, manageability, registration availability and request decisions |
 | What are the milestone requirements and the backlog? | [TASKS.md](../TASKS.md) §5 — **authoritative** |
 | Which mistakes are reviewers looking for? | [TASKS.md](../TASKS.md) §6 |
 

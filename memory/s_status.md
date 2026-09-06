@@ -5,18 +5,19 @@ progresses — it is current state, not a changelog.
 
 ## Active milestone
 
-**M1 — The board**, **M2 — The event detail screen**, **M3 — Register and
-respond** and **M4 — Create and edit in place** are complete and merged. All
-three `must` milestones and the first `should` are done.
+**None in progress.** M1–M5 are complete and merged: all three `must`
+milestones and both `should` milestones are done.
 
-**M5 — The approval queue** (`should`) is next and has **not started**.
-Authoritative requirements and done-conditions for every milestone:
+What remains is the stretch list, which nothing has started. `TASKS.md` §5
+gives it in the order it would be picked up — the calendar view first, then the
+waitlist, managing invitations, search, "my events", optimistic UI and a theme
+toggle. Authoritative requirements for every milestone and stretch goal:
 [TASKS.md](../TASKS.md) §5.
 
 ## Status
 
-Both screens are server-rendered end to end, and the controls on them now act —
-for attendees since M3, and for hosts since M4.
+Both screens are server-rendered end to end, and the controls on them act — for
+attendees since M3, and for hosts since M4 and M5.
 
 `/events` resolves the viewer, loads only the events that viewer may see, and
 then filters, sorts and groups them; the category and access filters live in the
@@ -30,18 +31,17 @@ Attendees act: registering, requesting a place and withdrawing all go through
 the registrations route, which enforces the [TASKS.md](../TASKS.md) §4 rules on
 the server.
 
-Hosts now act too. M4 made the host tools real, so a host can:
+Hosts act too. A host can **create** an event, **edit** it in place, **publish**
+a draft and **delete** it (M4) — and now **decide the requests on it** (M5).
 
-- **create** an event from `/events/new`, which produces a **draft**;
-- **edit** it in place on `/events/[id]`, with no separate edit screen;
-- **publish** a draft;
-- **delete** it, behind a confirmation that names what is lost.
+The approval queue is a host-only section of `/events/[id]` listing the requests
+still waiting and the ones already turned down, with whatever message the
+requester sent. A host approves or rejects each one, and the counts, the
+capacity meter and "Who is going" re-derive on the spot. How it fits together is
+in [a_system.md](a_system.md); why it behaves as it does is in
+[dec_log.md](dec_log.md).
 
-Every one of those is authorised on the server, not by the presence of a
-button. How the pieces fit together is in [a_system.md](a_system.md); why they
-were built this way is in [dec_log.md](dec_log.md).
-
-Still inert: nothing decides a pending request. The approval queue is M5.
+Nothing is inert any more: every control the product renders now acts.
 
 ## What is actually implemented
 
@@ -57,24 +57,49 @@ Everything that is not the product was supplied. Do not rebuild it — see
 
 The product built on top of that: the board and the detail screen, the shared
 permission and event-context layers beneath them, the registration write path,
-and the four host write paths added by M4. The shape of all of it is in
-[a_system.md](a_system.md).
+the four host write paths added by M4, and the two request-decision routes added
+by M5. The shape of all of it is in [a_system.md](a_system.md).
 
-Not implemented: the approval queue (M5), and every stretch goal — the calendar
-view, the waitlist, managing invitations, search, "my events", optimistic UI and
-the theme toggle. Also deliberately absent, as out of M4's scope: cancelling an
-event, co-host management and transferring an event to another organizer.
+## Deliberately absent
+
+Not missing — decided against, for this milestone or for the exercise. A later
+session should not treat any of these as an oversight to fix.
+
+From M5's scope:
+
+- **No attendee removal.** Approving is how a request leaves the queue; there is
+  no host action that takes a confirmed place back. That would be attendee
+  management, not a third decision on a request.
+- **No request-message input.** The queue *displays* a message when a
+  registration carries one, but nothing in the product writes one — only the
+  fixtures do. Collecting them means reopening the registration write path.
+- **No bulk approve or reject.** [TASKS.md](../TASKS.md) §5 asks for a decision
+  on each request.
+- **No optimistic UI** on any control, in M5 or anywhere else.
+
+From earlier milestones, and still true: cancelling an event, co-host
+management, and transferring an event to another organizer.
+
+Every stretch goal is unstarted, including the two that sit closest to M5 — the
+**waitlist** with its auto-promotion, and **managing invitations**. Note that
+approving somebody who can no longer see an invite-only event does *not* add
+them to its invite list; that is invitation management, and it is out of scope.
 
 ## Known limitations
 
 Two simultaneous registrations for the final seat can race, because the supplied
 in-memory store offers no atomic capacity reservation. M3 accepted this rather
-than redesigning the data layer, and M4 did not change it; it is **not** solved.
-The reasoning and what it means for M5's approval path are in
-[dec_log.md](dec_log.md).
+than redesigning the data layer; M4 did not change it; and M5 met the same
+question from the host's side, when it enforced that a host cannot approve past
+capacity, and **deliberately left it unsolved**. It is not a newly discovered
+bug. The reasoning is in [dec_log.md](dec_log.md).
 
 Concurrent edits to the same event are last-write-wins: `EventRecord` carries no
 version, so M4 did not attempt optimistic concurrency. Named, not solved.
+
+A request left pending on an event that has been cancelled or has already
+started can no longer be decided by anyone, which is the accepted cost of
+closing decisions the same way registration closes. No cleanup behaviour exists.
 
 ## Blockers
 
@@ -94,4 +119,4 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-09-01 — M4 complete and merged; M5 not started.
+Last updated: 2026-09-06 — M5 complete and merged; no milestone in progress.

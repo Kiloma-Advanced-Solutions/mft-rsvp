@@ -110,9 +110,9 @@ logic that lives in the route is turning that answer into a status code. See
   barrel: [components/ui/index.ts](../components/ui/index.ts).
 - `events/` — anything that understands the domain: `EventCard`, `EventGrid`,
   `BoardFilters`, `RegistrationPanel`, `RegistrationActions`, `EventForm`,
-  `HostEventActions`, and the `EventMeta` family (`DateBlock`, `AccessBadge`,
-  `EventStatusBadge`, `RegistrationBadge`, `EventMetaLine`, `EventMetaDetails`,
-  `CapacityMeter`).
+  `HostEventActions`, `ApprovalQueue`, `RequestDecisionActions`, and the
+  `EventMeta` family (`DateBlock`, `AccessBadge`, `EventStatusBadge`,
+  `RegistrationBadge`, `EventMetaLine`, `EventMetaDetails`, `CapacityMeter`).
 - `layout/` — the app frame: `AppShell`, `NavLink`, `PersonaSwitcher`.
 
 `EventCard` renders only what it is passed — deriving counts, attendees and the
@@ -133,13 +133,19 @@ jobs. The split is what keeps authorisation reviewable in one place.
 
 ### Permission rules — `lib/permissions.ts`
 
-`canViewEvent()`, `canManageEvent()`, `canCreateEvent()` and
-`getRegistrationAvailability()` are the single implementation of four separate
-questions — may this person see the event, may they manage it, may they create
-one at all, and may they take a place at it — called from both pages and route
-handlers so no two callers can drift apart. `canCreateEvent()` is the one that
-takes only a user: creation is role-based, because there is no event yet to be a
-host of.
+`canViewEvent()`, `canManageEvent()`, `canCreateEvent()`,
+`getRegistrationAvailability()` and `getRequestDecisionAvailability()` are the
+single implementation of five separate questions — may this person see the
+event, may they manage it, may they create one at all, may they take a place at
+it, and what may a host decide about somebody else's request — called from both
+pages and route handlers so no two callers can drift apart.
+
+Two of them take something other than (event, viewer). `canCreateEvent()` takes
+only a user: creation is role-based, because there is no event yet to be a host
+of. `getRequestDecisionAvailability()` takes no user at all: *whether* the actor
+may decide is `canManageEvent()`, and every host gets the same answer about a
+given request, so folding the two together would give one rule two reasons to
+say no.
 
 They are **synchronous, with no store and no session**: the caller resolves the
 viewer through `getCurrentUser()` and passes it in along with any counts, which
@@ -201,11 +207,16 @@ is presentation only and stays a Server Component, and the host-only section is
 gated on manageability and absent from the markup for everyone else — hiding it
 in CSS would still ship it.
 
+There are two host-only surfaces on the page, and they sit apart on purpose. The
+**host tools** card in the aside holds the event's own actions — edit, publish,
+delete. The **approval queue** is a section of the main column, above "Who is
+going", because a request carries a person and a message and needs the width,
+and because the queue is the part of the screen waiting on the host.
+
 This one route serves both audiences and both modes: it is the attendee's screen,
 the host's management screen, and — under `?edit=1` — the edit form. "Managing
-events" below describes that half. Which controls a given viewer gets is
-manageability; what is not built yet is current state, in
-[s_status.md](s_status.md).
+events" and "Deciding requests" below describe that half. Which controls a given
+viewer gets is manageability; current state is in [s_status.md](s_status.md).
 
 The registration call to action acts through a client leaf, described next.
 
@@ -330,6 +341,61 @@ which is why the UI puts a confirmation in front of it that names how many
 confirmed places and pending requests go too. The dialog is an affordance; the
 `DELETE` handler is what authorises and performs the deletion.
 
+### Deciding requests — the approval queue
+
+The other host half. An `approval` event turns registering into a *request*, and
+this is where a host resolves one.
+
+```
+POST /api/events/[id]/registrations/[registrationId]/approve   -> going
+POST /api/events/[id]/registrations/[registrationId]/reject    -> rejected
+```
+
+Two routes rather than one endpoint carrying a decision, and **both read no
+body**: the session says who is acting, the URL says which request, and the
+route says which transition. That is the shape `publish` established, applied
+again. The collection route above them stays the caller's *own* place at an
+event; these item routes are a host acting on somebody else's row, so they
+authorise on `canManageEvent()` rather than on registration availability.
+
+**Who sees it.** The queue's rows are built in
+[lib/events.ts](../lib/events.ts) **only when `viewerCanManage`** — everyone
+else gets an empty array. Who asked, what they wrote, and whether they can still
+see the event are therefore never assembled for a viewer with no business seeing
+them, rather than assembled and then withheld.
+
+**What is actionable.** The queue holds the two statuses a host can still act
+on: `pending` requests, and `rejected` ones — [TASKS.md](../TASKS.md) §4 keeps a
+turned-down person approvable while forbidding them to ask again. `going`,
+`cancelled` and `waitlisted` rows are not a host's to decide. Approving is
+therefore the only way out of the queue: an approved person becomes a confirmed
+attendee and appears under "Who is going" instead. Nothing takes a confirmed
+place back — see "Deliberately absent" in [s_status.md](s_status.md).
+
+**What closes it.** A draft, a cancelled event or one that has already started
+refuses both decisions, the same closure `getRegistrationAvailability()` applies
+to registering and withdrawing. Capacity closes only approving, and only
+approving: a full `approval` event still accepts new requests and still accepts
+a rejection, but a host cannot approve past capacity — which is `TASKS.md` §4,
+and is why a rejected request on a full event stays un-approvable until a seat
+frees up.
+
+**A requester who has lost sight of the event.** Access changes keep every
+registration row (see "Managing events"), so a request can outlive its author's
+ability to see what they asked to join. The queue says so on the row and leaves
+it fully actionable. It does not hide it, decide it, or touch the invite list —
+so approving that person makes them `going` without restoring their access.
+
+**Server and client.** The queue is server-rendered and derives nothing: each
+row arrives from `lib/events.ts` with its decision already worked out, so the
+requesters, their messages and the timestamps never cross the boundary. Only the
+pair of buttons is a Client Component, and it follows the same path as
+`RegistrationActions` — `fetchJson`, a toast carrying the server's message, then
+`router.refresh()` so the server re-derives and the counts, the capacity meter
+and the attendee list become true again. No optimistic state.
+
+Why each of these was decided this way: [dec_log.md](dec_log.md).
+
 Current position: [s_status.md](s_status.md).
 
 ## Source-of-truth locations
@@ -338,12 +404,13 @@ Current position: [s_status.md](s_status.md).
 | --- | --- |
 | Identity | [lib/session.ts](../lib/session.ts) — server only |
 | Data access | [lib/db.ts](../lib/db.ts) — server only |
-| Visibility, manageability, creation rights and registration availability | [lib/permissions.ts](../lib/permissions.ts) — shared by pages and routes |
+| Visibility, manageability, creation rights, registration availability and request decisions | [lib/permissions.ts](../lib/permissions.ts) — shared by pages and routes |
 | Derived event context | [lib/events.ts](../lib/events.ts) — server only |
 | Fixtures / personas | [lib/seed.ts](../lib/seed.ts) |
 | API helpers | [lib/api.ts](../lib/api.ts) |
 | API house style, worked example | [app/api/session/route.ts](../app/api/session/route.ts) |
 | Registration writes, and the authorised-mutation example | [app/api/events/\[id\]/registrations/route.ts](../app/api/events/[id]/registrations/route.ts) |
+| Approving and rejecting a request | [app/api/events/\[id\]/registrations/\[registrationId\]/approve/route.ts](../app/api/events/[id]/registrations/[registrationId]/approve/route.ts) · [.../reject/route.ts](../app/api/events/[id]/registrations/[registrationId]/reject/route.ts) |
 | Event create / edit / publish / delete | [app/api/events/route.ts](../app/api/events/route.ts) · [app/api/events/\[id\]/route.ts](../app/api/events/[id]/route.ts) · [app/api/events/\[id\]/publish/route.ts](../app/api/events/[id]/publish/route.ts) |
 | What a host may set, and the rules it must satisfy | [lib/eventInput.ts](../lib/eventInput.ts) — shared by the form and the routes |
 | The create / edit form | [components/events/EventForm.tsx](../components/events/EventForm.tsx) |
@@ -352,6 +419,7 @@ Current position: [s_status.md](s_status.md).
 | Date formatting and grouping | [lib/date.ts](../lib/date.ts) |
 | Design tokens | [app/styles/tokens.css](../app/styles/tokens.css) |
 | UI kit barrel | [components/ui/index.ts](../components/ui/index.ts) |
+| The approval queue, and its decision buttons | [components/events/ApprovalQueue.tsx](../components/events/ApprovalQueue.tsx) · [components/events/RequestDecisionActions.tsx](../components/events/RequestDecisionActions.tsx) |
 | Event components | [components/events/](../components/events/) |
 | App frame | [components/layout/](../components/layout/) |
 | Live component reference | `/styleguide` in the running app |

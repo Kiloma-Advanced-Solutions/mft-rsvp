@@ -498,3 +498,134 @@ Consequences: a row can outlive the viewer's ability to see its event, and
 re-inviting the person restores it. M5 will meet the same principle from the
 other side when it decides requests, and should not assume the person behind a
 pending row can still see the event they requested a place at.
+
+---
+
+## 2026-09-06 — The request decision is a fourth rule, returning a four-state union
+
+Context: M5 had to answer "may this host approve or reject this request", and
+that answer was needed twice — once to render the queue's buttons, once to
+enforce the write. It could have lived in the queue component with the routes
+re-deriving it, in each route handler, or alongside the three existing questions
+in [lib/permissions.ts](../lib/permissions.ts).
+
+Decision: `getRequestDecisionAvailability()` joined the shared rules layer, and
+returns a union with four states — both decisions available, approve only,
+reject only, or neither with a reason. Two exported predicates read the answer,
+and the queue and both routes ask through them rather than matching on the state
+themselves. The function takes no user, and reads the registration row rather
+than the event's access mode.
+
+Rationale: this is the 2026-08-24 and 2026-08-26 entries applied a third time —
+a rule with one home cannot let a screen offer something the API refuses. The
+union shape needed more care than `RegistrationAvailability`'s, because
+approving and rejecting close for *different* reasons: "full, so reject only"
+and "already rejected, so approve only" are real states rather than
+contradictions, and a pair of booleans would have lost the reason. Taking no
+user keeps the refusal unambiguous — manageability already answers whether the
+actor may act, so folding them together would give one rule two ways to say no.
+Reading the row rather than the access mode is what stops a request becoming
+undecidable when a host switches an `approval` event to `open` or `invite`;
+keying on access would have stranded those rows forever, with `pendingCount`
+reporting requests nobody could clear.
+
+Consequences: the predicates are the only place that maps a state onto a
+permitted action, so a new state has one place to be handled. The write path
+follows the 2026-09-01 entry — two bodyless routes, one per transition, rather
+than one endpoint taking a decision — and the roughly twelve lines of
+authorise preamble they share were left duplicated rather than extracted, the
+same duplication already accepted between the event and publish routes.
+
+---
+
+## 2026-09-06 — A rejected request stays approvable, and approval is the queue's only exit
+
+Context: [TASKS.md](../TASKS.md) §4 says a rejected person "may not re-request —
+the host can still approve them from the queue", while §5 describes the queue as
+showing *pending* requests. Whether rejected rows belonged in it was genuinely
+open, and the answer decided two further things: whether rejecting needs a
+confirmation, and what a host can do about somebody already confirmed.
+
+Decision: the queue keeps rejected requests in a group of their own, offering
+approval and nothing else. Rejecting has no confirmation dialog. Approving is
+the only way a row leaves the queue, and there is no host action that takes a
+confirmed place back.
+
+Rationale: §4 is the authoritative rules section and states the rejected case
+outright, and the product had already shipped that promise to users — the note a
+rejected person reads says a host can still approve them. A queue of pending
+rows only would have contradicted a sentence the app was already displaying.
+Because a host can undo a rejection, rejecting is reversible, and a
+confirmation in front of a reversible action is ceremony; deletion earns its
+dialog by being irreversible, this does not. Rejecting an already-rejected row
+is refused rather than re-stamped, since it would change nothing. Removing a
+confirmed attendee was deliberately not built: it is not a third decision on a
+request but a different capability — attendee management — and inventing it
+inside M5 would have meant deciding, with no specification, whether the place is
+freed, whether the person may return, and what they are told.
+
+Consequences: `going` is terminal as far as the queue is concerned, and a host
+who approves somebody by mistake has no in-product way back. If that is ever
+wanted it is a new capability with its own rules, not another button on this
+row. See "Deliberately absent" in [s_status.md](s_status.md).
+
+---
+
+## 2026-09-06 — Decisions close with registration, and capacity closes only approving
+
+Context: §4 closes registration on a draft, a cancelled event and one that has
+already started, and separately forbids a host to approve past capacity. It says
+nothing about whether those closures also stop a host *deciding* a request that
+already exists.
+
+Decision: a draft, a cancelled event or one that has started refuses both
+decisions, and the queue renders its rows read-only with the reason. Capacity
+closes approving alone: a full `approval` event keeps taking requests, keeps
+accepting a rejection, and refuses approval — including for a rejected row,
+which stays un-approvable until a seat frees.
+
+Rationale: this is the 2026-08-30 withdrawal entry applied to the other side of
+the same table. The alternative reading needs a second, decision-specific
+closure rule, and then the same question has two implementations that can drift
+— which is what the shared rules layer exists to prevent. Giving somebody a
+place at an event that is over or cancelled achieves nothing anyway. Capacity is
+deliberately asymmetric because it is a constraint on *admitting* people:
+refusing a request is exactly what a host of a full event needs to be able to
+do, and blocking that would leave the queue unclearable.
+
+Consequences: a request left pending on a cancelled or already-started event can
+no longer be decided by anyone, which is the accepted cost — no cleanup
+behaviour was added. M5 also met the final-seat race from the host's side and
+left it unsolved, as the 2026-08-30 entry anticipated: the check and the write
+are still separated by an `await`, and no transaction, lock or version field was
+introduced. It remains a named limitation rather than a bug to rediscover.
+
+---
+
+## 2026-09-06 — The queue's data is built only for managers, and a stale requester is flagged rather than resolved
+
+Context: the queue exposes things no ordinary viewer should have — who asked to
+come, and what they wrote. Separately, the 2026-09-01 entry predicted that a
+registration can outlive its author's ability to see the event, and M5 was the
+milestone that had to face it.
+
+Decision: [lib/events.ts](../lib/events.ts) fills the queue's rows only when the
+viewer may manage the event, and hands everyone else an empty array. A request
+whose author can no longer see the event stays in the queue, stays fully
+actionable, and says so on the row; it is not hidden, not auto-rejected, and the
+invite list is not touched on their behalf.
+
+Rationale: gating the render would have been enough for the page that exists
+today, but not assembling the data at all is a guarantee rather than a habit — a
+future caller that forgets to gate has nothing to leak. On the stale requester,
+hiding the row would leave `pendingCount` describing requests the host cannot
+see, and auto-rejecting would destroy somebody's request as a side effect of an
+unrelated edit, which is the exact inversion of this log's 2026-09-01 principle
+that host edits never destroy a registration. Adding them to the invite list
+instead would be invitation management, a stretch goal, and would quietly widen
+who can see the event.
+
+Consequences: an empty `requests` array means "nothing to decide, or not yours
+to decide", and `viewerCanManage` is what distinguishes them. Approving somebody
+who has lost visibility makes them `going` without restoring their access —
+accepted, and stated on the row itself, with re-inviting them the way to fix it.
