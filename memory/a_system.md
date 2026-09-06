@@ -368,9 +368,12 @@ them, rather than assembled and then withheld.
 on: `pending` requests, and `rejected` ones — [TASKS.md](../TASKS.md) §4 keeps a
 turned-down person approvable while forbidding them to ask again. `going`,
 `cancelled` and `waitlisted` rows are not a host's to decide. Approving is
-therefore the only way out of the queue: an approved person becomes a confirmed
-attendee and appears under "Who is going" instead. Nothing takes a confirmed
-place back — see "Deliberately absent" in [s_status.md](s_status.md).
+therefore the only *decision* that takes a row out of the queue: an approved
+person becomes a confirmed attendee and appears under "Who is going" instead.
+Nothing takes a confirmed place back — see "Deliberately absent" in
+[s_status.md](s_status.md). A row can also leave with no host acting at all: a
+pending requester may withdraw, which sets their registration to `cancelled` —
+neither of the two statuses this queue holds.
 
 **What closes it.** A draft, a cancelled event or one that has already started
 refuses both decisions, the same closure `getRegistrationAvailability()` applies
@@ -388,8 +391,10 @@ so approving that person makes them `going` without restoring their access.
 
 **Server and client.** The queue is server-rendered and derives nothing: each
 row arrives from `lib/events.ts` with its decision already worked out, so the
-requesters, their messages and the timestamps never cross the boundary. Only the
-pair of buttons is a Client Component, and it follows the same path as
+request messages and the timestamps stay on the server. Only the pair of buttons
+is a Client Component, and it receives just what acting requires — the event and
+registration ids, the two booleans, and the requester's name for the buttons'
+accessible labels. It follows the same path as
 `RegistrationActions` — `fetchJson`, a toast carrying the server's message, then
 `router.refresh()` so the server re-derives and the counts, the capacity meter
 and the attendee list become true again. No optimistic state.

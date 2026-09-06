@@ -58,8 +58,9 @@ for the five seeded personas and what each is useful for.
   person may not ask again, but a host may still approve them later.
 - **approval queue** — the host-only list on an event's detail page of the
   requests still awaiting a decision, together with the ones already turned
-  down. Approving is the only way a row leaves it: the person becomes `going`
-  and appears among the attendees instead.
+  down. Approving is the only host decision that removes a row: the person
+  becomes `going` and appears among the attendees instead. A row also leaves
+  when its requester withdraws, since that makes the registration `cancelled`.
 - **cancelled registration** — the person withdrew. Note the collision: a
   *cancelled event* (`EventStatus`) and a *cancelled registration*
   (`RegistrationStatus`) are unrelated things that share a word.

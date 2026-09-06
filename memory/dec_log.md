@@ -512,9 +512,11 @@ in [lib/permissions.ts](../lib/permissions.ts).
 Decision: `getRequestDecisionAvailability()` joined the shared rules layer, and
 returns a union with four states — both decisions available, approve only,
 reject only, or neither with a reason. Two exported predicates read the answer,
-and the queue and both routes ask through them rather than matching on the state
-themselves. The function takes no user, and reads the registration row rather
-than the event's access mode.
+and the queue and both routes decide through them rather than matching on the
+state themselves — the reject route additionally inspects the state to pick its
+refusal wording, because capacity is never why a rejection is unavailable and
+must not become the reason given for one. The function takes no user, and reads
+the registration row rather than the event's access mode.
 
 Rationale: this is the 2026-08-24 and 2026-08-26 entries applied a third time —
 a rule with one home cannot let a screen offer something the API refuses. The
@@ -548,8 +550,9 @@ confirmation, and what a host can do about somebody already confirmed.
 
 Decision: the queue keeps rejected requests in a group of their own, offering
 approval and nothing else. Rejecting has no confirmation dialog. Approving is
-the only way a row leaves the queue, and there is no host action that takes a
-confirmed place back.
+the only decision that takes a row out of the queue — a requester withdrawing
+also removes theirs — and there is no host action that takes a confirmed place
+back.
 
 Rationale: §4 is the authoritative rules section and states the rejected case
 outright, and the product had already shipped that promise to users — the note a
