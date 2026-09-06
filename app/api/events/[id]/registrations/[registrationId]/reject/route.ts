@@ -72,10 +72,21 @@ export const POST = withErrorHandling(
     });
 
     if (!requestCanBeRejected(availability)) {
-      // `approve_only` is the one refusal with no closed reason behind it —
-      // the request is fine, it has simply been rejected already.
+      // Capacity is an approve-side constraint and is never why a rejection is
+      // unavailable, so a `full` answer on this path can only mean the row was
+      // already rejected -- as can `approve_only`, which carries no closed
+      // reason at all. Both report that, rather than letting the shared note
+      // tell a host turning somebody down that the event is too full to let
+      // them in. An event-level closure is a bigger fact and still speaks for
+      // itself.
+      const alreadyRejected =
+        availability.state === "approve_only" ||
+        (availability.state === "closed" && availability.reason === "full");
+
       throw ApiError.conflict(
-        requestDecisionNote(availability) ?? REQUEST_ACTION_COPY.alreadyRejected,
+        alreadyRejected
+          ? REQUEST_ACTION_COPY.alreadyRejected
+          : (requestDecisionNote(availability) ?? REQUEST_ACTION_COPY.stale),
       );
     }
 
