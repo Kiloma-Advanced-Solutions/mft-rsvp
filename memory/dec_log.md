@@ -540,7 +540,7 @@ same duplication already accepted between the event and publish routes.
 
 ---
 
-## 2026-09-06 — A rejected request stays approvable, and approval is the queue's only exit
+## 2026-09-06 — A rejected request stays approvable, and approval is the only decision that clears the queue
 
 Context: [TASKS.md](../TASKS.md) §4 says a rejected person "may not re-request —
 the host can still approve them from the queue", while §5 describes the queue as

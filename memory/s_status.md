@@ -67,9 +67,9 @@ session should not treat any of these as an oversight to fix.
 
 From M5's scope:
 
-- **No attendee removal.** Approving is how a request leaves the queue; there is
-  no host action that takes a confirmed place back. That would be attendee
-  management, not a third decision on a request.
+- **No attendee removal.** Approving is the only host decision that clears a
+  request from the queue; there is no host action that takes a confirmed place
+  back. That would be attendee management, not a third decision on a request.
 - **No request-message input.** The queue *displays* a message when a
   registration carries one, but nothing in the product writes one — only the
   fixtures do. Collecting them means reopening the registration write path.

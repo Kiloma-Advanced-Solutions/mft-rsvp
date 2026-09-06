@@ -356,7 +356,9 @@ body**: the session says who is acting, the URL says which request, and the
 route says which transition. That is the shape `publish` established, applied
 again. The collection route above them stays the caller's *own* place at an
 event; these item routes are a host acting on somebody else's row, so they
-authorise on `canManageEvent()` rather than on registration availability.
+authorise on `canManageEvent()` rather than on registration availability — in
+the order "Managing events" sets out, where missing and invisible both answer
+404 before manageability is consulted.
 
 **Who sees it.** The queue's rows are built in
 [lib/events.ts](../lib/events.ts) **only when `viewerCanManage`** — everyone
