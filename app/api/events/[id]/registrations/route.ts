@@ -18,6 +18,11 @@
  * what status results, or whether the action is allowed: the acting user is the
  * session cookie, and the resulting status is decided by the event's access
  * mode. Both handlers are safe to call with no body at all.
+ *
+ * This collection is the caller's own row. A host deciding somebody *else's*
+ * request is the other half, and lives in the item routes beneath it --
+ * `[registrationId]/approve` and `[registrationId]/reject` -- which authorise on
+ * `canManageEvent()` rather than on registration availability.
  */
 
 import { ApiError, jsonOk, withErrorHandling } from "@/lib/api";

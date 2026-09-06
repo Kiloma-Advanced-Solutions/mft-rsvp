@@ -18,10 +18,15 @@
  */
 
 import { db } from "./db";
-import { canManageEvent, canViewEvent } from "./permissions";
+import {
+  canManageEvent,
+  canViewEvent,
+  getRequestDecisionAvailability,
+} from "./permissions";
 import type {
   EventDetailContext,
   EventRecord,
+  EventRequest,
   EventWithContext,
   Registration,
   User,
@@ -89,16 +94,60 @@ export async function getEventDetailForViewer(
     db.registrations.list({ eventId }),
   ]);
   const usersById = new Map(users.map((user) => [user.id, user]));
+  const context = toEventContext(event, rows, usersById, viewer);
 
   return {
-    ...toEventContext(event, rows, usersById, viewer),
+    ...context,
     // Registration order, and a row whose user has since disappeared is
     // dropped rather than left as a hole — the same treatment as a stale host.
     attendees: rows
       .filter((row) => row.status === "going")
       .map((row) => usersById.get(row.userId))
       .filter((user): user is User => user !== undefined),
+    // Who asked and what they wrote is host-only, so it is not assembled at all
+    // for anyone else. Gating the render would be enough for the page, but this
+    // way a future caller that forgets to gate has nothing to leak.
+    requests: context.viewerCanManage
+      ? toRequests(event, rows, usersById, context.goingCount)
+      : [],
   };
+}
+
+/**
+ * The `pending` and `rejected` rows a host may act on, in registration order.
+ *
+ * `requesterCanView` is answered per row because a request outlives the access
+ * change that hid its event: switching to `invite` keeps every registration and
+ * removes visibility for anyone off the list. The queue surfaces that rather
+ * than dropping the row, which would leave `pendingCount` describing requests
+ * the host cannot see.
+ *
+ * A row whose person has since disappeared is dropped, the same treatment
+ * `attendees` and `hosts` give a stale id.
+ */
+function toRequests(
+  event: EventRecord,
+  rows: Registration[],
+  usersById: Map<string, User>,
+  goingCount: number,
+): EventRequest[] {
+  return rows
+    .filter((row) => row.status === "pending" || row.status === "rejected")
+    .map((registration) => {
+      const requester = usersById.get(registration.userId);
+      if (!requester) return null;
+
+      return {
+        registration,
+        requester,
+        requesterCanView: canViewEvent(event, requester),
+        decision: getRequestDecisionAvailability(event, {
+          goingCount,
+          registration,
+        }),
+      };
+    })
+    .filter((request): request is EventRequest => request !== null);
 }
 
 /**

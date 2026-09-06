@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { ApprovalQueue } from "@/components/events/ApprovalQueue";
 import { EventForm } from "@/components/events/EventForm";
 import {
   AccessBadge,
@@ -64,6 +65,7 @@ export default async function EventDetailPage({
     goingCount,
     pendingCount,
     attendees,
+    requests,
     viewerRegistration,
     viewerCanManage,
   } = detail;
@@ -133,6 +135,17 @@ export default async function EventDetailPage({
                 ))}
               </div>
             </section>
+
+            {/*
+              The host's queue sits above the attendee list: it is the part of
+              this screen that is waiting on them, and burying it under a long
+              list of people who are already in would be the wrong way round.
+              Absent from the markup for everyone else — the loader leaves
+              `requests` empty for them as well, so there is nothing to hide.
+            */}
+            {viewerCanManage && (
+              <ApprovalQueue event={event} requests={requests} />
+            )}
 
             <Attendees attendees={attendees} goingCount={goingCount} />
           </div>
@@ -229,7 +242,8 @@ function Attendees({
  *
  * Edit is a `<Link>` because it navigates rather than acts: it turns on the
  * `?edit=1` mode this same page renders. Publish and delete do act, so they
- * live in a client leaf. Approving requests is still M5 and is absent.
+ * live in a client leaf. Deciding requests is the approval queue's job, and it
+ * lives in the main column where there is room for what people wrote.
  */
 function HostTools({
   event,
@@ -265,19 +279,20 @@ function HostTools({
         />
 
         {/*
-          Only facts a non-host never sees. The status, the access mode and the
-          capacity are already on this page for everybody, and repeating them
-          here would just be two of the same number side by side.
+          Only facts a non-host never sees, and only ones that are not already
+          on the page. The status, the access mode and the capacity are here for
+          everybody; the number awaiting approval left when the queue gained its
+          own heading and count in the main column, because repeating it here
+          would be two of the same number side by side.
         */}
-        <dl className={styles.facts}>
-          <Fact label={DETAIL_LABELS.factPending} value={String(pendingCount)} />
-          {event.access === "invite" && (
+        {event.access === "invite" && (
+          <dl className={styles.facts}>
             <Fact
               label={DETAIL_LABELS.factInvited}
               value={String(event.invitedUserIds.length)}
             />
-          )}
-        </dl>
+          </dl>
+        )}
       </CardBody>
     </Card>
   );

@@ -1,0 +1,77 @@
+/* Matches the detail page's own section heading, so the queue reads as one of
+   its sections rather than as a panel dropped into the column. */
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+}
+
+.description {
+  margin-top: var(--space-1);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.groupTitle {
+  margin-top: var(--space-6);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-muted);
+}
+
+/* ---- one request -------------------------------------------------------- */
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+/* Quoted, so the requester's own words are visibly theirs and not ours. */
+.message {
+  margin: 0;
+  padding-left: var(--space-4);
+  border-left: 2px solid var(--color-border-strong);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  color: var(--color-text-muted);
+  /*
+    The message is somebody else's text, so it can hold an unbroken run — a URL,
+    a pasted identifier — with nowhere to wrap. Without this the blockquote is
+    sized to that run and takes the whole page into horizontal scroll with it.
+  */
+  overflow-wrap: anywhere;
+}
+
+.warning {
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-warning-text);
+}
+
+.note {
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-text-subtle);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
