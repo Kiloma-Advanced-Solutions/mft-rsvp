@@ -217,6 +217,90 @@ event you were not invited to fails with a sensible status.
 6. **Optimistic UI** on the register button.
 7. **A theme toggle.** The tokens already support `data-theme` on `<html>`.
 
+### Post-assignment extensions — chosen after the original brief was completed
+
+Everything above is the original assignment. The milestones below are **not** part
+of it: they were chosen after M1–M5 were delivered, to take the product further.
+
+They are stated as product behaviour on purpose. Each one names what it has to
+achieve and what it has to decide, and deliberately stops short of the technical
+choices — those belong to that milestone's own planning step, once the behaviour
+is agreed.
+
+#### M6 — Real database and UUIDs
+
+**Goal.** Replace the in-memory persistence layer with a real database, while
+preserving the product behaviour and the API contracts that already exist.
+
+- Persist users, events and registrations in the database.
+- Persistent entity identifiers use UUIDs rather than sequential numeric ids.
+- Preserve the existing visibility, manageability, registration, approval,
+  capacity and lifecycle rules. M6 changes where data lives, not what the rules
+  are.
+- Keep the data-access boundary clean, so product code is not coupled to the
+  database implementation any more than it has to be.
+- Define a development, seed and reset workflow that works against a persistent
+  database.
+
+**Not yet decided.** The database, the ORM, the schema design, the migration
+strategy and the UUID implementation are all M6 planning decisions.
+
+#### M7 — Event cancellation
+
+**Goal.** Let hosts and admins cancel an event without deleting it.
+
+- Cancellation is an event lifecycle transition, separate from deletion.
+- Define what happens to existing registrations when an event is cancelled.
+- A cancelled event keeps following the appropriate visibility rules.
+- Registration and request decisions are closed for a cancelled event.
+- The UI says clearly that the event is cancelled.
+
+**Not yet decided.** The transition's shape and its implementation.
+
+#### M8 — Remove attendees
+
+**Goal.** Let hosts and admins remove a confirmed attendee from an event.
+
+- Removing a confirmed attendee is a separate capability from rejecting an
+  approval request, not another decision on one.
+- Define what registration state results from removal, and whether the person
+  may register again afterwards.
+- Capacity and attendee counts update correctly.
+- Authorisation and transition validation are enforced on the server.
+
+**Not yet decided.** The exact transition and the API shape.
+
+#### M9 — Shareable event links
+
+**Goal.** Let an organizer publish a link that another person can open to reach
+the event and register.
+
+- Define how holding a share link interacts with the existing visibility and
+  access rules.
+- Define the experience for a recipient who is not signed in.
+- Decide whether links can be revoked or regenerated.
+- A share link must not accidentally weaken invite-only visibility.
+- Registration reached through a share link still obeys the event's normal
+  registration, lifecycle, approval and capacity rules.
+
+**Not yet decided.** Whether this uses the event id, a token, a slug, a separate
+record, or something else.
+
+#### M10 — Application logging
+
+**Goal.** Add developer-facing logging and observability for meaningful product
+activity.
+
+- Define the logging and event taxonomy before implementing anything.
+- Consider activity such as board visits, event views, event-management actions,
+  and registration and request actions.
+- Decide what context belongs on each entry.
+- Do not log sensitive or unnecessary information about people.
+- Choose the logging, storage and provider approach only once the events that
+  matter and the people who will read them are known.
+
+**Not yet decided.** The final taxonomy and the logging provider.
+
 ---
 
 ## 6. Edge cases we will look for
