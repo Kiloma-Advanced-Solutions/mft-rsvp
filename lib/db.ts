@@ -59,9 +59,16 @@ function store(): Store {
   return globalForStore.__eventsBoardStore;
 }
 
-/** Short, readable, collision-free enough for a store that lives in memory. */
-function newId(prefix: string): string {
-  return `${prefix}-${crypto.randomUUID().slice(0, 8)}`;
+/**
+ * A new persistent entity id.
+ *
+ * A whole UUID, not a shortened one. The value is opaque: nothing in the app may
+ * read anything from the shape of an id, so there is no prefix naming the kind
+ * of record it belongs to and nothing is truncated to keep it readable. The
+ * fixtures follow the same rule with fixed literals -- see `lib/seed.ts`.
+ */
+function newId(): string {
+  return crypto.randomUUID();
 }
 
 function now(): string {
@@ -97,7 +104,7 @@ export const db = {
       const timestamp = now();
       const record: EventRecord = {
         ...copy(input),
-        id: newId("e"),
+        id: newId(),
         createdAt: timestamp,
         updatedAt: timestamp,
       };
@@ -165,7 +172,7 @@ export const db = {
       const timestamp = now();
       const record: Registration = {
         ...copy(input),
-        id: newId("r"),
+        id: newId(),
         createdAt: timestamp,
         updatedAt: timestamp,
       };

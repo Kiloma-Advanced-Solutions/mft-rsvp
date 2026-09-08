@@ -1,8 +1,8 @@
 import Link from "next/link";
 
 import { Avatar, Badge, Card, buttonClass } from "@/components/ui";
-import { db } from "@/lib/db";
 import { ACCESS_DESCRIPTIONS, ACCESS_LABELS, ACCESS_TONES } from "@/lib/labels";
+import { listPersonas } from "@/lib/session";
 import type { EventAccess } from "@/lib/types";
 
 import styles from "./page.module.css";
@@ -36,7 +36,8 @@ const YOURS = [
 ];
 
 export default async function StartHerePage() {
-  const users = await db.users.list();
+  // Same order as the switcher, and as the persona table in `TASKS.md` §3.
+  const users = await listPersonas();
 
   return (
     <div>
