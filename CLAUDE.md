@@ -58,8 +58,12 @@ call a pending request.
 ## Before you say you are done
 
 ```bash
-npm run typecheck && npm run lint && npm run build
+npm run typecheck && npm run lint && npm run build && npm run check:tsql
 ```
+
+`check:tsql` holds application SQL to the SQL Server 2008 R2 feature floor —
+see [docs/sql-server-2008r2-compatibility.md](docs/sql-server-2008r2-compatibility.md).
+It passes trivially until there is SQL to check.
 
 Then click through the app as at least two personas — one organizer and one
 member. Most of the bugs in this project are visible only when you switch.
