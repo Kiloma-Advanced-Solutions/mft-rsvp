@@ -1,9 +1,10 @@
 -- Fixture for `node scripts/check-tsql-compat.mts --selftest`.
 --
--- One instance of every construct the guard rejects, in both classes:
+-- One instance of every construct the guard rejects, in all three classes:
 --
 --   FORBIDDEN   -- introduced after SQL Server 2008 R2
 --   DISCOURAGED -- available at the floor, rejected by this project's design
+--   OWNERSHIP   -- DDL aimed at an object this application does not own
 --
 -- The self-test asserts that EVERY rule fires at least once here, so a new rule
 -- added without a sample fails the self-test. That is what keeps this file
@@ -132,3 +133,14 @@ TRUNCATE TABLE dbo.Events_Example;
 
 -- drop-database-or-schema: only app-owned Events_* objects may ever be dropped
 DROP SCHEMA app_events;
+
+/* ------------------------ OWNERSHIP (an object this application does not own) */
+
+-- events-table-prefix: the database is shared and the development account holds
+-- db_owner, so a table name that does not say it is ours is the one mistake
+-- nothing on the server side would stop.
+CREATE TABLE dbo.WorkshopAttendees (Id uniqueidentifier NOT NULL);
+ALTER TABLE dbo.Departments ADD HeadCount int NULL;
+DROP TABLE dbo.Salaries;
+CREATE INDEX IX_Payroll_Id ON dbo.Payroll (Id);
+CREATE TABLE #Scratch (Id int NULL);

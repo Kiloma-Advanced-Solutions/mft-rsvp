@@ -32,6 +32,9 @@ is yours, and `/styleguide` renders every component in the kit with real data.
 | `npm run build` | Production build |
 | `npm run typecheck` | Generate route types, then `tsc --noEmit` |
 | `npm run lint` | ESLint |
+| `npm run check:tsql` | Hold the project's T-SQL to the SQL Server 2008 R2 feature floor |
+| `npm run db:check` | Read-only preflight against the configured SQL Server target |
+| `npm run db:migrate` | Apply pending schema migrations (`-- --dry-run`, `-- --status`) |
 
 ## How it fits together
 
@@ -75,3 +78,29 @@ To reload the fixtures without restarting:
 ```bash
 curl -X POST http://localhost:3000/api/dev/reset
 ```
+
+### …but the schema is being built alongside it
+
+M6 is replacing that in slices. The SQL tables now exist and can be created from
+scratch, while `lib/db.ts` is still the in-memory store the whole application
+reads and writes — so nothing above has changed, and restarting the dev server
+still resets the data.
+
+Configuration is one server-only variable, `EVENTS_DB_CONNECTION_STRING`. Copy
+`.env.example` to `.env.local` and fill it in; `.env.local` is git-ignored and is
+the only place a real connection string ever lives.
+
+```bash
+npm run db:check                 # read-only: can we reach the target at all?
+npm run db:migrate -- --dry-run  # what would run, without connecting
+npm run db:migrate -- --status   # what is applied, what is pending
+npm run db:migrate               # apply pending migrations
+```
+
+Migrations are the numbered files in `migrations/`, applied once each, in order,
+one transaction apiece, and recorded in `dbo.Events_SchemaMigrations`. Every
+table the application creates is prefixed `Events_`, which
+`npm run check:tsql` enforces — the development database is a shared
+organizational one, so read
+[docs/sql-server-2008r2-compatibility.md](docs/sql-server-2008r2-compatibility.md)
+before writing any SQL.

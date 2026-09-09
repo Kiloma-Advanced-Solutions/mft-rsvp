@@ -11,6 +11,11 @@
 IF OBJECT_ID(N'dbo.Events_Example', N'U') IS NOT NULL
     DROP TABLE dbo.Events_Example;
 
+-- `DEFAULT NEWID()` is kept here to prove NEWID() is within the floor and not
+-- flagged. It is NOT the project's own idiom: the real schema uses plain
+-- `uniqueidentifier NOT NULL` with no default, so an INSERT that forgets to bind
+-- an id fails instead of silently receiving a server-generated one. See
+-- "Ids have exactly one generator" in docs/sql-server-2008r2-compatibility.md.
 CREATE TABLE dbo.Events_Example (
     Id              uniqueidentifier NOT NULL
                         CONSTRAINT PK_Events_Example PRIMARY KEY
