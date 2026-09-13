@@ -172,21 +172,31 @@ what stops it.
 | Rule id | Construct | Why we reject it |
 | --- | --- | --- |
 | `events-table-prefix` | `CREATE`/`ALTER`/`DROP TABLE`, and `CREATE`/`DROP INDEX … ON …`, whose target table is not named `Events_…` | Rule 1 of the shared-database rules below, made mechanical. Every table this application creates, alters, drops or indexes is its own, and its name has to say so. Temp tables (`#Scratch`) are refused too — nothing here creates one, and the preflight script's "no temporary tables" promise is easier to keep with no exception than with one. |
+| `events-dml-target-prefix` | `INSERT INTO …`, `UPDATE …`, `DELETE FROM …` whose target table is not named `Events_…` | The same boundary applied to writes. Reading an unrelated organizational table would be somebody else's business; writing to one is ours. Reads are deliberately not covered — `SELECT` may look anywhere, including at catalog views. |
+| `events-migration-history-immutable` | `DELETE FROM`, `UPDATE` or `TRUNCATE TABLE` against `Events_SchemaMigrations` | That table is app-owned, so `events-dml-target-prefix` admits it. It may still only ever be **appended** to: wiping it would make the schema state unknowable, and shared-database rule 6 keeps it out of every data reset. `INSERT` stays allowed — recording a migration is the one write it exists for. The overlap with `truncate` is intentional: if that rule were ever relaxed, this invariant should still hold. |
 
-The rule reads the *target* of the statement rather than the statement itself, so
-it needs a predicate as well as a pattern — the only rule that does. Things it
-deliberately does not fire on: a table variable (`DECLARE @Rows TABLE …`), which
-is not a table; a `SELECT` against any table, because reading is not DDL; and
-`DROP TABLE IF EXISTS dbo.Events_Users`, where the `IF EXISTS` is stepped over so
-that `drop-if-exists` reports the one real mistake rather than two.
+These rules read the *target* of a statement rather than the statement itself, so
+they need a predicate as well as a pattern — the only rules that do.
+
+Cases they deliberately stay quiet on, each of which would otherwise be a false
+positive:
+
+- a table variable (`DECLARE @Rows TABLE …`), which is not a table;
+- any `SELECT`, because reading is neither DDL nor a write;
+- `DROP TABLE IF EXISTS dbo.Events_Users`, where the `IF EXISTS` is stepped over
+  so that `drop-if-exists` reports the one real mistake rather than two;
+- **`ON DELETE NO ACTION`**, which appears on all eight foreign keys in
+  `migrations/0001`. This is why `FROM` is required after `DELETE`: a looser
+  pattern would read every foreign key as a delete of a table called `NO`;
+- **`WHEN MATCHED THEN UPDATE SET`**, which names no target. This is why `UPDATE`
+  carries a `(?!SET\b)` lookahead.
 
 **Not covered:** the deprecated `DROP INDEX table.index` form, which buries the
-table in the middle of a dotted name. Nothing here writes it; the modern
-`DROP INDEX index ON table` form is what the rule matches. **The DML half of this
-idea — that `DELETE`, `UPDATE` and `INSERT` must also name an `Events_` table —
-is not implemented yet.** It belongs with the first destructive DML, which is the
-development seed and reset path, and a rule written before there are statements
-to validate it against is a rule written blind.
+table in the middle of a dotted name; the `FROM`-less write forms
+(`INSERT dbo.T …`, `DELETE dbo.T`), which are legal T-SQL nothing here writes;
+and `UPDATE <alias> … FROM <table> AS <alias>`, where the alias would be read as
+the target. Write statements the way this repository already does and none of
+them arises.
 
 ## How `npm run check:tsql` works
 
@@ -304,7 +314,8 @@ one. Every slice that touches it must obey:
    operations name their tables as string constants.
 6. **`Events_SchemaMigrations` is never part of an application-data reset** —
    reset is a data operation; wiping migration history would make the schema
-   state unknowable.
+   state unknowable. Enforced by `events-migration-history-immutable`, and by
+   the reset's target list being five hard-coded names that do not include it.
 7. `DELETE`, never `TRUNCATE` (see `truncate` above).
 8. Reset requires **two independent guards**: `NODE_ENV !== "production"` *and*
    an explicit opt-in environment variable, absent by default.

@@ -333,16 +333,89 @@ const DDL_TARGET = new RegExp(
   "i",
 );
 
-/** The last part of a qualified name, with its brackets or quotes removed. */
-function ddlTarget(match: RegExpExecArray): string {
-  const qualified = match[1] ?? match[2] ?? "";
+/**
+ * The table a matched statement acts on: the first capture group that took
+ * part, reduced to its last dotted part with brackets or quotes removed.
+ *
+ * Each pattern below is an alternation whose branches capture the target from a
+ * different position, so exactly one group is ever defined per match. Reading
+ * "whichever group matched" keeps one extractor working for all of them however
+ * many branches a pattern grows.
+ */
+function statementTarget(match: RegExpExecArray): string {
+  const qualified = match.slice(1).find((group) => group !== undefined) ?? "";
   const last = /(?:\[([^\]]+)\]|"([^"]+)"|([A-Za-z_@#][\w@#$]*))\s*$/.exec(qualified);
   if (last === null) return qualified;
   return last[1] ?? last[2] ?? last[3] ?? "";
 }
 
+/** Whether a target is one of this application's own tables. */
+function isOwned(target: string): boolean {
+  return target.toLowerCase().startsWith(OWNED_PREFIX.toLowerCase());
+}
+
+/**
+ * The table a write statement acts on.
+ *
+ * Each branch demands the shape a real statement has, not just its verb, and
+ * every part of that is load-bearing:
+ *
+ *   - `FROM` is required after `DELETE`, which is what keeps the rule off
+ *     `ON DELETE NO ACTION` -- a clause on all eight foreign keys in
+ *     `migrations/0001` that a looser pattern reads as eight deletes of a table
+ *     called `NO`.
+ *   - `UPDATE` must be followed by its `SET` clause. That excludes `MERGE`'s
+ *     `WHEN MATCHED THEN UPDATE SET`, which names no target -- and, just as
+ *     importantly, ordinary English. `Could not update the event` is the kind of
+ *     message this repository writes, and `UPDATE` is a SQL anchor, so without
+ *     the `SET` requirement that literal reports a write to a table called
+ *     `the`.
+ *   - `INSERT INTO` and `DELETE FROM` must be followed by a column list, a
+ *     `VALUES`/`SELECT`, a `WHERE`, or the end of the statement, for the same
+ *     reason: `insert into the list` and `delete from the queue` are English.
+ *
+ * Reads are absent by design: `SELECT` may look anywhere, including at catalog
+ * views. This rule is about what the repository *writes*.
+ *
+ * Not covered: the `FROM`-less forms (`INSERT dbo.T …`, `DELETE dbo.T`), which
+ * are legal T-SQL nothing here writes; and `UPDATE <alias> … FROM <table> AS
+ * <alias>`, where the alias would be read as the target. Write the statements
+ * the way this repository already does and neither arises.
+ */
+const INSERT_TAIL = String.raw`\s*(?:\(|VALUES\b|SELECT\b|DEFAULT\b|EXEC\b|$)`;
+const UPDATE_TAIL = String.raw`\s+(?:WITH\s*\([^)]*\)\s+)?SET\b`;
+const DELETE_TAIL = String.raw`\s*(?:WHERE\b|OPTION\b|;|$)`;
+
+const DML_TARGET = new RegExp(
+  String.raw`\bINSERT\s+INTO\s+(${QUALIFIED})${INSERT_TAIL}` +
+    "|" +
+    String.raw`\bUPDATE\s+(${QUALIFIED})${UPDATE_TAIL}` +
+    "|" +
+    String.raw`\bDELETE\s+FROM\s+(${QUALIFIED})${DELETE_TAIL}`,
+  "im",
+);
+
+/**
+ * A statement that would change rows already in the migration history, as
+ * opposed to appending one.
+ *
+ * `INSERT` is deliberately not here: recording a migration is the one write the
+ * history table exists for.
+ */
+const HISTORY_MUTATION = new RegExp(
+  String.raw`\bUPDATE\s+(${QUALIFIED})${UPDATE_TAIL}` +
+    "|" +
+    String.raw`\bDELETE\s+FROM\s+(${QUALIFIED})${DELETE_TAIL}` +
+    "|" +
+    String.raw`\bTRUNCATE\s+TABLE\s+(${QUALIFIED})`,
+  "im",
+);
+
 /** The prefix every table this application creates must carry. */
 const OWNED_PREFIX = "Events_";
+
+/** The runner's own history table, which records what has been applied. */
+const HISTORY_TABLE = "Events_SchemaMigrations";
 
 /**
  * Objects this application does not own. Not a compatibility question at all --
@@ -358,8 +431,20 @@ const OWNERSHIP: Rule[] = [
     id: "events-table-prefix",
     pattern: DDL_TARGET,
     instead: `dbo.${OWNED_PREFIX}Thing -- every table this application creates, alters, drops or indexes is its own, and its name has to say so`,
+    violates: (match) => !isOwned(statementTarget(match)),
+  },
+  {
+    id: "events-dml-target-prefix",
+    pattern: DML_TARGET,
+    instead: `dbo.${OWNED_PREFIX}Thing -- this application only ever writes to tables it owns, and a table name that does not say so is the one mistake db_owner would not stop`,
+    violates: (match) => !isOwned(statementTarget(match)),
+  },
+  {
+    id: "events-migration-history-immutable",
+    pattern: HISTORY_MUTATION,
+    instead: `nothing -- dbo.${HISTORY_TABLE} is appended to and never otherwise changed. Wiping it would make the schema state unknowable, and it is deliberately not one of the tables a data reset clears`,
     violates: (match) =>
-      !ddlTarget(match).toLowerCase().startsWith(OWNED_PREFIX.toLowerCase()),
+      statementTarget(match).toLowerCase() === HISTORY_TABLE.toLowerCase(),
   },
 ];
 
@@ -620,6 +705,53 @@ const DISCRIMINATION: Array<[string, string, boolean]> = [
   // A table variable is not a table, and a read is not DDL.
   ["events-table-prefix", "DECLARE @Rows TABLE (Id uniqueidentifier NOT NULL)", false],
   ["events-table-prefix", "SELECT Id FROM dbo.Payroll ORDER BY Id ASC", false],
+  // events-dml-target-prefix: writes must name a table this application owns.
+  ["events-dml-target-prefix", "INSERT INTO dbo.Events_Users (Id) VALUES (@id)", false],
+  ["events-dml-target-prefix", "INSERT INTO dbo.Invoices (Id) VALUES (@id)", true],
+  ["events-dml-target-prefix", "UPDATE dbo.Events_Events SET Title = @title", false],
+  ["events-dml-target-prefix", "UPDATE dbo.Salaries SET Amount = @amount", true],
+  ["events-dml-target-prefix", "DELETE FROM dbo.Events_Registrations", false],
+  ["events-dml-target-prefix", "DELETE FROM dbo.Payroll", true],
+  ["events-dml-target-prefix", "INSERT INTO [dbo].[Events_EventInvites] (EventId) VALUES (@e)", false],
+  ["events-dml-target-prefix", "INSERT INTO [dbo].[Ledger] (EventId) VALUES (@e)", true],
+  // The migration runner's own append has to keep working.
+  [
+    "events-dml-target-prefix",
+    "INSERT INTO dbo.Events_SchemaMigrations (MigrationId, AppliedAt) VALUES (@m, @t)",
+    false,
+  ],
+  // A foreign key's ON DELETE clause is not a delete statement. This is the
+  // case that requires FROM after DELETE -- migrations/0001 has eight of them.
+  [
+    "events-dml-target-prefix",
+    "CONSTRAINT FK_X FOREIGN KEY (UserId) REFERENCES dbo.Events_Users (Id) ON DELETE NO ACTION",
+    false,
+  ],
+  ["events-dml-target-prefix", "ALTER TABLE dbo.Events_Events ADD Note nvarchar(max) NULL ON DELETE CASCADE", false],
+  // MERGE names no target after UPDATE; the lookahead keeps this quiet.
+  ["events-dml-target-prefix", "WHEN MATCHED THEN UPDATE SET target.Status = @status", false],
+  // Reading is not writing.
+  ["events-dml-target-prefix", "SELECT Id FROM dbo.Payroll ORDER BY Id ASC", false],
+  // English is not SQL. UPDATE, INSERT INTO and DELETE FROM are all SQL
+  // anchors, so ordinary prose in a template literal reaches these rules; only
+  // the required statement tail keeps it from being read as a write.
+  ["events-dml-target-prefix", "Could not update the event", false],
+  ["events-dml-target-prefix", "Could not insert into the list", false],
+  ["events-dml-target-prefix", "Could not delete from the board", false],
+  ["events-dml-target-prefix", "Nothing to update for this registration", false],
+  // events-migration-history-immutable: append yes, change no.
+  [
+    "events-migration-history-immutable",
+    "INSERT INTO dbo.Events_SchemaMigrations (MigrationId, AppliedAt) VALUES (@m, @t)",
+    false,
+  ],
+  ["events-migration-history-immutable", "SELECT MigrationId FROM dbo.Events_SchemaMigrations", false],
+  ["events-migration-history-immutable", "DELETE FROM dbo.Events_SchemaMigrations", true],
+  ["events-migration-history-immutable", "UPDATE dbo.Events_SchemaMigrations SET AppliedAt = @t", true],
+  ["events-migration-history-immutable", "TRUNCATE TABLE dbo.Events_SchemaMigrations", true],
+  // The five domain tables a reset does clear are not this rule's business.
+  ["events-migration-history-immutable", "DELETE FROM dbo.Events_Registrations", false],
+  ["events-migration-history-immutable", "DELETE FROM dbo.Events_Users", false],
 ];
 
 function selftest(): number {

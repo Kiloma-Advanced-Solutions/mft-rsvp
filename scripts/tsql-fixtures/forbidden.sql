@@ -144,3 +144,16 @@ ALTER TABLE dbo.Departments ADD HeadCount int NULL;
 DROP TABLE dbo.Salaries;
 CREATE INDEX IX_Payroll_Id ON dbo.Payroll (Id);
 CREATE TABLE #Scratch (Id int NULL);
+
+-- events-dml-target-prefix: the same boundary, applied to writes. Reading an
+-- unrelated table is somebody else's business; writing to one is ours.
+INSERT INTO dbo.Invoices (Id, Total) VALUES (@id, @total);
+UPDATE dbo.Salaries SET Amount = @amount WHERE Id = @id;
+DELETE FROM dbo.Payroll WHERE Id = @id;
+
+-- events-migration-history-immutable: the history table is app-owned, so the
+-- prefix rule above admits it. It still may only ever be appended to -- wiping
+-- it would make the schema state unknowable, and it is deliberately not one of
+-- the tables a data reset clears.
+DELETE FROM dbo.Events_SchemaMigrations;
+UPDATE dbo.Events_SchemaMigrations SET AppliedAt = @appliedAt WHERE MigrationId = @id;

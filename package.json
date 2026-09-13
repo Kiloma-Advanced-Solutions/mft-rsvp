@@ -10,7 +10,9 @@
     "typecheck": "next typegen && tsc --noEmit",
     "check:tsql": "node scripts/check-tsql-compat.mts",
     "db:check": "node --env-file-if-exists=.env.local scripts/check-target-compatibility.mts",
-    "db:migrate": "node --env-file-if-exists=.env.local lib/data/migrate.mts"
+    "db:migrate": "node --env-file-if-exists=.env.local lib/data/migrate.mts",
+    "db:seed": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local lib/data/seed.mts",
+    "db:reset": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local lib/data/seed.mts --reset"
   },
   "dependencies": {
     "mssql": "^12.7.1",

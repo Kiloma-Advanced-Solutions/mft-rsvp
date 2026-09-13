@@ -1,0 +1,710 @@
+/**
+ * Development fixtures for the SQL database. A CLI, not part of the application.
+ *
+ *   npm run db:seed     # insert the fixtures into an empty application schema
+ *   npm run db:reset    # clear this application's domain data, then re-seed
+ *   npm run db:seed -- --status    # read-only: what is in our tables right now
+ *
+ * It lives under `lib/data/` for the same reason `migrate.mts` does: that
+ * directory is a scan root of `npm run check:tsql`, so every statement written
+ * here is held to the SQL Server 2008 R2 feature floor *and* to the ownership
+ * rules that keep this project's writes inside its own tables.
+ *
+ * The application does not use any of this. `lib/db.ts` is still the in-memory
+ * store that serves every page and route, and nothing imports this module, so
+ * no request -- starting the server, loading the board, viewing an event,
+ * registering, approving -- can reach the code below. A reset happens because
+ * somebody typed the command and supplied the opt-in, or it does not happen.
+ *
+ * THE SHARED DATABASE. This runs against an organizational database full of
+ * tables that are not ours, with an account that holds `db_owner`. Every
+ * safeguard is therefore application-side:
+ *
+ *   - the five tables a reset clears are written out as string constants. There
+ *     is no `LIKE 'Events_%'` sweep, no catalog lookup, and no table name that
+ *     is ever computed -- a dynamic name would also trip this project's own
+ *     `check:tsql` ownership rule, which is the point of having it;
+ *   - `Events_SchemaMigrations` is not one of them, and appears in no statement
+ *     here at all. Wiping it would make the schema state unknowable;
+ *   - nothing here issues DDL. It cannot create, alter or drop anything;
+ *   - reset needs two independent guards, and neither is the connection string.
+ *
+ * Written to the SQL Server 2008 R2 feature floor and statically enforced;
+ * runtime execution has been verified against Azure SQL only.
+ */
+
+import sql from "mssql";
+import type { ConnectionPool, Transaction } from "mssql";
+
+/**
+ * Duplicated from `lib/data/client.ts` rather than imported, because that
+ * module is `server-only` and a bare-Node process cannot resolve it.
+ */
+const CONNECTION_STRING_VAR = "EVENTS_DB_CONNECTION_STRING";
+
+/**
+ * The second of the two guards a reset needs, and the one that has to be
+ * supplied deliberately.
+ *
+ * Presence is not enough: the value must be exactly `yes`. Someone who sets
+ * `EVENTS_DB_ALLOW_RESET=false` is trying to turn this *off*, and a
+ * presence-only check would read that as permission.
+ *
+ * It belongs on the command line, not in `.env.local` -- a value parked in the
+ * env file pre-authorises every future reset and turns the guard into a
+ * one-time setup step. `.env.example` documents it commented out for that
+ * reason.
+ */
+const RESET_OPT_IN_VAR = "EVENTS_DB_ALLOW_RESET";
+const RESET_OPT_IN_VALUE = "yes";
+
+/* -------------------------------------------------------------- the tables */
+
+/**
+ * Everything this tool may touch, and the order a reset must delete in.
+ *
+ * Child before parent, because every foreign key in `migrations/0001` is
+ * `ON DELETE NO ACTION` -- deliberately, so that a forgotten cleanup fails
+ * loudly instead of silently cascading. Registrations, co-hosts and invites all
+ * point at both events and users; events point at users.
+ *
+ * `Events_SchemaMigrations` is absent on purpose and must stay absent.
+ */
+const DOMAIN_TABLES = [
+  "Events_Registrations",
+  "Events_EventCoHosts",
+  "Events_EventInvites",
+  "Events_Events",
+  "Events_Users",
+] as const;
+
+/**
+ * One `DELETE` per table, each naming its table as a literal.
+ *
+ * Written out rather than generated from the list above. A generated
+ * `DELETE FROM dbo.${table}` would read identically to a human and would be
+ * exactly the dynamically-targeted destructive SQL the shared-database rules
+ * forbid -- and `check:tsql` would reject it, because it could no longer see
+ * which table was being emptied.
+ *
+ * The order here is `DOMAIN_TABLES`; the check below proves they agree.
+ */
+const DELETE_STATEMENTS = [
+  `DELETE FROM dbo.Events_Registrations;`,
+  `DELETE FROM dbo.Events_EventCoHosts;`,
+  `DELETE FROM dbo.Events_EventInvites;`,
+  `DELETE FROM dbo.Events_Events;`,
+  `DELETE FROM dbo.Events_Users;`,
+] as const;
+
+const INSERT_USER = `
+INSERT INTO dbo.Events_Users
+    (Id, Name, Email, Title, Role, Initials, Accent)
+VALUES
+    (@id, @name, @email, @title, @role, @initials, @accent);
+`;
+
+const INSERT_EVENT = `
+INSERT INTO dbo.Events_Events
+    (Id, Title, Summary, Description, StartsAt, EndsAt, LocationKind,
+     LocationVenue, LocationAddress, LocationUrl, LocationPlatform,
+     Category, Accent, Capacity, Access, Status, OrganizerId,
+     CreatedAt, UpdatedAt)
+VALUES
+    (@id, @title, @summary, @description, @startsAt, @endsAt, @locationKind,
+     @locationVenue, @locationAddress, @locationUrl, @locationPlatform,
+     @category, @accent, @capacity, @access, @status, @organizerId,
+     @createdAt, @updatedAt);
+`;
+
+const INSERT_REGISTRATION = `
+INSERT INTO dbo.Events_Registrations
+    (Id, EventId, UserId, Status, Message, CreatedAt, UpdatedAt,
+     DecidedBy, DecidedAt)
+VALUES
+    (@id, @eventId, @userId, @status, @message, @createdAt, @updatedAt,
+     @decidedBy, @decidedAt);
+`;
+
+const INSERT_COHOST = `
+INSERT INTO dbo.Events_EventCoHosts (EventId, UserId)
+VALUES (@eventId, @userId);
+`;
+
+const INSERT_INVITE = `
+INSERT INTO dbo.Events_EventInvites (EventId, UserId)
+VALUES (@eventId, @userId);
+`;
+
+/**
+ * Does our schema exist yet? Read-only, and it names only our own tables.
+ *
+ * Asked before anything else so that running this before `db:migrate` produces
+ * a sentence rather than a driver error about an invalid object name.
+ */
+const TABLES_EXIST = `
+SELECT
+    OBJECT_ID(N'dbo.Events_Users', N'U')            AS Users,
+    OBJECT_ID(N'dbo.Events_Events', N'U')           AS Events,
+    OBJECT_ID(N'dbo.Events_Registrations', N'U')    AS Registrations,
+    OBJECT_ID(N'dbo.Events_EventCoHosts', N'U')     AS CoHosts,
+    OBJECT_ID(N'dbo.Events_EventInvites', N'U')     AS Invites;
+`;
+
+/**
+ * What is in our tables. One round trip, and the migration count rides along so
+ * every report can show that the history is still intact.
+ */
+const COUNT_ROWS = `
+SELECT
+    (SELECT COUNT(*) FROM dbo.Events_Users)            AS Users,
+    (SELECT COUNT(*) FROM dbo.Events_Events)           AS Events,
+    (SELECT COUNT(*) FROM dbo.Events_Registrations)    AS Registrations,
+    (SELECT COUNT(*) FROM dbo.Events_EventCoHosts)     AS CoHosts,
+    (SELECT COUNT(*) FROM dbo.Events_EventInvites)     AS Invites,
+    (SELECT COUNT(*) FROM dbo.Events_SchemaMigrations) AS Migrations;
+`;
+
+/* ------------------------------------------------------------------- errors */
+
+/** Something the operator can fix. Reported as a message, never a stack. */
+class SeedError extends Error {
+  readonly exitCode: number;
+
+  /** 2 for configuration or authorisation, 1 for a refusal or a failure. */
+  constructor(message: string, exitCode: 1 | 2) {
+    super(message);
+    this.name = "SeedError";
+    this.exitCode = exitCode;
+  }
+}
+
+/** Builds a masker from the connection string without revealing it. */
+function createRedactor(connectionString: string): (text: string) => string {
+  const secrets = new Set<string>([connectionString]);
+
+  for (const pair of connectionString.split(";")) {
+    const separator = pair.indexOf("=");
+    if (separator === -1) continue;
+
+    const key = pair.slice(0, separator).trim();
+    const value = pair.slice(separator + 1).trim();
+    if (value === "") continue;
+
+    if (/password|pwd|token|secret|key/i.test(key)) secrets.add(value);
+
+    if (/^(server|data source|addr|address|network address)$/i.test(key)) {
+      secrets.add(value);
+      const [host] = value.split(",");
+      if (host !== undefined && host.trim() !== "") secrets.add(host.trim());
+    }
+  }
+
+  const ordered = [...secrets].sort((a, b) => b.length - a.length);
+
+  return (text) => {
+    let safe = text;
+    for (const secret of ordered) safe = safe.split(secret).join("***");
+    return safe;
+  };
+}
+
+/** Whatever the driver threw, reduced to fields that are safe to show. */
+function describeError(error: unknown, redact: (text: string) => string): string {
+  if (!(error instanceof Error)) return redact(String(error));
+
+  const parts = [`${error.name}: ${redact(error.message)}`];
+
+  const code = (error as { code?: unknown }).code;
+  if (typeof code === "string") parts.push(`code=${code}`);
+
+  const original = (error as { originalError?: unknown }).originalError;
+  if (original instanceof Error) parts.push(`cause: ${redact(original.message)}`);
+
+  return parts.join(" | ");
+}
+
+/* ----------------------------------------------------------------- fixtures */
+
+/**
+ * The fixture types, taken from `lib/seed.ts` itself.
+ *
+ * `typeof import(...)` is a type-level query: it is erased entirely, so nothing
+ * here resolves a module at runtime. Deriving the types this way rather than
+ * importing them from `lib/types.ts` keeps the whole of this file's knowledge of
+ * the fixtures flowing through one place.
+ */
+type SeedModule = typeof import("../seed");
+type User = SeedModule["SEED_USERS"][number];
+type EventRecord = ReturnType<SeedModule["createSeedEvents"]>[number];
+type Registration = ReturnType<SeedModule["createSeedRegistrations"]>[number];
+
+/** An `(EventId, UserId)` pair, which is all either junction table holds. */
+type Membership = { eventId: string; userId: string };
+
+type Fixtures = {
+  users: User[];
+  events: EventRecord[];
+  registrations: Registration[];
+  coHosts: Membership[];
+  invites: Membership[];
+};
+
+/**
+ * The application's own fixtures, flattened for SQL.
+ *
+ * `lib/seed.ts` is the single definition of this data and stays that way: there
+ * is no second copy here, so the board a developer sees and the rows in the
+ * database cannot describe different events.
+ *
+ * The import is dynamic and its specifier is computed, which is what lets this
+ * work with no change to `tsconfig.json`. Node needs the real `.ts` extension to
+ * resolve the file; TypeScript refuses a written `.ts` extension unless
+ * `allowImportingTsExtensions` is on. Building the URL at runtime hides the
+ * extension from TypeScript, and the cast hands the types straight back -- so
+ * this is still fully type-checked, not an `any`.
+ *
+ * Note that the fixtures' timestamps are computed relative to now, by design:
+ * `lib/seed.ts` spreads events across past, present and future so the board is
+ * worth looking at whenever it is built. Ids are fixed; timestamps are not, and
+ * a reset deliberately produces a fresh spread -- exactly as the in-memory
+ * `db.reset()` already does.
+ */
+async function loadFixtures(): Promise<Fixtures> {
+  const seed = (await import(
+    new URL("../seed.ts", import.meta.url).href
+  )) as SeedModule;
+
+  const events = seed.createSeedEvents();
+
+  return {
+    users: seed.SEED_USERS,
+    events,
+    registrations: seed.createSeedRegistrations(),
+    // `coHostIds` and `invitedUserIds` are arrays on the event; the schema has
+    // no array type and the floor has no way to split one, so each element
+    // becomes a row. Order is not preserved because nothing depends on it.
+    coHosts: events.flatMap((event) =>
+      event.coHostIds.map((userId) => ({ eventId: event.id, userId })),
+    ),
+    invites: events.flatMap((event) =>
+      event.invitedUserIds.map((userId) => ({ eventId: event.id, userId })),
+    ),
+  };
+}
+
+/* ------------------------------------------------------------------ binding */
+
+/**
+ * An optional field, as SQL sees it.
+ *
+ * The domain model marks absent values by leaving the property off -- see
+ * `parseLocation()` in `lib/eventInput.ts`, which deletes the fields a location
+ * kind does not use, and the registration write path, which clears `message`,
+ * `decidedBy` and `decidedAt` to `undefined` when a withdrawn row is revived.
+ * `undefined` is converted here rather than left to the driver, so what reaches
+ * the column is an explicit SQL NULL and not whichever behaviour `mssql`
+ * happens to have.
+ */
+function orNull<T>(value: T | undefined): T | null {
+  return value ?? null;
+}
+
+/** An ISO timestamp as a bound `datetime2(3)`, or NULL when there is none. */
+function orNullDate(value: string | undefined): Date | null {
+  return value === undefined ? null : new Date(value);
+}
+
+type Counts = {
+  Users: number;
+  Events: number;
+  Registrations: number;
+  CoHosts: number;
+  Invites: number;
+  Migrations: number;
+};
+
+/** The five domain tables, in the order a report should list them. */
+const COUNT_KEYS = [
+  "Users",
+  "Events",
+  "Registrations",
+  "CoHosts",
+  "Invites",
+] as const;
+
+async function readCounts(runner: ConnectionPool | Transaction): Promise<Counts> {
+  const result = await runner.request().query<Counts>(COUNT_ROWS);
+  return result.recordset[0];
+}
+
+/**
+ * Writes every fixture row. The one and only insert path.
+ *
+ * `db:seed` and `db:reset` both come through here, so a reset cannot produce
+ * different data from a fresh seed -- which is the failure a second
+ * implementation would eventually cause.
+ *
+ * Users first, then events, then everything that points at both. That order is
+ * the foreign keys read forwards.
+ *
+ * One statement per row: 48 round trips inside a single transaction, which is
+ * about a second against Azure SQL. A multi-row `VALUES` constructor is at the
+ * floor and would be fewer trips, but it makes the parameter names positional
+ * and buys nothing at this size.
+ */
+async function insertFixtures(
+  transaction: Transaction,
+  fixtures: Fixtures,
+): Promise<void> {
+  for (const user of fixtures.users) {
+    await transaction
+      .request()
+      .input("id", sql.UniqueIdentifier, user.id)
+      .input("name", sql.NVarChar(200), user.name)
+      .input("email", sql.NVarChar(320), user.email)
+      .input("title", sql.NVarChar(200), user.title)
+      .input("role", sql.NVarChar(16), user.role)
+      .input("initials", sql.NVarChar(8), user.initials)
+      .input("accent", sql.NVarChar(16), user.accent)
+      .query(INSERT_USER);
+  }
+
+  for (const event of fixtures.events) {
+    await transaction
+      .request()
+      .input("id", sql.UniqueIdentifier, event.id)
+      .input("title", sql.NVarChar(sql.MAX), event.title)
+      .input("summary", sql.NVarChar(sql.MAX), event.summary)
+      .input("description", sql.NVarChar(sql.MAX), event.description)
+      .input("startsAt", sql.DateTime2(3), new Date(event.startsAt))
+      .input("endsAt", sql.DateTime2(3), new Date(event.endsAt))
+      .input("locationKind", sql.NVarChar(16), event.location.kind)
+      .input("locationVenue", sql.NVarChar(sql.MAX), orNull(event.location.venue))
+      .input("locationAddress", sql.NVarChar(sql.MAX), orNull(event.location.address))
+      .input("locationUrl", sql.NVarChar(sql.MAX), orNull(event.location.url))
+      .input("locationPlatform", sql.NVarChar(sql.MAX), orNull(event.location.platform))
+      .input("category", sql.NVarChar(16), event.category)
+      .input("accent", sql.NVarChar(16), event.accent)
+      // Already `number | null` in the domain: null *is* "unlimited", not a
+      // missing value, so it is passed through rather than defaulted.
+      .input("capacity", sql.Int, event.capacity)
+      .input("access", sql.NVarChar(16), event.access)
+      .input("status", sql.NVarChar(16), event.status)
+      .input("organizerId", sql.UniqueIdentifier, event.organizerId)
+      .input("createdAt", sql.DateTime2(3), new Date(event.createdAt))
+      .input("updatedAt", sql.DateTime2(3), new Date(event.updatedAt))
+      .query(INSERT_EVENT);
+  }
+
+  for (const registration of fixtures.registrations) {
+    await transaction
+      .request()
+      .input("id", sql.UniqueIdentifier, registration.id)
+      .input("eventId", sql.UniqueIdentifier, registration.eventId)
+      .input("userId", sql.UniqueIdentifier, registration.userId)
+      .input("status", sql.NVarChar(16), registration.status)
+      .input("message", sql.NVarChar(sql.MAX), orNull(registration.message))
+      .input("createdAt", sql.DateTime2(3), new Date(registration.createdAt))
+      .input("updatedAt", sql.DateTime2(3), new Date(registration.updatedAt))
+      .input("decidedBy", sql.UniqueIdentifier, orNull(registration.decidedBy))
+      .input("decidedAt", sql.DateTime2(3), orNullDate(registration.decidedAt))
+      .query(INSERT_REGISTRATION);
+  }
+
+  for (const coHost of fixtures.coHosts) {
+    await transaction
+      .request()
+      .input("eventId", sql.UniqueIdentifier, coHost.eventId)
+      .input("userId", sql.UniqueIdentifier, coHost.userId)
+      .query(INSERT_COHOST);
+  }
+
+  for (const invite of fixtures.invites) {
+    await transaction
+      .request()
+      .input("eventId", sql.UniqueIdentifier, invite.eventId)
+      .input("userId", sql.UniqueIdentifier, invite.userId)
+      .query(INSERT_INVITE);
+  }
+}
+
+/* -------------------------------------------------------------- transaction */
+
+/**
+ * Runs `work` in a transaction, all of it or none of it.
+ *
+ * The same defensive shape as `migrate.mts`: the server can abort a transaction
+ * on its own, after which rolling back again throws, and the `rollback` event is
+ * how we know that happened.
+ */
+async function inTransaction<T>(
+  pool: ConnectionPool,
+  work: (transaction: Transaction) => Promise<T>,
+): Promise<T> {
+  const transaction = new sql.Transaction(pool);
+
+  let abortedByServer = false;
+  transaction.on("rollback", () => {
+    abortedByServer = true;
+  });
+
+  await transaction.begin();
+
+  try {
+    const result = await work(transaction);
+    await transaction.commit();
+    return result;
+  } catch (error) {
+    if (!abortedByServer) await transaction.rollback().catch(() => undefined);
+    throw error;
+  }
+}
+
+/* ------------------------------------------------------------------- guards */
+
+/**
+ * Neither command may run against a production database. Seeding one with
+ * demonstration data is as unwelcome as clearing it.
+ */
+function refuseInProduction(command: string): void {
+  if (process.env.NODE_ENV === "production") {
+    throw new SeedError(
+      `${command} refuses to run with NODE_ENV=production.\n` +
+        `  These fixtures are development data and this tool has no business ` +
+        `pointing at a production database.`,
+      2,
+    );
+  }
+}
+
+/**
+ * The second guard, required only by reset because only reset destroys
+ * anything. Being able to connect is not permission to empty the tables.
+ *
+ * The value is never echoed back -- saying what was found invites pasting a
+ * connection-adjacent value into a terminal, and the operator knows what they
+ * set.
+ */
+function requireResetOptIn(): void {
+  const value = process.env[RESET_OPT_IN_VAR];
+  if (value === undefined || value.trim() !== RESET_OPT_IN_VALUE) {
+    throw new SeedError(
+      `db:reset needs ${RESET_OPT_IN_VAR}=${RESET_OPT_IN_VALUE}.\n\n` +
+        `  Reset deletes every row this application owns. Being able to reach ` +
+        `the database\n  is not authorisation to empty it, so the intent has to ` +
+        `be stated:\n\n` +
+        `      ${RESET_OPT_IN_VAR}=${RESET_OPT_IN_VALUE} npm run db:reset\n\n` +
+        `  Supply it on the command line. A value left in .env.local would ` +
+        `pre-authorise\n  every future reset, which is the opposite of what ` +
+        `this guard is for.`,
+      2,
+    );
+  }
+}
+
+/** Our schema has to exist before either command has anything to do. */
+async function requireSchema(pool: ConnectionPool): Promise<void> {
+  const result = await pool
+    .request()
+    .query<Record<string, number | null>>(TABLES_EXIST);
+  const row = result.recordset[0];
+
+  const missing = Object.entries(row)
+    .filter(([, objectId]) => objectId == null)
+    .map(([name]) => name);
+
+  if (missing.length > 0) {
+    throw new SeedError(
+      `The application schema is not present (missing: ${missing.join(", ")}).\n` +
+        `  Run \`npm run db:migrate\` first.`,
+      2,
+    );
+  }
+}
+
+/* ----------------------------------------------------------------- commands */
+
+function reportCounts(counts: Counts): void {
+  for (const key of COUNT_KEYS) {
+    console.log(`    ${key.padEnd(15)} ${String(counts[key]).padStart(4)}`);
+  }
+  console.log(
+    `    ${"(migrations)".padEnd(15)} ${String(counts.Migrations).padStart(4)}` +
+      `   -- history, never touched by seed or reset`,
+  );
+}
+
+async function status(pool: ConnectionPool): Promise<number> {
+  await requireSchema(pool);
+  console.log(`db:seed --status\n\n  rows in this application's tables:`);
+  reportCounts(await readCounts(pool));
+  console.log("");
+  return 0;
+}
+
+/**
+ * Insert the fixtures, but only into an empty schema.
+ *
+ * The emptiness check runs inside the transaction that would do the inserting,
+ * so there is no window between deciding the tables are empty and filling them.
+ * A refusal is thrown from inside, which rolls back a transaction that has
+ * written nothing -- seed never deletes or overwrites, whatever it finds.
+ */
+async function seed(pool: ConnectionPool, fixtures: Fixtures): Promise<number> {
+  await requireSchema(pool);
+  console.log(`db:seed\n`);
+
+  await inTransaction(pool, async (transaction) => {
+    const counts = await readCounts(transaction);
+    const occupied = COUNT_KEYS.filter((key) => counts[key] > 0);
+
+    if (occupied.length > 0) {
+      throw new SeedError(
+        `db:seed refuses: this application's tables already hold data.\n\n` +
+          occupied
+            .map((key) => `      ${key.padEnd(15)} ${counts[key]} row(s)`)
+            .join("\n") +
+          `\n\n  Nothing was changed and nothing was deleted. Seeding is for an ` +
+          `empty schema.\n  To replace what is there:\n\n` +
+          `      ${RESET_OPT_IN_VAR}=${RESET_OPT_IN_VALUE} npm run db:reset\n`,
+        1,
+      );
+    }
+
+    await insertFixtures(transaction, fixtures);
+  });
+
+  console.log(`  inserted the fixtures. rows now:`);
+  reportCounts(await readCounts(pool));
+  console.log("");
+  return 0;
+}
+
+/**
+ * Clear this application's domain data and put the fixtures back.
+ *
+ * One transaction around both halves: a failure anywhere leaves the database
+ * exactly as it was, never emptied-but-not-refilled.
+ */
+async function reset(pool: ConnectionPool, fixtures: Fixtures): Promise<number> {
+  await requireSchema(pool);
+  console.log(`db:reset\n`);
+
+  const before = await readCounts(pool);
+  console.log(`  rows before:`);
+  reportCounts(before);
+
+  // The allowlist, printed so the output says exactly what is about to be
+  // cleared -- and so a reader can check it against the statements that run.
+  console.log(
+    `\n  clearing (child to parent): ${DOMAIN_TABLES.join(" -> ")}\n` +
+      `  not cleared: Events_SchemaMigrations`,
+  );
+
+  await inTransaction(pool, async (transaction) => {
+    for (const statement of DELETE_STATEMENTS) {
+      await transaction.request().query(statement);
+    }
+    await insertFixtures(transaction, fixtures);
+  });
+
+  console.log(`\n  rows after:`);
+  const after = await readCounts(pool);
+  reportCounts(after);
+
+  if (after.Migrations !== before.Migrations) {
+    // Nothing here can do this -- no statement in this file names the history
+    // table. Checked anyway, because the one invariant worth being loud about
+    // is the one that makes the schema state knowable.
+    throw new SeedError(
+      `Migration history changed during reset (${before.Migrations} -> ` +
+        `${after.Migrations}). This should be impossible; do not trust the ` +
+        `schema state until it is understood.`,
+      1,
+    );
+  }
+
+  console.log("");
+  return 0;
+}
+
+/* --------------------------------------------------------------------- main */
+
+function usage(): number {
+  console.error(
+    `usage: node lib/data/seed.mts [--reset | --status]\n\n` +
+      `  (no flag)    insert the fixtures into an empty application schema\n` +
+      `  --reset      clear this application's domain data, then re-seed\n` +
+      `  --status     report the row counts; changes nothing\n`,
+  );
+  return 2;
+}
+
+function readConnectionString(): string {
+  const value = process.env[CONNECTION_STRING_VAR];
+  if (value === undefined || value.trim() === "") {
+    throw new SeedError(
+      `${CONNECTION_STRING_VAR} is not set.\n` +
+        `  Copy .env.example to .env.local and set it to the connection string ` +
+        `for the target you want to work against.`,
+      2,
+    );
+  }
+  return value;
+}
+
+async function main(): Promise<number> {
+  const argument = process.argv[2];
+  if (process.argv.length > 3) return usage();
+  if (
+    argument !== undefined &&
+    argument !== "--reset" &&
+    argument !== "--status"
+  ) {
+    return usage();
+  }
+
+  // Both guards are decided before a connection is opened, so a refusal never
+  // reaches the database at all.
+  if (argument !== "--status") {
+    refuseInProduction(argument === "--reset" ? "db:reset" : "db:seed");
+  }
+  if (argument === "--reset") requireResetOptIn();
+
+  const connectionString = readConnectionString();
+  const redact = createRedactor(connectionString);
+  const pool = new sql.ConnectionPool(connectionString);
+
+  try {
+    await pool.connect();
+
+    if (argument === "--status") return await status(pool);
+
+    const fixtures = await loadFixtures();
+    return argument === "--reset"
+      ? await reset(pool, fixtures)
+      : await seed(pool, fixtures);
+  } catch (error) {
+    if (error instanceof SeedError) throw error;
+    console.error(`\n  FAILED -- ${describeError(error, redact)}`);
+    console.error(`  Rolled back; the database is as it was.\n`);
+    return 1;
+  } finally {
+    await pool.close().catch(() => undefined);
+  }
+}
+
+let exitCode: number;
+try {
+  exitCode = await main();
+} catch (error) {
+  if (error instanceof SeedError) {
+    console.error(`\n${error.message}`);
+    exitCode = error.exitCode;
+  } else {
+    throw error;
+  }
+}
+
+process.exit(exitCode);

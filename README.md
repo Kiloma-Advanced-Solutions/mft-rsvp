@@ -35,6 +35,8 @@ is yours, and `/styleguide` renders every component in the kit with real data.
 | `npm run check:tsql` | Hold the project's T-SQL to the SQL Server 2008 R2 feature floor |
 | `npm run db:check` | Read-only preflight against the configured SQL Server target |
 | `npm run db:migrate` | Apply pending schema migrations (`-- --dry-run`, `-- --status`) |
+| `npm run db:seed` | Insert the development fixtures into an empty SQL schema (`-- --status`) |
+| `npm run db:reset` | Clear this application's SQL data and re-seed it |
 
 ## How it fits together
 
@@ -99,8 +101,24 @@ npm run db:migrate               # apply pending migrations
 
 Migrations are the numbered files in `migrations/`, applied once each, in order,
 one transaction apiece, and recorded in `dbo.Events_SchemaMigrations`. Every
-table the application creates is prefixed `Events_`, which
-`npm run check:tsql` enforces — the development database is a shared
-organizational one, so read
+table the application creates is prefixed `Events_`, and so is every table it
+writes to, which `npm run check:tsql` enforces — the development database is a
+shared organizational one, so read
 [docs/sql-server-2008r2-compatibility.md](docs/sql-server-2008r2-compatibility.md)
 before writing any SQL.
+
+Once the schema exists you can put the same fixtures the in-memory store uses
+into it:
+
+```bash
+npm run db:seed                                  # only into an empty schema
+npm run db:seed -- --status                      # row counts; changes nothing
+EVENTS_DB_ALLOW_RESET=yes npm run db:reset       # clear our data, then re-seed
+```
+
+`db:seed` never deletes: if the tables already hold rows it says so and stops.
+`db:reset` is the one that deletes, and it needs two separate conditions —
+`NODE_ENV` must not be `production`, **and** `EVENTS_DB_ALLOW_RESET=yes` must be
+supplied on the command line. It clears five hard-coded tables and no others;
+migration history is never touched. Both run in a single transaction, so a
+failure leaves the database exactly as it was.
