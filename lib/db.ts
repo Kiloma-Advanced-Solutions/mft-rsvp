@@ -1,26 +1,53 @@
 /**
- * In-memory data store. SERVER ONLY.
+ * The application's data store. SERVER ONLY.
  *
- * There is no database in this project on purpose — the exercise is about
- * product logic and UI, not about wiring Postgres. The store stands in for one:
+ * This is the persistence boundary and the only thing above it that anything
+ * imports. Product code -- pages, route handlers, `lib/events.ts`,
+ * `lib/session.ts` -- talks to `db` and knows nothing about SQL Server, the
+ * driver, or how an event is spread over three tables.
  *
- *   - every method is async, so swapping in a real database later is a change
- *     of implementation and not a change of shape;
- *   - reads return deep copies, so a caller mutating what it got back cannot
- *     corrupt the store — a class of bug that is very confusing in a workshop;
- *   - state lives on `globalThis` so it survives hot reloads in `next dev`.
+ *   Server Component / Route Handler -> lib/db.ts -> lib/data/* -> mssql -> SQL Server
  *
- * Data resets whenever the dev server restarts. `POST /api/dev/reset` puts the
- * fixtures back without a restart.
+ * It holds no T-SQL of its own. Every statement lives under `lib/data/`, which
+ * is a scan root of `npm run check:tsql` -- so the SQL this application writes
+ * is held to the SQL Server 2008 R2 feature floor and to the rule that it may
+ * only ever touch `Events_*` tables. SQL written here would be unguarded.
+ *
+ * What this file still owns is the part that is not persistence: **the
+ * application generates every id and every timestamp.** Nothing is defaulted by
+ * the database and no server clock is read, so a record's identity and its
+ * stamps are decided in one place that is easy to find.
+ *
+ * The contract is unchanged from the in-memory store this replaced. Every
+ * method is async; a missing row is `null` and a failed delete is `false`; ids
+ * and `createdAt` are immutable; `updatedAt` is refreshed by the store and
+ * never by the caller. Reads return fresh objects, so a caller mutating what it
+ * got back cannot corrupt anything -- the deep-copy promise the old store made
+ * with `structuredClone`, kept for free now that every read builds new objects.
+ *
+ * One rule is easy to break and worth repeating here, because it is a product
+ * bug rather than a type error: in a patch, a key that is **present with the
+ * value `undefined`** clears the field, and a key that is **absent** leaves it
+ * alone. See `assignPatch` in `lib/data/registrations.ts`.
  *
  * Never import this from a Client Component. Client code talks to API routes.
  */
 
 import {
-  createSeedEvents,
-  createSeedRegistrations,
-  SEED_USERS,
-} from "./seed";
+  createEvent,
+  getEvent,
+  listEvents,
+  removeEvent,
+  updateEvent,
+} from "./data/events";
+import {
+  createRegistration,
+  findRegistration,
+  listRegistrations,
+  removeRegistration,
+  updateRegistration,
+} from "./data/registrations";
+import { getUser, listUsers } from "./data/users";
 import type { EventRecord, Registration, User } from "./types";
 
 export type EventInput = Omit<EventRecord, "id" | "createdAt" | "updatedAt">;
@@ -32,33 +59,6 @@ export type RegistrationInput = Omit<
 >;
 export type RegistrationPatch = Partial<Omit<Registration, "id" | "createdAt">>;
 
-type Store = {
-  users: User[];
-  events: EventRecord[];
-  registrations: Registration[];
-};
-
-function createStore(): Store {
-  return {
-    users: structuredClone(SEED_USERS),
-    events: createSeedEvents(),
-    registrations: createSeedRegistrations(),
-  };
-}
-
-/**
- * `next dev` re-evaluates modules on every edit. Without this, every save would
- * wipe whatever you created while clicking through the app.
- */
-const globalForStore = globalThis as typeof globalThis & {
-  __eventsBoardStore?: Store;
-};
-
-function store(): Store {
-  globalForStore.__eventsBoardStore ??= createStore();
-  return globalForStore.__eventsBoardStore;
-}
-
 /**
  * A new persistent entity id.
  *
@@ -66,65 +66,59 @@ function store(): Store {
  * read anything from the shape of an id, so there is no prefix naming the kind
  * of record it belongs to and nothing is truncated to keep it readable. The
  * fixtures follow the same rule with fixed literals -- see `lib/seed.ts`.
+ *
+ * Generated here rather than by the database. The columns carry no
+ * `DEFAULT NEWID()` precisely so that a write which forgot to supply one fails
+ * instead of quietly storing a row under an id the application never learns.
  */
 function newId(): string {
   return crypto.randomUUID();
 }
 
+/** The application supplies every timestamp; no statement reads a server clock. */
 function now(): string {
   return new Date().toISOString();
-}
-
-/** Deep copy on the way out so callers can never hold a live reference. */
-function copy<T>(value: T): T {
-  return structuredClone(value);
 }
 
 export const db = {
   users: {
     async list(): Promise<User[]> {
-      return copy(store().users);
+      return listUsers();
     },
 
     async get(id: string): Promise<User | null> {
-      return copy(store().users.find((user) => user.id === id) ?? null);
+      return getUser(id);
     },
   },
 
   events: {
     async list(): Promise<EventRecord[]> {
-      return copy(store().events);
+      return listEvents();
     },
 
     async get(id: string): Promise<EventRecord | null> {
-      return copy(store().events.find((event) => event.id === id) ?? null);
+      return getEvent(id);
     },
 
     async create(input: EventInput): Promise<EventRecord> {
       const timestamp = now();
       const record: EventRecord = {
-        ...copy(input),
+        ...input,
         id: newId(),
         createdAt: timestamp,
         updatedAt: timestamp,
       };
-      store().events.push(record);
-      return copy(record);
+
+      await createEvent(record);
+
+      // The record as written. `datetime2(3)` is exactly millisecond precision,
+      // so re-reading it would return these same values at the cost of a round
+      // trip.
+      return record;
     },
 
     async update(id: string, patch: EventPatch): Promise<EventRecord | null> {
-      const events = store().events;
-      const index = events.findIndex((event) => event.id === id);
-      if (index === -1) return null;
-
-      events[index] = {
-        ...events[index],
-        ...copy(patch),
-        id: events[index].id,
-        createdAt: events[index].createdAt,
-        updatedAt: now(),
-      };
-      return copy(events[index]);
+      return updateEvent(id, patch, now());
     },
 
     /**
@@ -132,15 +126,7 @@ export const db = {
      * registrations would otherwise show up in "my events" forever.
      */
     async remove(id: string): Promise<boolean> {
-      const state = store();
-      const index = state.events.findIndex((event) => event.id === id);
-      if (index === -1) return false;
-
-      state.events.splice(index, 1);
-      state.registrations = state.registrations.filter(
-        (registration) => registration.eventId !== id,
-      );
-      return true;
+      return removeEvent(id);
     },
   },
 
@@ -150,66 +136,37 @@ export const db = {
       eventId?: string;
       userId?: string;
     }): Promise<Registration[]> {
-      let rows = store().registrations;
-      if (filter?.eventId) {
-        rows = rows.filter((row) => row.eventId === filter.eventId);
-      }
-      if (filter?.userId) {
-        rows = rows.filter((row) => row.userId === filter.userId);
-      }
-      return copy(rows);
+      return listRegistrations(filter);
     },
 
     /** A person has at most one registration per event. */
     async find(eventId: string, userId: string): Promise<Registration | null> {
-      const match = store().registrations.find(
-        (row) => row.eventId === eventId && row.userId === userId,
-      );
-      return copy(match ?? null);
+      return findRegistration(eventId, userId);
     },
 
     async create(input: RegistrationInput): Promise<Registration> {
       const timestamp = now();
       const record: Registration = {
-        ...copy(input),
+        ...input,
         id: newId(),
         createdAt: timestamp,
         updatedAt: timestamp,
       };
-      store().registrations.push(record);
-      return copy(record);
+
+      await createRegistration(record);
+
+      return record;
     },
 
     async update(
       id: string,
       patch: RegistrationPatch,
     ): Promise<Registration | null> {
-      const rows = store().registrations;
-      const index = rows.findIndex((row) => row.id === id);
-      if (index === -1) return null;
-
-      rows[index] = {
-        ...rows[index],
-        ...copy(patch),
-        id: rows[index].id,
-        createdAt: rows[index].createdAt,
-        updatedAt: now(),
-      };
-      return copy(rows[index]);
+      return updateRegistration(id, patch, now());
     },
 
     async remove(id: string): Promise<boolean> {
-      const rows = store().registrations;
-      const index = rows.findIndex((row) => row.id === id);
-      if (index === -1) return false;
-
-      rows.splice(index, 1);
-      return true;
+      return removeRegistration(id);
     },
-  },
-
-  /** Throw away all changes and rebuild the fixtures. */
-  async reset(): Promise<void> {
-    globalForStore.__eventsBoardStore = createStore();
   },
 };
