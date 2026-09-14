@@ -19,7 +19,11 @@
  * Nothing in this file logs the connection string, and the "not configured"
  * error names the variable without quoting its value.
  *
- * `lib/db.ts` does not use this yet -- the persistence swap is a later step.
+ * The database administration CLIs -- `migrate.mts`, `seed.mts` -- do not come
+ * through here. They cannot: `server-only` is a specifier that only Next's
+ * compiler resolves, and a bare-Node script has no way to import it. They open
+ * their own short-lived pool and close it on the way out, which is what a
+ * one-shot process wants anyway.
  */
 
 import "server-only";
@@ -49,8 +53,7 @@ function readConnectionString(): string {
 
 /**
  * `next dev` re-evaluates modules on every edit, so a module-scoped pool would
- * leak a fresh one on every save -- the same reason the in-memory store in
- * `lib/db.ts` lives here too.
+ * leak a fresh one on every save. Hence `globalThis`, which survives that.
  *
  * The **promise** is cached rather than the pool, so callers that arrive while
  * the first connection is still opening share that attempt instead of racing to

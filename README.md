@@ -17,6 +17,10 @@ product is not.
 npm install
 ```
 
+The app reads and writes a real database, so it needs a connection string and a
+schema before it will serve a page — [The database](#the-database) has that
+sequence. Then:
+
 ```bash
 npm run dev
 ```
@@ -46,7 +50,6 @@ app/
   events/               The board and the event detail screen  ← your work
   styleguide/           Every component, rendered
   api/session/          Persona switching, and the API house style to copy
-  api/dev/reset/        Reload the fixtures without restarting
   styles/tokens.css     Design tokens, light and dark
 components/
   ui/                   Generic primitives
@@ -54,7 +57,8 @@ components/
   layout/               App shell, nav, persona switcher
 lib/
   types.ts              The domain model
-  db.ts                 In-memory store (server only)
+  db.ts                 The persistence boundary (server only)
+  data/                 SQL: the statements, the pool, the CLIs
   seed.ts               12 events, 5 people, every state covered
   session.ts            Who the current user is
   api.ts                Route handler and fetch helpers
@@ -69,56 +73,80 @@ server reads on every request. Switching persona is how you verify the
 visibility rules — an invite-only event should disappear entirely for someone
 who was not invited.
 
-## There is no database
+## The database
 
-Data lives in memory and resets when the dev server restarts. `lib/db.ts` is
-async and shaped like a real repository, so replacing it later would be a change
-of implementation rather than a change of every call site.
+Data lives in SQL Server and survives a dev-server restart. `lib/db.ts` is the
+persistence boundary and the only thing product code imports: pages, route
+handlers and `lib/events.ts` talk to `db` and know nothing about the driver.
 
-To reload the fixtures without restarting:
-
-```bash
-curl -X POST http://localhost:3000/api/dev/reset
+```
+Server Component / Route Handler → lib/db.ts → lib/data/* → mssql → SQL Server
 ```
 
-### …but the schema is being built alongside it
+There is one configuration variable, server-only:
+`EVENTS_DB_CONNECTION_STRING`. Copy `.env.example` to `.env.local` and fill it
+in; `.env.local` is git-ignored and is the only place a real connection string
+ever lives.
 
-M6 is replacing that in slices. The SQL tables now exist and can be created from
-scratch, while `lib/db.ts` is still the in-memory store the whole application
-reads and writes — so nothing above has changed, and restarting the dev server
-still resets the data.
-
-Configuration is one server-only variable, `EVENTS_DB_CONNECTION_STRING`. Copy
-`.env.example` to `.env.local` and fill it in; `.env.local` is git-ignored and is
-the only place a real connection string ever lives.
+### From a fresh checkout
 
 ```bash
+npm install
+cp .env.example .env.local       # then set EVENTS_DB_CONNECTION_STRING
 npm run db:check                 # read-only: can we reach the target at all?
+npm run db:migrate               # create this application's tables
+npm run db:seed                  # 12 events, 5 people — into an empty schema
+npm run dev
+```
+
+### Looking without touching
+
+Every one of these is read-only:
+
+```bash
+npm run db:check                 # what the target says about itself
 npm run db:migrate -- --dry-run  # what would run, without connecting
 npm run db:migrate -- --status   # what is applied, what is pending
-npm run db:migrate               # apply pending migrations
+npm run db:seed -- --status      # row counts in our tables
 ```
 
 Migrations are the numbered files in `migrations/`, applied once each, in order,
-one transaction apiece, and recorded in `dbo.Events_SchemaMigrations`. Every
-table the application creates is prefixed `Events_`, and so is every table it
-writes to, which `npm run check:tsql` enforces — the development database is a
-shared organizational one, so read
-[docs/sql-server-2008r2-compatibility.md](docs/sql-server-2008r2-compatibility.md)
-before writing any SQL.
+one transaction apiece, and recorded in `dbo.Events_SchemaMigrations`.
 
-Once the schema exists you can put the same fixtures the in-memory store uses
-into it:
+### Putting the fixtures back
 
 ```bash
-npm run db:seed                                  # only into an empty schema
-npm run db:seed -- --status                      # row counts; changes nothing
-EVENTS_DB_ALLOW_RESET=yes npm run db:reset       # clear our data, then re-seed
+EVENTS_DB_ALLOW_RESET=yes npm run db:reset
 ```
 
 `db:seed` never deletes: if the tables already hold rows it says so and stops.
 `db:reset` is the one that deletes, and it needs two separate conditions —
 `NODE_ENV` must not be `production`, **and** `EVENTS_DB_ALLOW_RESET=yes` must be
-supplied on the command line. It clears five hard-coded tables and no others;
-migration history is never touched. Both run in a single transaction, so a
-failure leaves the database exactly as it was.
+supplied on the command line. Both run in a single transaction, so a failure
+leaves the database exactly as it was.
+
+Reset is a command, and only a command. There is no HTTP endpoint that resets
+anything: the opt-in above is stated at the moment of the reset, which is
+precisely what a web request cannot do.
+
+### It is a shared database
+
+The development database is an organizational one, full of tables that are not
+ours, reached with an account that has far more permission than this project
+needs. Every safeguard is therefore on our side:
+
+- every object the application creates is prefixed `Events_`, and so is every
+  table it writes to — `npm run check:tsql` enforces both;
+- the migration runner creates and alters only those objects. It never creates,
+  drops or alters a database;
+- `db:reset` deletes from five tables named as constants in the source. There is
+  no `LIKE 'Events_%'` sweep and no table name that is ever computed;
+- `Events_SchemaMigrations` appears in no reset statement, so migration history
+  survives a reset;
+- unrelated tables are never read or written by any of this.
+
+Read
+[docs/sql-server-2008r2-compatibility.md](docs/sql-server-2008r2-compatibility.md)
+before writing any SQL. The short version: application SQL is written to the
+SQL Server 2008 R2 feature floor and statically enforced; runtime verification
+has only been performed against Azure SQL DEV.

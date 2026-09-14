@@ -1,10 +1,19 @@
 /**
- * Seed data for the in-memory store.
+ * The development fixtures, and the single definition of them.
  *
- * SERVER ONLY. Timestamps are computed relative to "now" the first time the
- * store is created, so the board always has a sensible past/present/future
- * spread no matter when you run the workshop. Never import this from a Client
- * Component -- go through an API route.
+ * The records are rows in SQL Server: `npm run db:seed` and `npm run db:reset`
+ * put them there, via `lib/data/seed.mts`, which is the only thing that reads
+ * the records themselves. There is no second copy of the data, so the board a
+ * developer sees and the rows in the database cannot describe different events.
+ *
+ * The application reads the fixed ids and the persona order from here --
+ * `lib/session.ts` and `/styleguide` both do -- but never the records. Event and
+ * registration data comes from the database, through `lib/db.ts`.
+ *
+ * SERVER ONLY. Timestamps are computed relative to "now" each time the fixtures
+ * are built, so the board always has a sensible past/present/future spread no
+ * matter when you run the workshop. Never import this from a Client Component --
+ * go through an API route.
  *
  * The spread is deliberate. Between them these fixtures cover every access
  * mode, every event status, a full event, a past event, a draft, a cancellation
@@ -37,8 +46,8 @@ function daysAgo(days: number): string {
  * They are constants and not `crypto.randomUUID()` calls on purpose: the
  * persona cookie holds a user id, `/styleguide` needs particular events, and
  * `DEFAULT_USER_ID` has to keep resolving -- all of which break if the ids move
- * every time the fixtures are rebuilt. Rebuilding the store, or resetting it
- * through `/api/dev/reset`, therefore always produces the same ids.
+ * every time the fixtures are rebuilt. Seeding the database, and resetting it
+ * with `npm run db:reset`, therefore always produce the same ids.
  *
  * The values are ordinary random v4 UUIDs with no structure to read: nothing in
  * the app may infer anything from the shape of an id, so the fixtures do not

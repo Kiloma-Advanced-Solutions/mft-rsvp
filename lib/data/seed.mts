@@ -10,11 +10,16 @@
  * here is held to the SQL Server 2008 R2 feature floor *and* to the ownership
  * rules that keep this project's writes inside its own tables.
  *
- * The application does not use any of this. `lib/db.ts` is still the in-memory
- * store that serves every page and route, and nothing imports this module, so
- * no request -- starting the server, loading the board, viewing an event,
- * registering, approving -- can reach the code below. A reset happens because
- * somebody typed the command and supplied the opt-in, or it does not happen.
+ * The application does not use any of this. It reads and writes SQL through
+ * `lib/db.ts`, which has no reset and is not meant to grow one -- product
+ * persistence and database administration are different jobs. Nothing in `app/`,
+ * `components/` or `lib/*.ts` imports this module, which `npm run lint` now
+ * enforces (see `eslint.config.mjs`), so no request -- starting the server,
+ * loading the board, viewing an event, registering, approving -- can reach the
+ * code below. There is no HTTP route that resets anything either; the opt-in
+ * below is stated at the moment of the reset, which is exactly what a web
+ * request cannot do. A reset happens because somebody typed the command and
+ * supplied the opt-in, or it does not happen.
  *
  * THE SHARED DATABASE. This runs against an organizational database full of
  * tables that are not ours, with an account that holds `db_owner`. Every
@@ -30,7 +35,7 @@
  *   - reset needs two independent guards, and neither is the connection string.
  *
  * Written to the SQL Server 2008 R2 feature floor and statically enforced;
- * runtime execution has been verified against Azure SQL only.
+ * runtime execution has been verified against Azure SQL DEV only.
  */
 
 import sql from "mssql";
@@ -266,9 +271,9 @@ type Fixtures = {
  *
  * Note that the fixtures' timestamps are computed relative to now, by design:
  * `lib/seed.ts` spreads events across past, present and future so the board is
- * worth looking at whenever it is built. Ids are fixed; timestamps are not, and
- * a reset deliberately produces a fresh spread -- exactly as the in-memory
- * `db.reset()` already does.
+ * worth looking at whenever it is built. Ids are fixed; timestamps are not, so
+ * a reset deliberately produces a fresh spread rather than restoring the
+ * timestamps a previous seed happened to write.
  */
 async function loadFixtures(): Promise<Fixtures> {
   const seed = (await import(

@@ -5,7 +5,7 @@
 **Application-authored schema and T-SQL are written to the SQL Server 2008 R2
 feature floor (product version 10.50, compatibility level 100), and that floor
 is statically enforced by `npm run check:tsql`. Runtime verification has only
-been performed against Azure SQL.**
+been performed against Azure SQL DEV.**
 
 That is a claim about what we *write*. It is deliberately not a claim about what
 we have *run*. Three tiers, and they must never be conflated:
@@ -31,7 +31,7 @@ Do not write, in code comments, PR descriptions, or documentation:
 Write instead:
 
 > written to the SQL Server 2008 R2 feature floor and statically enforced;
-> runtime verification has only been performed against Azure SQL.
+> runtime verification has only been performed against Azure SQL DEV.
 
 Sections **"The contract"** and **"Rejected constructs"** are a **project
 contract** — they constrain what may be merged, and the guard enforces them.

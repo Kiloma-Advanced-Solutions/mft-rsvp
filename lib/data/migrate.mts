@@ -34,7 +34,7 @@
  *   - it never inserts application data. Fixtures are a later slice.
  *
  * Written to the SQL Server 2008 R2 feature floor and statically enforced;
- * runtime execution has been verified against Azure SQL only. See
+ * runtime execution has been verified against Azure SQL DEV only. See
  * `docs/sql-server-2008r2-compatibility.md`.
  */
 
