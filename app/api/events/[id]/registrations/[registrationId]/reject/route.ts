@@ -90,13 +90,23 @@ export const POST = withErrorHandling(
       );
     }
 
-    const decided = await db.registrations.update(registration.id, {
-      status: "rejected",
-      decidedBy: viewer.id,
-      decidedAt: new Date().toISOString(),
-      // `message` stays: it is what the request said, and a host looking at the
-      // rejected group later should still see what they turned down.
-    });
+    // No event lock: turning somebody down frees nothing and takes nothing, so
+    // it cannot affect capacity. What it must not do is overwrite a decision
+    // that landed first, so the write is conditional on the row still being in
+    // the status this refusal check was based on -- an approval that won the
+    // race leaves this affecting no rows, and the host is told it changed.
+    //
+    // `message` stays: it is what the request said, and a host looking at the
+    // rejected group later should still see what they turned down.
+    const decided = await db.registrations.update(
+      registration.id,
+      {
+        status: "rejected",
+        decidedBy: viewer.id,
+        decidedAt: new Date().toISOString(),
+      },
+      registration.status,
+    );
 
     if (!decided) throw ApiError.conflict(REQUEST_ACTION_COPY.stale);
 

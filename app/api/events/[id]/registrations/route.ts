@@ -112,41 +112,50 @@ function withdrawRefusal(availability: RegistrationAvailability): ApiError {
  *
  * The access mode decides which of the two happens; the caller does not get a
  * say. Someone who withdrew earlier keeps their original row rather than
- * gaining a second one -- but reviving it is gated on the availability computed
- * above, so a row left over from before the event filled up, was cancelled or
+ * gaining a second one -- but reviving it is gated on the same availability
+ * rule, so a row left over from before the event filled up, was cancelled or
  * started buys no way back in.
+ *
+ * That rule is asked twice, and the second time is the one that counts. The
+ * check here is on the snapshot this request loaded, which is what the refusal
+ * message should describe; the write goes through `db.registrations.claimSeat`,
+ * which asks it again with the event row locked. Everything that decides who
+ * gets in still lives in `lib/permissions.ts` -- see `lib/data/seats.ts` for
+ * why the answer has to be taken twice.
  */
 export const POST = withErrorHandling(
   async (_request: Request, context: Context) => {
     const { viewer, detail } = await loadVisibleEvent(context);
 
+    // The check the caller sees. It runs on the snapshot this request loaded,
+    // which is the right basis for the message but not for the write: between
+    // this line and the row landing, somebody else may take the last seat. So
+    // it refuses early where it can, and the authority is the line below.
     const availability = availabilityFor(detail, viewer);
     if (availability.state !== "open") throw registerRefusal(availability);
 
-    const status = availability.action === "request" ? "pending" : "going";
-    const existing = detail.viewerRegistration;
+    // The check that is true. `claimSeat` locks the event row, re-reads the
+    // count and this person's row under that lock, and re-runs the same rule --
+    // so a request that loses a race is refused with the same words it would
+    // have got by arriving a moment later, rather than overfilling the event.
+    const claim = await db.registrations.claimSeat(detail.event.id, viewer);
 
-    const registration = existing
-      ? await db.registrations.update(existing.id, {
-          status,
-          // A revived row starts a new cycle, so nothing from the previous one
-          // carries over. A stale decision would show a host in the approval
-          // queue as having already decided a request that has only just been
-          // made, and a stale message would put words the requester wrote for
-          // the last cycle under a request they have not written one for.
-          message: undefined,
-          decidedBy: undefined,
-          decidedAt: undefined,
-        })
-      : await db.registrations.create({
-          eventId: detail.event.id,
-          userId: viewer.id,
-          status,
-        });
-
-    if (!registration) throw ApiError.conflict(REGISTRATION_ACTION_COPY.stale);
-
-    return jsonOk({ registration });
+    switch (claim.outcome) {
+      case "claimed":
+        return jsonOk({ registration: claim.registration });
+      case "refused":
+        throw registerRefusal(claim.availability);
+      case "duplicate":
+        // Two of this person's own requests arrived together and the unique
+        // constraint kept the second one out. They have a place either way.
+        throw ApiError.conflict(REGISTRATION_ACTION_COPY.alreadyRegistered);
+      case "stale":
+        throw ApiError.conflict(REGISTRATION_ACTION_COPY.stale);
+      case "gone":
+        // Deleted while this request was in flight. The same 404 a request for
+        // an event that never existed gets.
+        throw ApiError.notFound();
+    }
   },
 );
 
@@ -174,9 +183,15 @@ export const DELETE = withErrorHandling(
       throw withdrawRefusal(availability);
     }
 
-    const registration = await db.registrations.update(existing.id, {
-      status: "cancelled",
-    });
+    // Compare-and-set on the status this refusal check was based on. Withdrawing
+    // frees a seat rather than taking one, so it needs no event lock -- but a
+    // host approving the same row at the same moment does need to lose cleanly,
+    // and this is what decides that. No rows written means the row moved first.
+    const registration = await db.registrations.update(
+      existing.id,
+      { status: "cancelled" },
+      existing.status,
+    );
 
     if (!registration) throw ApiError.conflict(REGISTRATION_ACTION_COPY.stale);
 

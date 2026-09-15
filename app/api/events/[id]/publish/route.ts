@@ -59,9 +59,15 @@ export const POST = withErrorHandling(
       );
     }
 
-    const event = await db.events.update(detail.event.id, {
-      status: "published",
-    });
+    // Conditional on the row still being a draft, so two requests that both
+    // read this event as one cannot both publish it. The second writes nothing
+    // and is told it changed, rather than re-stamping `UpdatedAt` on an event
+    // somebody else already published.
+    const event = await db.events.update(
+      detail.event.id,
+      { status: "published" },
+      "draft",
+    );
     if (!event) throw ApiError.conflict(MANAGE_ACTION_COPY.stale);
 
     return jsonOk({ event });

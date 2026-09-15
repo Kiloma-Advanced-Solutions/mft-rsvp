@@ -295,6 +295,52 @@ The preflight script (`scripts/check-target-compatibility.mts`, added in the
 connectivity slice) runs these checks against whatever server it is pointed at.
 Running it against the real target is the outstanding verification item.
 
+## The seat-claim protocol
+
+One product invariant cannot be a constraint:
+
+> the number of `going` registrations never exceeds the event's capacity
+
+It spans rows and two tables, so no `CHECK` can express it. It is a transaction
+protocol instead, implemented once in [lib/data/seats.ts](../lib/data/seats.ts).
+Every write that can raise the `going` count — direct registration, and a host's
+approval — does this inside one transaction:
+
+1. take the event row with `WITH (UPDLOCK, ROWLOCK)`;
+2. read the event, the `going` count and the registration row, all under it;
+3. re-run the same pure rule from `lib/permissions.ts` the route already ran;
+4. write, with the row's expected status as a predicate;
+5. commit, which releases the lock.
+
+`UPDLOCK` is the load-bearing part: an update lock is held to the end of the
+transaction and is incompatible with another update lock, so the count read at
+step 2 cannot move before the write at step 4. `ROWLOCK` is conventional rather
+than necessary — a primary-key seek already locks one row.
+
+**There is no `HOLDLOCK` and no range lock, deliberately.** A phantom `going`
+row could only come from another seat claim, and that claim must take the same
+event row first. The guarantee is the protocol, not the lock's scope — so a
+future write path that sets `Status = N'going'` without going through
+`seats.ts` breaks the invariant, and nothing in the database will catch it.
+
+Isolation level is untouched: the default `READ COMMITTED`, with lock hints
+where they are needed. `db:check` reports whether the target runs that level
+with row versioning (`READ_COMMITTED_SNAPSHOT`), because Azure SQL turns it on
+by default and a stock 2008 R2 does not. The protocol is correct either way —
+`UPDLOCK` is requested explicitly and honoured under both — but the report says
+which engine the evidence came from rather than leaving it assumed.
+
+Transitions that cannot raise the count — withdrawing, rejecting, requesting a
+place on an `approval` event, publishing — take no lock. They are single
+statements made safe by the same expected-status predicate:
+`UPDATE … WHERE Id = @id AND Status = @expectedStatus`. Zero rows affected means
+somebody else decided first, which the route reports as a conflict.
+
+**Lock order is event row first, always.** `removeEvent` takes the event row
+before deleting the registrations that reference it, for that reason alone —
+without it, a delete and a seat claim hold what the other needs next and
+deadlock. No transaction in this application acquires two event rows.
+
 ## Shared-database safety rules
 
 The database is a **shared organizational database**, not a disposable local

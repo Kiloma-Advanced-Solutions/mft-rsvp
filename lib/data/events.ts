@@ -13,9 +13,9 @@
  */
 
 import sql from "mssql";
-import type { ConnectionPool, Transaction } from "mssql";
+import type { Transaction } from "mssql";
 
-import { getPool } from "./client";
+import { getPool, inTransaction, type Runner } from "./client";
 import {
   groupByEvent,
   isUuid,
@@ -23,11 +23,8 @@ import {
   type EventRow,
   type MembershipRow,
 } from "./rows";
-import type { EventRecord } from "../types";
+import type { EventRecord, EventStatus } from "../types";
 import type { EventPatch } from "../db";
-
-/** Anything that can hand out a request: the pool, or a transaction on it. */
-type Runner = ConnectionPool | Transaction;
 
 /**
  * `StartsAt` first only so the order never changes between calls. Nothing
@@ -47,6 +44,49 @@ SELECT Id, Title, Summary, Description, StartsAt, EndsAt,
        LocationKind, LocationVenue, LocationAddress, LocationUrl, LocationPlatform,
        Category, Accent, Capacity, Access, Status, OrganizerId, CreatedAt, UpdatedAt
 FROM   dbo.Events_Events
+WHERE  Id = @id;
+`;
+
+/**
+ * The same row, taken with an update lock. **This is the seat-claim mutex.**
+ *
+ * `UPDLOCK` is the load-bearing hint: an update lock is held until the
+ * transaction commits and is incompatible with another update lock, so a second
+ * transaction asking for this row waits here rather than reading a capacity
+ * count that is about to be wrong. A plain `SELECT` would take a shared lock and
+ * release it immediately, which is precisely the gap two registrations for the
+ * final seat slip through.
+ *
+ * `ROWLOCK` is defensive rather than load-bearing: a seek on the primary key
+ * already locks at row granularity, and the hint only discourages the optimizer
+ * from taking something coarser. It is written because
+ * `docs/sql-server-2008r2-compatibility.md` and
+ * `scripts/tsql-fixtures/allowed.sql` both give the pair as this project's
+ * idiom.
+ *
+ * No `HOLDLOCK`, and none is needed. A phantom `going` row cannot appear while
+ * this lock is held, because every write that can create one takes this same
+ * lock first -- see `lib/data/seats.ts`. The protection is the protocol, not a
+ * range lock.
+ */
+const SELECT_EVENT_FOR_UPDATE = `
+SELECT Id, Title, Summary, Description, StartsAt, EndsAt,
+       LocationKind, LocationVenue, LocationAddress, LocationUrl, LocationPlatform,
+       Category, Accent, Capacity, Access, Status, OrganizerId, CreatedAt, UpdatedAt
+FROM   dbo.Events_Events WITH (UPDLOCK, ROWLOCK)
+WHERE  Id = @id;
+`;
+
+/**
+ * The lock on its own, for a writer that needs the mutex but not the facts.
+ *
+ * `removeEvent` uses it to take the event row before deleting anything that
+ * references it, which is what keeps every transaction in this application
+ * acquiring locks in the same order.
+ */
+const LOCK_EVENT = `
+SELECT Id
+FROM   dbo.Events_Events WITH (UPDLOCK, ROWLOCK)
 WHERE  Id = @id;
 `;
 
@@ -158,11 +198,12 @@ export async function listEvents(): Promise<EventRecord[]> {
 async function readEvent(
   runner: Runner,
   id: string,
+  statement: string = SELECT_EVENT,
 ): Promise<EventRecord | null> {
   const events = await runner
     .request()
     .input("id", sql.UniqueIdentifier, id)
-    .query<EventRow>(SELECT_EVENT);
+    .query<EventRow>(statement);
 
   const row = events.recordset[0];
   if (row === undefined) return null;
@@ -190,6 +231,27 @@ export async function getEvent(id: string): Promise<EventRecord | null> {
   if (!isUuid(id)) return null;
 
   return readEvent(await getPool(), id);
+}
+
+/**
+ * The event, read inside `transaction` with the seat-claim lock held.
+ *
+ * The first statement it issues is the lock, so every caller is holding the
+ * mutex before it reads a capacity or a count. Returns `null` if the event is
+ * gone, which inside a transaction means it was deleted by whoever held the
+ * lock before us -- a real answer, not an error.
+ *
+ * Exported for `lib/data/seats.ts` alone. Nothing else should be locking event
+ * rows, and a second caller is a sign the protocol is being reinvented
+ * somewhere it should not be.
+ */
+export async function readEventForUpdate(
+  transaction: Transaction,
+  id: string,
+): Promise<EventRecord | null> {
+  if (!isUuid(id)) return null;
+
+  return readEvent(transaction, id, SELECT_EVENT_FOR_UPDATE);
 }
 
 /* ------------------------------------------------------------------- writes */
@@ -242,36 +304,6 @@ async function insertMembers(
       .input("eventId", sql.UniqueIdentifier, eventId)
       .input("userId", sql.UniqueIdentifier, userId)
       .query(INSERT_INVITE);
-  }
-}
-
-/**
- * Runs `work` in a transaction, all of it or none.
- *
- * Same defensive shape as `migrate.mts` and `seed.mts`: the server can abort a
- * transaction on its own, after which rolling back again throws, and the
- * `rollback` event is how we know that happened.
- */
-async function inTransaction<T>(
-  pool: ConnectionPool,
-  work: (transaction: Transaction) => Promise<T>,
-): Promise<T> {
-  const transaction = new sql.Transaction(pool);
-
-  let abortedByServer = false;
-  transaction.on("rollback", () => {
-    abortedByServer = true;
-  });
-
-  await transaction.begin();
-
-  try {
-    const result = await work(transaction);
-    await transaction.commit();
-    return result;
-  } catch (error) {
-    if (!abortedByServer) await transaction.rollback().catch(() => undefined);
-    throw error;
   }
 }
 
@@ -394,18 +426,27 @@ function assignPatch(request: sql.Request, patch: EventPatch): string[] {
  * `invitedUserIds` -- `parseEventForm` cannot produce them and publish sends
  * only `status` -- but `EventPatch` allows them, so they are handled rather
  * than quietly ignored.
+ *
+ * `expectedStatus` is compare-and-set, and publishing is what wants it: two
+ * requests that both read a draft must not both publish it. The second finds no
+ * row in `draft` any more, affects nothing, and gets the `null` that route
+ * handlers already report as a conflict.
+ *
+ * Ordinary content edits pass no `expectedStatus` and stay last-write-wins,
+ * which is what M4 decided and what Slice 8 deliberately does not revisit.
  */
 export async function updateEvent(
   id: string,
   patch: EventPatch,
   updatedAt: string,
+  expectedStatus?: EventStatus,
 ): Promise<EventRecord | null> {
   if (!isUuid(id)) return null;
 
   const pool = await getPool();
 
   return inTransaction(pool, async (transaction) => {
-    const request = transaction.request();
+  const request = transaction.request();
     const assignments = assignPatch(request, patch);
     // Always present, so an empty patch still refreshes the stamp and returns
     // the row -- which is what the in-memory store did.
@@ -414,10 +455,19 @@ export async function updateEvent(
     request.input("id", sql.UniqueIdentifier, id);
     request.input("updatedAt", sql.DateTime2(3), new Date(updatedAt));
 
+    // A separate parameter name from the patch's own `status`: one is the
+    // value being written, the other the value being required.
+    let predicate = `WHERE Id = @id`;
+    if (expectedStatus !== undefined) {
+      request.input("expectedStatus", sql.NVarChar(16), expectedStatus);
+      predicate = `WHERE Id = @id AND Status = @expectedStatus`;
+    }
+
     // The only interpolation here carries no caller data: every fragment is a
-    // column name from the fixed list in `assignPatch`, every value is bound.
+    // column name from the fixed list in `assignPatch` or one of the two
+    // predicates above, and every value is bound.
     const result = await request.query(
-      `UPDATE dbo.Events_Events SET ${assignments.join(", ")} WHERE Id = @id;`,
+      `UPDATE dbo.Events_Events SET ${assignments.join(", ")} ${predicate};`,
     );
 
     if (result.rowsAffected[0] === 0) return null;
@@ -450,7 +500,7 @@ export async function updateEvent(
       }
     }
 
-    return readEvent(transaction, id);
+  return readEvent(transaction, id);
   });
 }
 
@@ -464,6 +514,17 @@ export async function updateEvent(
  * The registrations go with it, which is the behaviour `lib/db.ts` had and what
  * the delete dialog warns about; orphaned registrations would otherwise show up
  * in "my events" forever.
+ *
+ * **The event row is locked first, and that ordering is the point.** A seat
+ * claim locks the event row and then writes a registration; this transaction
+ * writes registrations and then the event row. Taken in that order the two
+ * deadlock -- each holding what the other needs next -- so this takes the event
+ * row before touching anything that references it. Every transaction in this
+ * application now acquires the event row first, and nothing acquires two.
+ *
+ * The delete order itself is unchanged: children before parent, because every
+ * foreign key is `ON DELETE NO ACTION`. Only a lock acquisition is added in
+ * front of it.
  */
 export async function removeEvent(id: string): Promise<boolean> {
   if (!isUuid(id)) return false;
@@ -471,6 +532,15 @@ export async function removeEvent(id: string): Promise<boolean> {
   const pool = await getPool();
 
   return inTransaction(pool, async (transaction) => {
+    const locked = await transaction
+      .request()
+      .input("id", sql.UniqueIdentifier, id)
+      .query<{ Id: string }>(LOCK_EVENT);
+
+    // No row to lock is no event to delete, and the same `false` the caller
+    // would have got from the delete below.
+    if (locked.recordset[0] === undefined) return false;
+
     for (const statement of [
       DELETE_REGISTRATIONS_FOR_EVENT,
       DELETE_COHOSTS_FOR_EVENT,

@@ -29,7 +29,22 @@
 import "server-only";
 
 import sql from "mssql";
-import type { ConnectionPool } from "mssql";
+import type { ConnectionPool, Transaction } from "mssql";
+
+/**
+ * Anything that can hand out a request: the pool, or a transaction on it.
+ *
+ * A function that takes one of these can be called from inside a transaction or
+ * outside it, which is what lets a read be reused by a locked write path
+ * without a second copy of the statement.
+ *
+ * The two are not interchangeable in one respect: a `Transaction` owns a single
+ * dedicated connection, so its requests must be issued one after another.
+ * `Promise.all` over a transaction fails with "There is another request in
+ * progress"; over the pool it is fine, because every request gets its own
+ * connection.
+ */
+export type Runner = ConnectionPool | Transaction;
 
 /**
  * The single source of connection configuration.
@@ -103,6 +118,41 @@ export function getPool(): Promise<ConnectionPool> {
   }) as typeof pool.close;
 
   return pending;
+}
+
+/**
+ * Runs `work` in a transaction, all of it or none.
+ *
+ * Lives here rather than beside any one table because more than one module now
+ * needs it: events are written across three tables, and a seat claim has to
+ * hold a lock across a read, a decision and a write.
+ *
+ * Same defensive shape as `migrate.mts` and `seed.mts`: the server can abort a
+ * transaction on its own -- a deadlock victim is exactly that -- after which
+ * rolling back again throws, and the `rollback` event is how we know it
+ * happened.
+ */
+export async function inTransaction<T>(
+  pool: ConnectionPool,
+  work: (transaction: Transaction) => Promise<T>,
+): Promise<T> {
+  const transaction = new sql.Transaction(pool);
+
+  let abortedByServer = false;
+  transaction.on("rollback", () => {
+    abortedByServer = true;
+  });
+
+  await transaction.begin();
+
+  try {
+    const result = await work(transaction);
+    await transaction.commit();
+    return result;
+  } catch (error) {
+    if (!abortedByServer) await transaction.rollback().catch(() => undefined);
+    throw error;
+  }
 }
 
 /**

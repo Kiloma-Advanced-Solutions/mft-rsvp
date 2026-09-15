@@ -159,6 +159,7 @@ async function run(): Promise<number> {
       currentDatabase: string;
       collation: string;
       currentUser: string;
+      readCommittedSnapshot: number | null;
     }>(`
       SELECT
         @@VERSION                                            AS version,
@@ -168,7 +169,17 @@ async function run(): Promise<number> {
         CAST(SERVERPROPERTY('EngineEdition')  AS int)           AS engineEdition,
         DB_NAME()                                            AS currentDatabase,
         CAST(DATABASEPROPERTYEX(DB_NAME(), 'Collation') AS nvarchar(128)) AS collation,
-        CURRENT_USER                                         AS currentUser
+        CURRENT_USER                                         AS currentUser,
+        -- The catalog view answers where DATABASEPROPERTYEX does not: on Azure
+        -- SQL the 'IsReadCommittedSnapshotOn' property comes back NULL, while
+        -- sys.databases has it. Both predate the 2008 R2 floor, and the
+        -- DB_ID() filter is what makes one query work on either engine --
+        -- Azure SQL shows only the current database here, 2008 R2 shows all.
+        COALESCE(
+            (SELECT CAST(is_read_committed_snapshot_on AS int)
+             FROM   sys.databases WHERE database_id = DB_ID()),
+            CAST(DATABASEPROPERTYEX(DB_NAME(), 'IsReadCommittedSnapshotOn') AS int)
+        )                                                    AS readCommittedSnapshot
     `);
     const info = about.recordset[0];
 
@@ -182,6 +193,29 @@ async function run(): Promise<number> {
     record("info", "current database", info.currentDatabase);
     record("info", "collation", info.collation);
     record("info", "current database user", info.currentUser);
+
+    /* Which flavour of READ COMMITTED this target runs.
+
+       Informational, and it changes nothing about how the application is
+       written: the seat-claim transaction in lib/data/seats.ts asks for its
+       update lock explicitly with WITH (UPDLOCK, ROWLOCK), which is honoured
+       whether or not row versioning is on. It is reported because the two
+       engines differ by default -- Azure SQL creates databases with RCSI ON,
+       a stock SQL Server 2008 R2 has it OFF -- and a reader should be able to
+       see which one the evidence came from rather than assume.
+
+       Nothing here sets it. ALTER DATABASE is forbidden by this project's own
+       rules on a shared organizational database. */
+    const rcsi = info.readCommittedSnapshot;
+    record(
+      "info",
+      "READ COMMITTED flavour",
+      rcsi === 1
+        ? "READ_COMMITTED_SNAPSHOT is ON (row versioning) -- UPDLOCK is still honoured"
+        : rcsi === 0
+          ? "READ_COMMITTED_SNAPSHOT is OFF (locking) -- the 2008 R2 default"
+          : "could not be read on this target",
+    );
 
     // The status literals in the M6 CHECK constraints are lower case, so a
     // case-sensitive or binary collation is worth knowing about early.

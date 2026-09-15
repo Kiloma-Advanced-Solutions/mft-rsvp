@@ -6,11 +6,11 @@
  */
 
 import sql from "mssql";
-import type { Request } from "mssql";
+import type { Request, Transaction } from "mssql";
 
-import { getPool } from "./client";
+import { getPool, type Runner } from "./client";
 import { isUuid, toRegistration, type RegistrationRow } from "./rows";
-import type { Registration } from "../types";
+import type { Registration, RegistrationStatus } from "../types";
 import type { RegistrationPatch } from "../db";
 
 const COLUMNS = `Id, EventId, UserId, Status, Message, CreatedAt, UpdatedAt, DecidedBy, DecidedAt`;
@@ -52,11 +52,35 @@ WHERE  EventId = @eventId AND UserId = @userId
 ORDER  BY CreatedAt ASC, Id ASC;
 `;
 
+const SELECT_BY_ID = `
+SELECT Id, EventId, UserId, Status, Message, CreatedAt, UpdatedAt, DecidedBy, DecidedAt
+FROM   dbo.Events_Registrations
+WHERE  Id = @id;
+`;
+
 const INSERT = `
 INSERT INTO dbo.Events_Registrations
     (Id, EventId, UserId, Status, Message, CreatedAt, UpdatedAt, DecidedBy, DecidedAt)
 VALUES
     (@id, @eventId, @userId, @status, @message, @createdAt, @updatedAt, @decidedBy, @decidedAt);
+`;
+
+/**
+ * How many people hold a confirmed place.
+ *
+ * `going` is the only status that counts against capacity -- `TASKS.md` section
+ * 4, and `toEventContext` in `lib/events.ts` counts the same way. The literal is
+ * a domain constant rather than caller data, which is why it is written into
+ * the statement instead of bound.
+ *
+ * Read inside the seat-claim transaction, where the event row is already
+ * U-locked, this count is stable until that transaction commits: no other
+ * writer can produce a `going` row without first taking the same lock.
+ */
+const COUNT_GOING = `
+SELECT COUNT(*) AS GoingCount
+FROM   dbo.Events_Registrations
+WHERE  EventId = @eventId AND Status = N'going';
 `;
 
 const DELETE = `
@@ -121,15 +145,92 @@ export async function findRegistration(
   return row === undefined ? null : toRegistration(row);
 }
 
+/* ------------------------------------------- reads for the seat-claim path */
+
+/*
+ * The three below take a `Runner` so `lib/data/seats.ts` can issue them on its
+ * own transaction, under the event-row lock, and get the facts as they stand
+ * inside it. The same statements on the pool would read the world outside the
+ * lock, which is the whole bug Slice 8 exists to fix.
+ */
+
+/**
+ * How many confirmed places are taken at this event, right now.
+ *
+ * Deliberately **not** guarded with `isUuid`, unlike every other read in this
+ * file. Those answer a malformed id with "nothing matched", which is harmless
+ * for a list or a lookup; here the equivalent answer is `0`, and `0` means "the
+ * event is empty, let them in". A capacity check must not have a value it fails
+ * open to. Its only caller reads the event through `readEventForUpdate` first
+ * and stops if that returns `null`, so the id is already known to be a real
+ * one -- and if a future caller skips that, the driver rejecting the parameter
+ * is the better failure.
+ */
+export async function countGoing(
+  runner: Runner,
+  eventId: string,
+): Promise<number> {
+  const result = await runner
+    .request()
+    .input("eventId", sql.UniqueIdentifier, eventId)
+    .query<{ GoingCount: number }>(COUNT_GOING);
+
+  return result.recordset[0].GoingCount;
+}
+
+/** This person's row at this event, if they have one. */
+export async function readRegistrationForUser(
+  runner: Runner,
+  eventId: string,
+  userId: string,
+): Promise<Registration | null> {
+  if (!isUuid(eventId) || !isUuid(userId)) return null;
+
+  const result = await runner
+    .request()
+    .input("eventId", sql.UniqueIdentifier, eventId)
+    .input("userId", sql.UniqueIdentifier, userId)
+    .query<RegistrationRow>(SELECT_BY_EVENT_AND_USER);
+
+  const row = result.recordset[0];
+  return row === undefined ? null : toRegistration(row);
+}
+
+/** One row by its own id. */
+export async function readRegistrationById(
+  runner: Runner,
+  id: string,
+): Promise<Registration | null> {
+  if (!isUuid(id)) return null;
+
+  const result = await runner
+    .request()
+    .input("id", sql.UniqueIdentifier, id)
+    .query<RegistrationRow>(SELECT_BY_ID);
+
+  const row = result.recordset[0];
+  return row === undefined ? null : toRegistration(row);
+}
+
 /* ------------------------------------------------------------------- writes */
 
 /**
- * Writes the record the caller already built. Ids and timestamps come from
+ * Writes one complete registration row. Ids and timestamps come from
  * `lib/db.ts`, never from the server -- the application owns both.
+ *
+ * **It takes a `Transaction`, not a `Runner`, and that is the point rather
+ * than a convenience.** A new registration may be `going`, and a `going` row is
+ * only safe to write while its event row is locked and its capacity has been
+ * re-checked under that lock. Requiring a transaction makes "you are inside the
+ * seat-claim protocol" a fact the compiler checks instead of a rule a comment
+ * asks for. `lib/data/seats.ts` is the only caller, and there is deliberately
+ * no pool-based version: anyone who had one would not be holding the lock.
  */
-export async function createRegistration(record: Registration): Promise<void> {
-  const pool = await getPool();
-  await pool
+export async function createRegistrationOn(
+  transaction: Transaction,
+  record: Registration,
+): Promise<void> {
+  await transaction
     .request()
     .input("id", sql.UniqueIdentifier, record.id)
     .input("eventId", sql.UniqueIdentifier, record.eventId)
@@ -220,16 +321,54 @@ function assignPatch(request: Request, patch: RegistrationPatch): string[] {
  *
  * `UpdatedAt` is always assigned, so an empty patch still refreshes the stamp
  * and returns the row, exactly as before.
+ *
+ * **`expectedStatus` is compare-and-set, and it is what makes a transition
+ * safe under concurrency.** A caller that read a row, decided something about
+ * it, and now wants to write passes the status it decided on; the row is only
+ * written if it is still in that status. Two hosts deciding the same request,
+ * or somebody withdrawing while a host approves, therefore cannot both win: one
+ * update matches, the other affects no rows and comes back `null` -- which
+ * every caller already turns into the "this changed underneath you" conflict.
+ *
+ * Without it, `WHERE Id = @id` would let the second writer overwrite the first
+ * decision with one based on a state that is no longer true.
+ *
+ * Omitting `expectedStatus` keeps the unconditional behaviour, which is what
+ * callers that are not making a state transition still want.
  */
 export async function updateRegistration(
   id: string,
   patch: RegistrationPatch,
   updatedAt: string,
+  expectedStatus?: RegistrationStatus,
+): Promise<Registration | null> {
+  return updateRegistrationOn(
+    await getPool(),
+    id,
+    patch,
+    updatedAt,
+    expectedStatus,
+  );
+}
+
+/**
+ * The same update, on a given runner.
+ *
+ * `lib/data/seats.ts` needs this to write through its own transaction: the
+ * pool-based version above would run on a different connection, so the write
+ * would commit on its own and survive a rollback the rest of the seat claim
+ * needed it to follow.
+ */
+export async function updateRegistrationOn(
+  runner: Runner,
+  id: string,
+  patch: RegistrationPatch,
+  updatedAt: string,
+  expectedStatus?: RegistrationStatus,
 ): Promise<Registration | null> {
   if (!isUuid(id)) return null;
 
-  const pool = await getPool();
-  const request = pool.request();
+  const request = runner.request();
 
   const assignments = assignPatch(request, patch);
   assignments.push(`UpdatedAt = @updatedAt`);
@@ -237,11 +376,19 @@ export async function updateRegistration(
   request.input("id", sql.UniqueIdentifier, id);
   request.input("updatedAt", sql.DateTime2(3), new Date(updatedAt));
 
+  // A separate parameter name from the patch's own `status`, which is the value
+  // being written rather than the one being required.
+  let predicate = `WHERE Id = @id`;
+  if (expectedStatus !== undefined) {
+    request.input("expectedStatus", sql.NVarChar(16), expectedStatus);
+    predicate = `WHERE Id = @id AND Status = @expectedStatus`;
+  }
+
   // The only interpolation in this file, and it carries no caller data: every
-  // fragment is a column name from the fixed list in `assignPatch`, and every
-  // value is a bound parameter.
+  // fragment is a column name from the fixed list in `assignPatch` or one of
+  // the two predicates above, and every value is a bound parameter.
   const result = await request.query<RegistrationRow>(
-    `UPDATE dbo.Events_Registrations SET ${assignments.join(", ")} WHERE Id = @id;
+    `UPDATE dbo.Events_Registrations SET ${assignments.join(", ")} ${predicate};
 IF @@ROWCOUNT > 0
     SELECT ${COLUMNS} FROM dbo.Events_Registrations WHERE Id = @id;`,
   );

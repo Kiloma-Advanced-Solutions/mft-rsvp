@@ -75,6 +75,10 @@ export const POST = withErrorHandling(
     const registration = rows.find((row) => row.id === registrationId);
     if (!registration) throw ApiError.notFound();
 
+    // The refusal the host sees, from the snapshot this request loaded. As on
+    // the registration route, it is the right basis for the message and the
+    // wrong basis for the write -- `detail.goingCount` was true when it was
+    // read, and approving is exactly the action that can make it untrue.
     const availability = getRequestDecisionAvailability(detail.event, {
       goingCount: detail.goingCount,
       registration,
@@ -88,16 +92,32 @@ export const POST = withErrorHandling(
       );
     }
 
-    const decided = await db.registrations.update(registration.id, {
-      status: "going",
-      decidedBy: viewer.id,
-      decidedAt: new Date().toISOString(),
-      // `message` is deliberately untouched: it is what the person wrote for
-      // this cycle, and it stays the record of why the host said yes.
-    });
+    // Approving is a seat claim: it locks the event row, re-counts under the
+    // lock, re-runs the rule above, and writes only if the row is still in the
+    // status this decision was made against. Two hosts approving into one seat
+    // cannot both succeed. `message` stays untouched throughout -- it is what
+    // the person wrote, and it remains the record of why the host said yes.
+    const decision = await db.registrations.approve(
+      detail.event.id,
+      registration.id,
+      viewer.id,
+    );
 
-    if (!decided) throw ApiError.conflict(REQUEST_ACTION_COPY.stale);
-
-    return jsonOk({ registration: decided });
+    switch (decision.outcome) {
+      case "approved":
+        return jsonOk({ registration: decision.registration });
+      case "refused":
+        throw ApiError.conflict(
+          requestDecisionNote(decision.availability) ??
+            REQUEST_ACTION_COPY.stale,
+        );
+      case "stale":
+        throw ApiError.conflict(REQUEST_ACTION_COPY.stale);
+      case "not_found":
+      case "gone":
+        // The row or its event went away while this request was in flight --
+        // the same 404 either would have produced above.
+        throw ApiError.notFound();
+    }
   },
 );
