@@ -29,14 +29,19 @@
  *     is no `LIKE 'Events_%'` sweep, no catalog lookup, and no table name that
  *     is ever computed -- a dynamic name would also trip this project's own
  *     `check:tsql` ownership rule, which is the point of having it;
- *   - `Events_SchemaMigrations` is not one of them, and appears in no statement
- *     here at all. Wiping it would make the schema state unknowable;
+ *   - `Events_SchemaMigrations` is not one of them, and no statement here
+ *     changes it. It is read -- the row counts report it, and a reset checks it
+ *     is the same afterwards -- but never written, because wiping it would make
+ *     the schema state unknowable;
  *   - nothing here issues DDL. It cannot create, alter or drop anything;
  *   - reset needs two independent guards, and neither is the connection string.
  *
  * Written to the SQL Server 2008 R2 feature floor and statically enforced;
  * runtime execution has been verified against Azure SQL DEV only.
  */
+
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 
 import sql from "mssql";
 import type { ConnectionPool, Transaction } from "mssql";
@@ -55,13 +60,49 @@ const CONNECTION_STRING_VAR = "EVENTS_DB_CONNECTION_STRING";
  * `EVENTS_DB_ALLOW_RESET=false` is trying to turn this *off*, and a
  * presence-only check would read that as permission.
  *
- * It belongs on the command line, not in `.env.local` -- a value parked in the
- * env file pre-authorises every future reset and turns the guard into a
- * one-time setup step. `.env.example` documents it commented out for that
- * reason.
+ * It belongs on the command line, and **not** in `.env.local`: a value parked
+ * in the env file would pre-authorise every future reset and turn the guard
+ * into a one-time setup step. That is not left to discipline -- reset reads the
+ * env file and refuses outright if the variable is declared there, because Node
+ * merges it into `process.env` and keeps no record of where it came from.
  */
 const RESET_OPT_IN_VAR = "EVENTS_DB_ALLOW_RESET";
 const RESET_OPT_IN_VALUE = "yes";
+
+/**
+ * The env file the npm scripts load, named the same way they name it.
+ *
+ * `--env-file-if-exists=.env.local` resolves against the working directory, and
+ * npm runs scripts from the package root, so this resolves to the same file
+ * Node read.
+ */
+const ENV_FILE = ".env.local";
+
+/**
+ * Does the env file declare the reset opt-in?
+ *
+ * Presence is the whole question, so this deliberately does not parse values:
+ * an uncommented assignment to the variable, in any form, is refused. Being
+ * stricter than a real `.env` parser is the right direction here -- the answer
+ * to "is this ambiguous?" should be "then do not put it in the file".
+ *
+ * A missing or unreadable file is not an error. It means the opt-in is not
+ * parked there, which is exactly the state this wants.
+ */
+function envFileDeclaresOptIn(): boolean {
+  let contents: string;
+  try {
+    contents = readFileSync(resolve(process.cwd(), ENV_FILE), "utf8");
+  } catch {
+    return false;
+  }
+
+  return contents.split(/\r?\n/).some((line) => {
+    const text = line.trim();
+    if (text === "" || text.startsWith("#")) return false;
+    return new RegExp(`^(?:export\\s+)?${RESET_OPT_IN_VAR}\\s*=`).test(text);
+  });
+}
 
 /* -------------------------------------------------------------- the tables */
 
@@ -92,7 +133,9 @@ const DOMAIN_TABLES = [
  * forbid -- and `check:tsql` would reject it, because it could no longer see
  * which table was being emptied.
  *
- * The order here is `DOMAIN_TABLES`; the check below proves they agree.
+ * The order here is `DOMAIN_TABLES`, and `assertAllowlistMatchesStatements()`
+ * below proves it -- run before any destructive work, so the two lists cannot
+ * drift into disagreeing about what a reset clears.
  */
 const DELETE_STATEMENTS = [
   `DELETE FROM dbo.Events_Registrations;`,
@@ -101,6 +144,60 @@ const DELETE_STATEMENTS = [
   `DELETE FROM dbo.Events_Events;`,
   `DELETE FROM dbo.Events_Users;`,
 ] as const;
+
+/**
+ * The event-side lock a reset takes before it deletes anything.
+ *
+ * `TABLOCKX` because a reset clears every event, so there is no single row to
+ * lock; `HOLDLOCK` so it is held to the end of the transaction rather than the
+ * end of the statement, which is the whole point -- a lock released early would
+ * let a seat claim slip in between this and the deletes and restore the cycle.
+ *
+ * Both hints predate SQL Server 2008 R2. The isolation level is untouched.
+ */
+const LOCK_EVENTS_TABLE = `
+SELECT COUNT(*) AS Locked
+FROM   dbo.Events_Events WITH (TABLOCKX, HOLDLOCK);
+`;
+
+/**
+ * Proves the destructive statements are exactly the allowlist, in order.
+ *
+ * Two lists describing one thing will drift eventually, and the failure is
+ * quiet: `DOMAIN_TABLES` is what the operator is *shown* as the scope of a
+ * reset, while `DELETE_STATEMENTS` is what actually runs. A drift would make
+ * the printed scope a lie about a destructive operation on a shared database.
+ *
+ * The regex is deliberately strict -- `DELETE FROM dbo.<Table>;` and nothing
+ * else -- so a statement that grew a `WHERE`, a second table or an interpolated
+ * name fails here rather than executing.
+ *
+ * Called from `main()` before any command runs, so `db:seed` and `--status`
+ * check it too: a drift is a programming error and there is no reading of it
+ * under which the tool should carry on.
+ */
+function assertAllowlistMatchesStatements(): void {
+  const targets = DELETE_STATEMENTS.map((statement) => {
+    const match = /^DELETE FROM dbo\.([A-Za-z0-9_]+);$/.exec(statement.trim());
+    return match === null ? null : match[1];
+  });
+
+  const agrees =
+    targets.length === DOMAIN_TABLES.length &&
+    targets.every((target, index) => target === DOMAIN_TABLES[index]);
+
+  if (!agrees) {
+    throw new SeedError(
+      `The reset allowlist and the reset statements disagree.\n\n` +
+        `  allowlist:  ${DOMAIN_TABLES.join(", ")}\n` +
+        `  statements: ${targets.map((t) => t ?? "<unrecognised>").join(", ")}\n\n` +
+        `  These two lists describe the same thing and one of them has moved. ` +
+        `Nothing was\n  run. Fix lib/data/seed.mts before using this tool ` +
+        `again.`,
+      2,
+    );
+  }
+}
 
 const INSERT_USER = `
 INSERT INTO dbo.Events_Users
@@ -153,7 +250,8 @@ SELECT
     OBJECT_ID(N'dbo.Events_Events', N'U')           AS Events,
     OBJECT_ID(N'dbo.Events_Registrations', N'U')    AS Registrations,
     OBJECT_ID(N'dbo.Events_EventCoHosts', N'U')     AS CoHosts,
-    OBJECT_ID(N'dbo.Events_EventInvites', N'U')     AS Invites;
+    OBJECT_ID(N'dbo.Events_EventInvites', N'U')     AS Invites,
+    OBJECT_ID(N'dbo.Events_SchemaMigrations', N'U') AS Migrations;
 `;
 
 /**
@@ -458,10 +556,29 @@ async function inTransaction<T>(
 
   try {
     const result = await work(transaction);
+    // From here until `commit()` resolves, the outcome is genuinely unknown: a
+    // connection lost after the server commits and before the acknowledgement
+    // arrives looks exactly like a commit that never happened.
+    phase = "committing";
     await transaction.commit();
     return result;
   } catch (error) {
-    if (!abortedByServer) await transaction.rollback().catch(() => undefined);
+    // Only the pre-commit failure can be rolled back to a known state. A commit
+    // that threw is already past that, and rolling back on top of it would tell
+    // us nothing -- so the phase is left saying so.
+    if (phase === "in-transaction") {
+      if (abortedByServer) {
+        phase = "rolled-back";
+      } else {
+        try {
+          await transaction.rollback();
+          phase = "rolled-back";
+        } catch {
+          // Left as `in-transaction`: the rollback was attempted and its
+          // outcome is unknown, which is not the same as rolled back.
+        }
+      }
+    }
     throw error;
   }
 }
@@ -492,6 +609,26 @@ function refuseInProduction(command: string): void {
  * set.
  */
 function requireResetOptIn(): void {
+  // The opt-in must be stated for *this* invocation, so a value parked in the
+  // env file is refused before the value itself is even considered. Node loads
+  // `.env.local` into `process.env` and keeps no record of where a variable
+  // came from, so the file is the thing that has to be asked.
+  if (envFileDeclaresOptIn()) {
+    throw new SeedError(
+      `${RESET_OPT_IN_VAR} is set in ${ENV_FILE}, and reset will not accept ` +
+        `that.\n\n` +
+        `  The opt-in has to mean "empty the database now", which a value ` +
+        `sitting in a file\n  cannot: it would pre-authorise every future ` +
+        `reset, including the ones nobody\n  meant to run. Remove the line ` +
+        `(or comment it out) and state the intent on the\n  command line ` +
+        `instead:\n\n` +
+        `      ${RESET_OPT_IN_VAR}=${RESET_OPT_IN_VALUE} npm run db:reset\n\n` +
+        `  ${ENV_FILE} is still where ${CONNECTION_STRING_VAR} belongs. It is ` +
+        `only this one\n  variable that may not live there.`,
+      2,
+    );
+  }
+
   const value = process.env[RESET_OPT_IN_VAR];
   if (value === undefined || value.trim() !== RESET_OPT_IN_VALUE) {
     throw new SeedError(
@@ -500,9 +637,10 @@ function requireResetOptIn(): void {
         `the database\n  is not authorisation to empty it, so the intent has to ` +
         `be stated:\n\n` +
         `      ${RESET_OPT_IN_VAR}=${RESET_OPT_IN_VALUE} npm run db:reset\n\n` +
-        `  Supply it on the command line. A value left in .env.local would ` +
-        `pre-authorise\n  every future reset, which is the opposite of what ` +
-        `this guard is for.`,
+        `  Supply it on the command line. It may not be set in ${ENV_FILE}: a ` +
+        `value parked\n  there would pre-authorise every future reset, which ` +
+        `is the opposite of what this\n  guard is for, and is refused ` +
+        `separately.`,
       2,
     );
   }
@@ -529,6 +667,59 @@ async function requireSchema(pool: ConnectionPool): Promise<void> {
 }
 
 /* ----------------------------------------------------------------- commands */
+
+/**
+ * How far the process got, so a failure can say what is actually known -- and
+ * only what is actually known.
+ *
+ * Without this the one catch in `main` asserted "Rolled back; the database is
+ * as it was." for every failure, including one thrown *after* a transaction had
+ * committed. Reading the row counts back is what made that reachable: it runs
+ * after the commit, and a dropped connection there would have reported 48
+ * inserted rows as nothing.
+ *
+ * Two of these five states are uncertainty, and they exist because the
+ * uncertainty is real:
+ *
+ *   - `committing` -- the commit was sent and the answer never arrived. The
+ *     server may have committed it; the client cannot tell. Claiming either
+ *     outcome here would be a guess dressed as a fact.
+ *   - `in-transaction` -- the work failed and the rollback could not be
+ *     confirmed. A rollback that was *attempted* is not a rollback that
+ *     *happened*, and only the confirmed case earns `rolled-back`.
+ */
+type Phase =
+  | "read-only"
+  | "in-transaction"
+  | "rolled-back"
+  | "committing"
+  | "committed";
+
+let phase: Phase = "read-only";
+
+/** Where an operator should look when this tool cannot say. */
+const INSPECT = "Run `npm run db:seed -- --status` to see what is there.";
+
+/**
+ * What a failure in each phase is allowed to claim.
+ *
+ * The reassuring sentence appears exactly once, against the one state that has
+ * earned it. An operator told the database is unchanged, when it has just been
+ * emptied and refilled, will act on that.
+ */
+const OUTCOME: Record<Phase, string> = {
+  "read-only": "Nothing was written -- this command only reads.",
+  "in-transaction":
+    "The transaction was open and the rollback could not be confirmed, so the " +
+    `database may or may not have changed. ${INSPECT}`,
+  "rolled-back": "Rolled back; the database is as it was.",
+  committing:
+    "The commit was sent but never acknowledged, so the database may or may " +
+    `not have changed. ${INSPECT}`,
+  committed:
+    "This failed AFTER the write was committed, so the database HAS changed. " +
+    INSPECT,
+};
 
 function reportCounts(counts: Counts): void {
   for (const key of COUNT_KEYS) {
@@ -560,6 +751,7 @@ async function seed(pool: ConnectionPool, fixtures: Fixtures): Promise<number> {
   await requireSchema(pool);
   console.log(`db:seed\n`);
 
+  phase = "in-transaction";
   await inTransaction(pool, async (transaction) => {
     const counts = await readCounts(transaction);
     const occupied = COUNT_KEYS.filter((key) => counts[key] > 0);
@@ -579,6 +771,8 @@ async function seed(pool: ConnectionPool, fixtures: Fixtures): Promise<number> {
 
     await insertFixtures(transaction, fixtures);
   });
+
+  phase = "committed";
 
   console.log(`  inserted the fixtures. rows now:`);
   reportCounts(await readCounts(pool));
@@ -607,12 +801,23 @@ async function reset(pool: ConnectionPool, fixtures: Fixtures): Promise<number> 
       `  not cleared: Events_SchemaMigrations`,
   );
 
+  phase = "in-transaction";
   await inTransaction(pool, async (transaction) => {
+    // The event side first, before anything that references it. This is the
+    // same ordering rule `lib/data/seats.ts` follows for one row, applied to
+    // the whole table because a reset clears every event: without it, a reset
+    // holding the registration rows and a seat claim holding an event row each
+    // wait on what the other has. The count is not the point -- acquiring the
+    // lock is, and a scan is what acquires it.
+    await transaction.request().query(LOCK_EVENTS_TABLE);
+
     for (const statement of DELETE_STATEMENTS) {
       await transaction.request().query(statement);
     }
     await insertFixtures(transaction, fixtures);
   });
+
+  phase = "committed";
 
   console.log(`\n  rows after:`);
   const after = await readCounts(pool);
@@ -660,6 +865,10 @@ function readConnectionString(): string {
 }
 
 async function main(): Promise<number> {
+  // Before anything else, including argument parsing: if the two descriptions
+  // of the reset scope disagree, nothing this tool does can be trusted.
+  assertAllowlistMatchesStatements();
+
   const argument = process.argv[2];
   if (process.argv.length > 3) return usage();
   if (
@@ -693,7 +902,7 @@ async function main(): Promise<number> {
   } catch (error) {
     if (error instanceof SeedError) throw error;
     console.error(`\n  FAILED -- ${describeError(error, redact)}`);
-    console.error(`  Rolled back; the database is as it was.\n`);
+    console.error(`  ${OUTCOME[phase]}\n`);
     return 1;
   } finally {
     await pool.close().catch(() => undefined);

@@ -107,8 +107,19 @@ export function getPool(): Promise<ConnectionPool> {
   pending.catch(forget);
 
   // Same reasoning once the pool is up: a pool that has errored is not worth
-  // handing out, so the next caller builds a new one.
-  pool.on("error", forget);
+  // handing out, so the next caller builds a new one -- and this one is closed
+  // rather than merely dropped.
+  //
+  // Forgetting alone was not enough. By the time `error` fires the pool has
+  // connected, so it owns a live connection pool of its own; dropping the last
+  // reference without closing leaves those sockets open and their reaper
+  // running until they idle out, while the next request builds a second pool
+  // beside them. Closing a pool that never connected is a no-op in the driver,
+  // and closing one twice is guarded there too, so this is safe on every path.
+  pool.on("error", () => {
+    forget();
+    void pool.close().catch(() => undefined);
+  });
 
   // And if anything closes it, the cache must not keep serving a closed pool.
   const close = pool.close.bind(pool);

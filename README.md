@@ -13,6 +13,11 @@ product is not.
 
 ## Getting started
 
+**Node 22.18 or newer.** The floor is set by one thing: the database scripts are
+TypeScript and Node runs them directly, which needs no flag only from 22.18.
+(They also use `--env-file-if-exists`, which has a lower requirement of its own.)
+`engines` in `package.json` records the minimum.
+
 ```bash
 npm install
 ```
@@ -121,13 +126,25 @@ EVENTS_DB_ALLOW_RESET=yes npm run db:reset
 
 `db:seed` never deletes: if the tables already hold rows it says so and stops.
 `db:reset` is the one that deletes, and it needs two separate conditions —
-`NODE_ENV` must not be `production`, **and** `EVENTS_DB_ALLOW_RESET=yes` must be
-supplied on the command line. Both run in a single transaction, so a failure
+`NODE_ENV` must not be `production`, **and** `EVENTS_DB_ALLOW_RESET=yes`
+supplied for that invocation. Both run in a single transaction, so a failure
 leaves the database exactly as it was.
+
+"For that invocation" is enforced, not asked for: reset reads `.env.local` and
+**refuses if the variable is declared there at all**, because Node merges the
+env file into the environment and a value parked in a file would pre-authorise
+every future reset. `.env.local` remains where `EVENTS_DB_CONNECTION_STRING`
+belongs — it is only this one variable that may not live there.
 
 Reset is a command, and only a command. There is no HTTP endpoint that resets
 anything: the opt-in above is stated at the moment of the reset, which is
 precisely what a web request cannot do.
+
+Stop the dev server first. Reset takes an exclusive lock on the events table
+before it deletes anything, which removes the known deadlock cycle between a
+reset and an application seat claim — it is not a proof that no deadlock is
+possible. And it still empties every table the app is reading, so a request that
+lands mid-reset either waits on the lock or sees a half-finished world.
 
 ### It is a shared database
 
@@ -141,8 +158,9 @@ needs. Every safeguard is therefore on our side:
   drops or alters a database;
 - `db:reset` deletes from five tables named as constants in the source. There is
   no `LIKE 'Events_%'` sweep and no table name that is ever computed;
-- `Events_SchemaMigrations` appears in no reset statement, so migration history
-  survives a reset;
+- no statement in the seed or reset tool changes `Events_SchemaMigrations` — it
+  is read, and a reset checks it is unchanged afterwards, so migration history
+  survives;
 - unrelated tables are never read or written by any of this.
 
 Read

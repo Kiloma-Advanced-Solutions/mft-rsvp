@@ -229,7 +229,20 @@ const FORBIDDEN: Rule[] = [
 const DISCOURAGED: Rule[] = [
   {
     id: "merge",
-    pattern: /\bMERGE\b/i,
+    /*
+     * `USING` is what makes this a statement rather than a word. T-SQL requires
+     * it -- there is no valid MERGE without a source -- so demanding it cannot
+     * miss a real one, and it is what separates `MERGE dbo.X AS t USING ...`
+     * from "Merge the two drafts into one". The same structural trick the
+     * ownership rules use with INSERT_TAIL/UPDATE_TAIL/DELETE_TAIL.
+     *
+     * Where it stops: a sentence carrying both words within the window -- "we
+     * should merge these before using it" -- matches this pattern on its own.
+     * What keeps that out is the gate, which does not read a literal as SQL
+     * unless a line in it *begins* a statement, and that sentence does not.
+     * Neither half is sufficient alone; the pair is.
+     */
+    pattern: /\bMERGE\b[\s\S]{0,120}?\bUSING\b/i,
     instead:
       "an explicit IF EXISTS ... UPDATE ELSE INSERT inside the transaction that already holds the row lock",
   },
@@ -449,14 +462,45 @@ const OWNERSHIP: Rule[] = [
 ];
 
 /**
- * A literal only counts as T-SQL if it contains one of these.
+ * What makes a template literal T-SQL: **a line that begins a statement.**
  *
- * `DROP INDEX` earns its place here even though nothing writes one: without it
- * a template literal holding nothing but `DROP INDEX ... ON <table>` is not read
- * as SQL at all, and `events-table-prefix` never gets to see the table it names.
+ * This decides which template literals in a `.ts`/`.mts` file are scanned at
+ * all, so a gap here silently disables every rule below it. It used to ask a
+ * different question -- "does this contain one of these SQL-ish words?" -- with
+ * a list built from the clauses our own statements happened to use. That list
+ * was independent of the rule set, and the two drifted: a literal holding only
+ * `THROW`, `MERGE`, `CREATE SEQUENCE`, `ALTER DATABASE` or `DROP SCHEMA`
+ * matched no clause word, was discarded before any rule ran, and passed. The
+ * rules were all present and correct; they were never handed the text.
+ *
+ * Asking about *statement shape* instead is what closes that. A statement
+ * verb at the start of a line is the one thing every construct these rules
+ * reject has in common -- they are statements -- so the gate no longer has to
+ * enumerate anything the rules already know about.
+ *
+ * Erring wide is deliberate and cheap. Letting a non-SQL literal through costs
+ * nothing unless a rule then matches it, and the self-test keeps a corpus of
+ * ordinary strings to prove that does not happen. Letting SQL out is the bug
+ * this had.
+ *
+ * **Nothing further is required of the literal, and that is load-bearing.** An
+ * earlier attempt also demanded a `dbo.`, an `@parameter` or a `;` before a
+ * literal counted, to stop English sentences beginning with a statement verb.
+ * It worked, and it silently dropped every statement written without schema
+ * qualification or a terminator -- `INSERT INTO Invoices (Id) VALUES (1)` and
+ * `CREATE TABLE Invoices (Id int NULL)` among them, which is the ownership rule
+ * the shared database depends on. Telling SQL from prose is a rule's job, not
+ * the gate's: `INSERT_TAIL`, `UPDATE_TAIL` and `DELETE_TAIL` already do it for
+ * the ownership rules, and the `merge` rule does it by requiring the `USING`
+ * that T-SQL requires too.
+ *
+ * The limit worth knowing: a *fragment* is not a statement, so a literal
+ * holding only `WHERE Id = @id` is not scanned. Fragments in this project are
+ * interpolated into a statement that is -- keep it that way, and do not hide a
+ * construct in one.
  */
-const SQL_ANCHOR =
-  /\b(SELECT|INSERT\s+INTO|UPDATE|DELETE\s+FROM|CREATE\s+TABLE|CREATE\s+INDEX|DROP\s+INDEX|ALTER\s+TABLE|DROP\s+TABLE|FROM|WHERE|VALUES|ORDER\s+BY|GROUP\s+BY|JOIN|BEGIN\s+TRAN|COMMIT\s+TRAN|ROLLBACK\s+TRAN|TRUNCATE)\b/i;
+const SQL_STATEMENT =
+  /(?:^|\n)[ \t]*(?:SELECT|INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|GRANT|REVOKE|DENY|EXEC|EXECUTE|SET|DECLARE|BEGIN|COMMIT|ROLLBACK|IF|WHILE|THROW|RAISERROR|PRINT|USE|BACKUP|RESTORE|WITH|GO)\b/i;
 
 type Finding = {
   file: string;
@@ -510,7 +554,7 @@ function blankNonCode(sql: string): string {
   return out.join("");
 }
 
-/** Blanks everything that is not inside a SQL-looking template literal. */
+/** Blanks everything that is not inside a template literal that begins a statement. */
 function keepOnlySqlTemplateLiterals(source: string): string {
   const out: string[] = source.split("").map((c) => (c === "\n" ? "\n" : " "));
 
@@ -523,7 +567,7 @@ function keepOnlySqlTemplateLiterals(source: string): string {
         else k++;
       }
       const body = source.slice(i + 1, k);
-      if (SQL_ANCHOR.test(body)) {
+      if (SQL_STATEMENT.test(body)) {
         for (let p = i + 1; p < k; p++) out[p] = source[p];
       }
       i = k + 1;
@@ -732,9 +776,18 @@ const DISCRIMINATION: Array<[string, string, boolean]> = [
   ["events-dml-target-prefix", "WHEN MATCHED THEN UPDATE SET target.Status = @status", false],
   // Reading is not writing.
   ["events-dml-target-prefix", "SELECT Id FROM dbo.Payroll ORDER BY Id ASC", false],
-  // English is not SQL. UPDATE, INSERT INTO and DELETE FROM are all SQL
-  // anchors, so ordinary prose in a template literal reaches these rules; only
-  // the required statement tail keeps it from being read as a write.
+  // The `merge` rule tells a statement from a sentence on its own, by requiring
+  // the `USING` that T-SQL requires -- the gate asks literals for no
+  // corroborating punctuation, so the rule cannot lean on any.
+  ["merge", "MERGE dbo.Events_Users AS t USING dbo.Events_Events AS s ON t.Id = s.Id", true],
+  ["merge", "MERGE INTO dbo.Events_Users AS t\nUSING (SELECT 1 AS One) AS s ON 1 = 1", true],
+  ["merge", "Merge the two drafts into one", false],
+  ["merge", "Merge conflict in lib/data/seed.mts", false],
+
+  // English is not SQL. A line beginning UPDATE, INSERT INTO or DELETE FROM is
+  // read as a statement, so ordinary prose in a template literal does reach
+  // these rules; only the required statement tail keeps it from being taken for
+  // a write.
   ["events-dml-target-prefix", "Could not update the event", false],
   ["events-dml-target-prefix", "Could not insert into the list", false],
   ["events-dml-target-prefix", "Could not delete from the board", false],
@@ -841,6 +894,132 @@ function selftest(): number {
       (f) => f.rule.id === "trim",
     ),
   );
+
+  /*
+   * Every statement the rejected fixture holds must also be caught when it is
+   * embedded in a TypeScript template literal, one statement at a time.
+   *
+   * This is the check that would have caught the gap this test was written for.
+   * The old gate kept a literal only if it contained one of a hand-written list
+   * of clause words, and that list was maintained independently of the rules --
+   * so `THROW`, `MERGE`, `CREATE SEQUENCE`, `ALTER DATABASE` and `DROP SCHEMA`
+   * were discarded before any rule saw them, while the `.sql` fixtures (which
+   * never pass through the gate) kept reporting a clean 154/154.
+   *
+   * Deriving the samples from the fixture rather than listing them here is the
+   * point: a rule added with a fixture sample is covered on the TypeScript path
+   * automatically, and a rule whose construct cannot survive the gate fails
+   * here rather than passing silently.
+   */
+  const fixtureSource = readFileSync(join(ROOT, FIXTURES.rejected), "utf8");
+  const asTemplate = (chunk: string) =>
+    `const q = \`${chunk.replace(/[`\\]/g, "\\$&").replace(/\$\{/g, "\\${")}\`;`;
+
+  let statementsChecked = 0;
+  for (const chunk of fixtureSource.split(/\n\s*\n/)) {
+    const viaSql = new Set(
+      scanText("<sql>", blankNonCode(chunk)).map((f) => f.rule.id),
+    );
+    if (viaSql.size === 0) continue;
+
+    statementsChecked += 1;
+    const viaTs = new Set(
+      scanText(
+        "<ts>",
+        blankNonCode(keepOnlySqlTemplateLiterals(asTemplate(chunk))),
+      ).map((f) => f.rule.id),
+    );
+    const missed = [...viaSql].filter((id) => !viaTs.has(id));
+    add(
+      `TypeScript path catches [${[...viaSql].join(", ")}] as it does in .sql`,
+      missed.length === 0,
+      missed.length > 0 ? `missed: ${missed.join(", ")}` : undefined,
+    );
+  }
+  add(
+    "fixture-derived TypeScript parity covered every rejected statement",
+    statementsChecked > 0,
+    `${statementsChecked} statement group(s)`,
+  );
+
+  /*
+   * SQL with no `dbo.`, no bound parameter and no terminator, reached through
+   * the TypeScript path.
+   *
+   * The fixture-derived loop above cannot cover this: every statement-bearing
+   * chunk in `forbidden.sql` happens to carry at least one of those three, so a
+   * gate that demanded one would keep passing it. A gate that demanded one is
+   * exactly the mistake this file made once -- it dropped all seven of the
+   * samples below, including both ownership rules, while the suite still
+   * reported green.
+   *
+   * So these are written out rather than derived, and written token-less on
+   * purpose. Each is a single template literal in a `.ts` source, so the only
+   * way it reaches a rule is through `keepOnlySqlTemplateLiterals` -- if that
+   * ever narrows again, these fail first.
+   */
+  const TOKENLESS_TEMPLATES: Array<[string, string]> = [
+    ["trim", "const q = `SELECT TRIM(Name) FROM Events_Users`;"],
+    ["concat", "const q = `SELECT CONCAT(a, b) FROM Events_Users`;"],
+    ["drop-if-exists", "const q = `DROP TABLE IF EXISTS Events_Example`;"],
+    [
+      "offset-rows",
+      "const q = `SELECT Id FROM Events_Users ORDER BY Name OFFSET 10 ROWS`;",
+    ],
+    ["truncate", "const q = `TRUNCATE TABLE Events_Users`;"],
+    [
+      "events-dml-target-prefix",
+      "const q = `INSERT INTO Invoices (Id) VALUES (1)`;",
+    ],
+    ["events-table-prefix", "const q = `CREATE TABLE Invoices (Id int NULL)`;"],
+    ["throw", "const q = `THROW 50000, 1, 1`;"],
+    [
+      "merge",
+      "const q = `MERGE Events_Users AS t USING Events_Events AS s ON t.Id = s.Id`;",
+    ],
+    ["create-sequence", "const q = `CREATE SEQUENCE Events_Thing_Seq AS int`;"],
+    ["alter-database", "const q = `ALTER DATABASE CURRENT SET ONLINE`;"],
+    ["drop-database-or-schema", "const q = `DROP SCHEMA reporting`;"],
+  ];
+  for (const [id, source] of TOKENLESS_TEMPLATES) {
+    const hits = scanText(
+      "<ts>",
+      blankNonCode(keepOnlySqlTemplateLiterals(source)),
+    ).map((f) => f.rule.id);
+    add(
+      `token-less TypeScript literal is still read as SQL [${id}]`,
+      hits.includes(id),
+      hits.length === 0 ? "the literal never reached any rule" : hits.join(", "),
+    );
+  }
+
+  /*
+   * And the other half of the bargain: erring wide must not make the checker
+   * noisy. These are the shapes ordinary application code writes -- English
+   * sentences that happen to contain SQL-ish words, and JavaScript whose method
+   * names collide with T-SQL function names.
+   */
+  const ORDINARY_TEMPLATES = [
+    "const a = `Could not update the event. Select another date and try again.`;",
+    "const b = `${user.name.trim()} joined`;",
+    "const c = `${format(date)} — ${concat(parts)}`;",
+    "const d = `/api/events/${id}/registrations`;",
+    "const e = `grid-template-columns: repeat(${n}, 1fr)`;",
+    "const f = `Delete from your calendar?`;",
+    "const g = `Merge the two drafts into one`;",
+    "const h = `${count} people are going`;",
+  ];
+  for (const sample of ORDINARY_TEMPLATES) {
+    const hits = scanText(
+      "<ts>",
+      blankNonCode(keepOnlySqlTemplateLiterals(sample)),
+    );
+    add(
+      `ordinary template is not read as SQL: ${sample.slice(10, 58)}`,
+      hits.length === 0,
+      hits.map((f) => f.rule.id).join(", "),
+    );
+  }
 
   // The migration runner authors its DDL as a TypeScript template literal, so
   // the ownership rule has to reach through that path and not only through .sql.

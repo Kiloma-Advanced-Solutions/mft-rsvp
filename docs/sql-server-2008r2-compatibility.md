@@ -336,10 +336,21 @@ statements made safe by the same expected-status predicate:
 `UPDATE … WHERE Id = @id AND Status = @expectedStatus`. Zero rows affected means
 somebody else decided first, which the route reports as a conflict.
 
-**Lock order is event row first, always.** `removeEvent` takes the event row
-before deleting the registrations that reference it, for that reason alone —
+**Lock order is the event side first, always.** `removeEvent` takes the event
+row before deleting the registrations that reference it, for that reason alone —
 without it, a delete and a seat claim hold what the other needs next and
 deadlock. No transaction in this application acquires two event rows.
+
+`db:reset` obeys the same rule at table granularity: it clears every event, so
+there is no single row to take, and it opens its transaction with
+`SELECT COUNT(*) FROM dbo.Events_Events WITH (TABLOCKX, HOLDLOCK)` before
+deleting anything. `HOLDLOCK` is what makes that a lock *ordering* rather than a
+gesture — without it the lock would be released at the end of the statement and
+a seat claim could still slip in between. Both hints predate the floor. Reset
+remains a destructive development command: the lock removes the known cycle
+between a reset and a seat claim, which is not the same as proving no deadlock
+is possible, and neither is it a reason to run one while an application is
+serving traffic.
 
 ## Shared-database safety rules
 
@@ -368,7 +379,13 @@ one. Every slice that touches it must obey:
 9. Destructive operations run inside a transaction with `TRY … CATCH` /
    `ROLLBACK`.
 10. Every DDL change proves the boundary: snapshot `sys.tables` before and
-    after; the difference contains only our objects.
+    after and confirm the difference contains only our objects. **This is a
+    migration-authoring step performed by whoever writes the migration, not
+    something the runner does.** `lib/data/migrate.mts` deliberately never
+    enumerates the catalog — a tool that discovers objects at runtime is the
+    shape rule 5 rejects — so the automated half of this guarantee is
+    `npm run check:tsql`, which refuses any `CREATE`/`ALTER`/`DROP` or write
+    aimed at a name that is not `Events_`-prefixed, in the files themselves.
 11. No stored procedures, views, triggers, functions or jobs — every persisted
     object is a table we named.
 12. **Credentials stay outside source control.** Real values live only in an

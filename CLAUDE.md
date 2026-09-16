@@ -33,8 +33,13 @@ no component library. If a dependency seems necessary, say why before adding it.
   needs data calls an API route.
 - `getCurrentUser()` from `lib/session.ts` is the only source of identity on the
   server. Never take a `userId` from a request body and trust it.
-- Every rule in section 4 of `TASKS.md` is enforced in the route handler.
-  Hiding a button is a UX affordance, not a permission check.
+- Every rule in section 4 of `TASKS.md` is enforced on the server, never in the
+  browser. Hiding a button is a UX affordance, not a permission check.
+- Visibility and permission rules are enforced in the route handler. Capacity is
+  the exception: a seat can be taken between a handler's check and its write, so
+  the authoritative check runs inside the transaction that holds the event row —
+  see `lib/data/seats.ts`. It re-runs the same rule from `lib/permissions.ts`
+  rather than restating it, so there is still one implementation.
 - Answer "can this person see this event" and "can this person manage this event"
   in one shared place, and call it from both the pages and the API.
 
