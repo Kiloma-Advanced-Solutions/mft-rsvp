@@ -26,7 +26,7 @@
 
 .required {
   color: var(--color-danger);
-  margin-left: 2px;
+  margin-inline-start: 2px;
 }
 
 .hint {

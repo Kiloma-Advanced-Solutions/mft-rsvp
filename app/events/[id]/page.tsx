@@ -196,7 +196,7 @@ function Description({ text }: { text: string }) {
   return (
     <div className={styles.description}>
       {paragraphs.map((paragraph, index) => (
-        <p key={index} className={styles.paragraph}>
+        <p key={index} className={styles.paragraph} dir="auto">
           {paragraph}
         </p>
       ))}

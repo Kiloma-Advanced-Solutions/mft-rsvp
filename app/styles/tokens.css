@@ -94,8 +94,15 @@
   --radius-full: 999px;
 
   /* ---- Typography ------------------------------------------------------ */
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
-    "Segoe UI", Roboto, sans-serif;
+  /*
+    Rubik leads the stack because it has the Hebrew the interface is written in;
+    Geist has no Hebrew subset and would have been silently swapped for whatever
+    the system happened to have. Geist stays behind it for the Latin that is
+    left -- code spans, URLs, the odd platform name -- so the design's Latin
+    typography is unchanged.
+  */
+  --font-sans: var(--font-rubik), var(--font-geist-sans), ui-sans-serif,
+    system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
 
   --text-xs: 0.75rem;

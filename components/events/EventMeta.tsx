@@ -13,12 +13,16 @@ import {
 import {
   ACCESS_LABELS,
   ACCESS_TONES,
+  CAPACITY_LABELS,
   EVENT_STATUS_LABELS,
   EVENT_STATUS_TONES,
   LOCATION_KIND_LABELS,
   REGISTRATION_LABELS,
   REGISTRATION_TONES,
+  capacityCountLabel,
+  goingCountLabel,
   locationLabel,
+  placesLeftLabel,
 } from "@/lib/labels";
 import type {
   EventAccess,
@@ -99,7 +103,7 @@ export function EventStatusBadge({
   if (isPast(event.startsAt)) {
     return (
       <Badge tone="neutral" size={size}>
-        Past
+        {CAPACITY_LABELS.past}
       </Badge>
     );
   }
@@ -144,7 +148,9 @@ export function EventMetaLine({
         <span className={styles.metaIcon} aria-hidden>
           ⌖
         </span>
-        <span className={styles.metaText}>{locationLabel(event.location)}</span>
+        <span className={styles.metaText} dir="auto">
+          {locationLabel(event.location)}
+        </span>
       </span>
     </div>
   );
@@ -189,7 +195,7 @@ function LocationDetails({ location }: { location: EventLocation }) {
   const showsLink = location.kind !== "in_person";
 
   return (
-    <span className={styles.metaText}>
+    <span className={styles.metaText} dir="auto">
       {showsVenue ? (location.venue ?? LOCATION_KIND_LABELS[location.kind]) : null}
       {showsVenue && showsLink ? " · " : null}
       {showsLink && location.url ? (
@@ -199,7 +205,7 @@ function LocationDetails({ location }: { location: EventLocation }) {
           target="_blank"
           rel="noreferrer"
         >
-          {location.platform ?? "Join link"}
+          {location.platform ?? CAPACITY_LABELS.joinLink}
         </a>
       ) : null}
       {location.address && (
@@ -226,8 +232,12 @@ export function CapacityMeter({
     return (
       <div className={cx(styles.capacity, className)}>
         <div className={styles.capacityRow}>
-          <span className={styles.capacityCount}>{going} going</span>
-          <span className={styles.capacityRemaining}>No limit</span>
+          <span className={styles.capacityCount}>
+            {goingCountLabel(going)}
+          </span>
+          <span className={styles.capacityRemaining}>
+            {CAPACITY_LABELS.noLimit}
+          </span>
         </div>
       </div>
     );
@@ -240,10 +250,10 @@ export function CapacityMeter({
     <div className={cx(styles.capacity, className)}>
       <div className={styles.capacityRow}>
         <span className={styles.capacityCount}>
-          {going} / {capacity} going
+          {capacityCountLabel(going, capacity)}
         </span>
         <span className={cx(styles.capacityRemaining, full && styles.capacityFull)}>
-          {full ? "Full" : `${capacity - going} left`}
+          {full ? CAPACITY_LABELS.full : placesLeftLabel(capacity - going)}
         </span>
       </div>
       <div className={styles.capacityTrack}>
