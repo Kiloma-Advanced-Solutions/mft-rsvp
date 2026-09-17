@@ -71,9 +71,23 @@ export const POST = withErrorHandling(
     // Read back from the store rather than from `detail.requests`, which holds
     // only the decidable rows: a row that is already `going` should refuse as a
     // conflict, not disappear into a 404.
-    const rows = await db.registrations.list({ eventId: detail.event.id });
-    const registration = rows.find((row) => row.id === registrationId);
-    if (!registration) throw ApiError.notFound();
+    //
+    // By id, and the lookup is what compares it: `uniqueidentifier` is matched
+    // by value, so a correct id in any case finds its row. Scanning this
+    // event's rows for `row.id === registrationId` did not -- the store
+    // lower-cases ids on the way out, so an upper-case id in the URL matched
+    // nothing and a host got a 404 for a request that was sitting in front of
+    // them.
+    const registration = await db.registrations.get(registrationId);
+
+    // A row that is not this event's is not this host's to decide, and answers
+    // the same 404 as a row that does not exist -- so a host of one event
+    // learns nothing about another's. Reading by id rather than within the
+    // event is what makes this check explicit instead of incidental;
+    // `approveRequest` re-runs it under the lock for the same reason.
+    if (!registration || registration.eventId !== detail.event.id) {
+      throw ApiError.notFound();
+    }
 
     // The refusal the host sees, from the snapshot this request loaded. As on
     // the registration route, it is the right basis for the message and the

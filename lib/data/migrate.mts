@@ -388,12 +388,117 @@ async function loadHistory(
 }
 
 /**
+ * How far one migration got, so a failure can say what is actually known -- and
+ * only what is actually known.
+ *
+ * The states `lib/data/seed.mts` uses, for the same reason. Without this, every
+ * failure was reported as `rolled back; nothing was recorded for this
+ * migration.` -- which is a guess on one of these paths and flatly wrong on
+ * another. An operator told a migration did not land, when its DDL and its
+ * history row are both durable, will apply it again by hand.
+ *
+ * Two of the four are uncertainty, and they exist because the uncertainty is
+ * real:
+ *
+ *   - `committing` -- the commit was sent and the answer never arrived. A
+ *     connection lost after the server commits looks exactly like a commit that
+ *     never happened, and the client cannot tell them apart.
+ *   - `in-transaction` -- the work failed and the rollback could not be
+ *     confirmed. A rollback that was *attempted* is not a rollback that
+ *     *happened*, and only the confirmed case earns `rolled-back`.
+ *
+ * `not-started` is the one state seed has no use for: a migration can fail on
+ * its own file, before a connection is ever asked for a transaction.
+ *
+ * Seed's fifth state, `committed`, is deliberately absent. It exists there
+ * because seed reads its row counts back *after* committing and so can fail
+ * with the write already durable; nothing follows `commit()` here, so no
+ * failure of this runner can carry it. A message for a state that cannot arise
+ * would be one more thing a reader has to disprove.
+ */
+type Phase = "not-started" | "in-transaction" | "rolled-back" | "committing";
+
+/** Where an operator should look when this tool cannot say. */
+const INSPECT =
+  "Run `npm run db:migrate -- --status` to see what the history table records.";
+
+/**
+ * What a failure in each phase is allowed to claim.
+ *
+ * The reassuring sentence appears exactly once, against the one state that has
+ * earned it.
+ */
+const OUTCOME: Record<Phase, string> = {
+  "not-started":
+    "Nothing was sent to the database for this migration; it was not started.",
+  "in-transaction":
+    "The transaction was open and the rollback could not be confirmed, so this " +
+    `migration may or may not have been applied. ${INSPECT}`,
+  "rolled-back":
+    "Rolled back; nothing was applied and nothing was recorded for this migration.",
+  committing:
+    "The commit was sent but never acknowledged, so this migration may or may " +
+    `not have been applied and recorded. ${INSPECT}`,
+};
+
+/*
+ * The phase of a failure, carried beside the error rather than on it.
+ *
+ * A `WeakMap` because the errors involved are mostly the driver's, and writing
+ * a property onto an object somebody else owns can fail on a frozen one and
+ * would show up in anything that serialises it. Nothing here needs the tag to
+ * survive this process.
+ *
+ * `phaseOf` answers `not-started` for anything untagged, and that is sound
+ * rather than a fallback. `apply` has exactly one `catch`, it covers everything
+ * after `begin()` resolves, and it tags. So an untagged error can only have
+ * come from reading the file, splitting it, or `begin()` itself -- and in all
+ * three of those not one statement of the migration reached the server.
+ */
+const PHASES = new WeakMap<object, Phase>();
+
+function withPhase(error: unknown, phase: Phase): unknown {
+  if (typeof error === "object" && error !== null) PHASES.set(error, phase);
+  return error;
+}
+
+function phaseOf(error: unknown): Phase {
+  if (typeof error === "object" && error !== null) {
+    return PHASES.get(error) ?? "not-started";
+  }
+  return "not-started";
+}
+
+/**
  * Applies one migration, all of it or none of it.
  *
  * Every batch and the history row go in a single transaction: any other
  * arrangement leaves a window where the schema changed and the history did not,
  * and the next run would try to create tables that already exist. DDL is
  * transactional in SQL Server, which is what makes this possible.
+ *
+ * **The phase below is not only bookkeeping: it also decides whether a rollback
+ * is attempted.** It records how far the transaction got, and the `catch` reads
+ * it to choose what to do -- so moving one of the assignments changes
+ * behaviour, not just a message.
+ *
+ * The rule it encodes: a rollback is attempted only from `in-transaction`, and
+ * deliberately **not** once the phase is `committing`. `commit()` throwing is an
+ * ambiguous outcome rather than a failed one -- the server may have committed
+ * and the acknowledgement may simply not have arrived, which from here is
+ * indistinguishable from a commit that never happened. Issuing another rollback
+ * on top of that would not establish which it was: it would either be refused
+ * because the transaction is already resolved, or roll back work that was never
+ * committed, and either way the client learns nothing it can report. So the
+ * phase is left saying "unknown" and the operator is pointed at `--status`,
+ * which can answer it from the history table.
+ *
+ * (`lib/data/seed.mts` gates its rollback the same way and for the same reason.
+ * `inTransaction` in `lib/data/client.ts` still attempts the unconditional
+ * rollback, which is fine there: it reports no outcome to anybody.)
+ *
+ * The phase leaves on the error rather than in the return value, because the
+ * error is the only thing a failing call hands back.
  */
 async function apply(pool: ConnectionPool, migration: Migration): Promise<number> {
   const batches = splitBatches(
@@ -417,7 +522,12 @@ async function apply(pool: ConnectionPool, migration: Migration): Promise<number
     abortedByServer = true;
   });
 
+  // A `begin()` that throws is left untagged on purpose: `phaseOf` reads that
+  // as `not-started`, which is the truth -- no statement of this migration
+  // reached the server. The phase only becomes worth recording once there is a
+  // transaction that could have done something.
   await transaction.begin();
+  let phase: Phase = "in-transaction";
 
   try {
     for (let index = 0; index < batches.length; index++) {
@@ -437,10 +547,29 @@ async function apply(pool: ConnectionPool, migration: Migration): Promise<number
       .input("appliedAt", sql.DateTime2(3), new Date())
       .query(INSERT_HISTORY);
 
+    // From here until `commit()` resolves the outcome is genuinely unknown, so
+    // the phase says so until the acknowledgement arrives. Nothing follows the
+    // commit, so a success needs no phase of its own.
+    phase = "committing";
     await transaction.commit();
   } catch (error) {
-    if (!abortedByServer) await transaction.rollback().catch(() => undefined);
-    throw error;
+    // Only a pre-commit failure can be rolled back to a known state. A commit
+    // that threw is already past that, and rolling back on top of it would tell
+    // us nothing -- so the phase is left saying so.
+    if (phase === "in-transaction") {
+      if (abortedByServer) {
+        phase = "rolled-back";
+      } else {
+        try {
+          await transaction.rollback();
+          phase = "rolled-back";
+        } catch {
+          // Left as `in-transaction`: the rollback was attempted and its
+          // outcome is unknown, which is not the same as rolled back.
+        }
+      }
+    }
+    throw withPhase(error, phase);
   }
 
   return batches.length;
@@ -550,15 +679,20 @@ async function migrate(pool: ConnectionPool, redact: (text: string) => string): 
     } catch (error) {
       console.error(
         `  FAILED   ${migration.name}\n` +
-          `           ${describeError(error, redact)}\n` +
-          `           rolled back; nothing was recorded for this migration.`,
+          `           ${describeError(error, redact)}`,
       );
       const cause = (error as { cause?: unknown }).cause;
       if (cause !== undefined) {
         console.error(`           ${describeError(cause, redact)}`);
       }
+      // What is actually known about this migration, which is not always
+      // "rolled back" -- see `OUTCOME`.
+      console.error(`           ${OUTCOME[phaseOf(error)]}`);
       // Stop at the first failure. Later migrations may depend on this one, and
       // guessing which do is not this runner's job.
+      //
+      // The count is of migrations that completed *before* this one, so it
+      // stays true whatever happened to this one.
       console.error(
         `\n  Stopped. ${pending.indexOf(migration)} of ${pending.length} ` +
           `pending migration(s) were applied before this one.\n`,

@@ -146,12 +146,19 @@ const DELETE_STATEMENTS = [
 ] as const;
 
 /**
- * The event-side lock a reset takes before it deletes anything.
+ * The event-side lock **both commands take before touching anything else.**
  *
  * `TABLOCKX` because a reset clears every event, so there is no single row to
  * lock; `HOLDLOCK` so it is held to the end of the transaction rather than the
  * end of the statement, which is the whole point -- a lock released early would
  * let a seat claim slip in between this and the deletes and restore the cycle.
+ *
+ * Taken first by `reset` *and* by `seed`, which is what puts every writer in
+ * this application on one lock order: the event side, then whatever references
+ * it. `lib/data/seats.ts` does the same for one row with `UPDLOCK, ROWLOCK`.
+ * Two writers that agree on the order cannot form a cycle, so this is also the
+ * whole of the deadlock story here -- there is no application lock and no
+ * second mutex to keep in step with it.
  *
  * Both hints predate SQL Server 2008 R2. The isolation level is untouched.
  */
@@ -753,6 +760,28 @@ async function seed(pool: ConnectionPool, fixtures: Fixtures): Promise<number> {
 
   phase = "in-transaction";
   await inTransaction(pool, async (transaction) => {
+    // The event side first, before reading or writing anything that references
+    // it -- the same ordering rule `reset` below follows and `lib/data/seats.ts`
+    // follows for one row. Seeding inserts users before it inserts events, so
+    // this looks unnecessary, and that is exactly the problem it fixes: without
+    // it, seed is the only writer in the system that takes its locks in a
+    // different order from everybody else.
+    //
+    // Concretely, against a concurrent `db:reset`: seed would hold its new
+    // `Events_Users` rows and wait for `Events_Events` to insert into, while
+    // reset held `Events_Events` and waited on those same user rows to delete
+    // them. That is a cycle, and SQL Server resolves it by killing one of them.
+    //
+    // Taking this lock first means one of the two runs to the end while the
+    // other waits at its first statement holding nothing, and then does the
+    // right thing with what it finds: a seed that waited finds the tables
+    // occupied and refuses, a reset that waited clears them and refills.
+    // Neither is a deadlock and neither is a half-written database.
+    //
+    // It also makes the emptiness check below stronger than it was: no other
+    // writer can create an event between the count and the inserts.
+    await transaction.request().query(LOCK_EVENTS_TABLE);
+
     const counts = await readCounts(transaction);
     const occupied = COUNT_KEYS.filter((key) => counts[key] > 0);
 

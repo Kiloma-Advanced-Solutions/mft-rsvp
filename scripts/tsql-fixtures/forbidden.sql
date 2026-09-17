@@ -4,7 +4,9 @@
 --
 --   FORBIDDEN   -- introduced after SQL Server 2008 R2
 --   DISCOURAGED -- available at the floor, rejected by this project's design
---   OWNERSHIP   -- DDL aimed at an object this application does not own
+--   OWNERSHIP   -- DDL aimed at an object this application has no business
+--                  touching: somebody else's table, or a kind of object we do
+--                  not create at any name
 --
 -- The self-test asserts that EVERY rule fires at least once here, so a new rule
 -- added without a sample fails the self-test. That is what keeps this file
@@ -134,7 +136,30 @@ TRUNCATE TABLE dbo.Events_Example;
 -- drop-database-or-schema: only app-owned Events_* objects may ever be dropped
 DROP SCHEMA app_events;
 
-/* ------------------------ OWNERSHIP (an object this application does not own) */
+/* ----------------- OWNERSHIP (an object this application must not touch) */
+
+-- non-table-object-ddl: shared-database rule 11 -- no stored procedures, views,
+-- triggers, functions or jobs. Every persisted object this application owns is
+-- a table it named, so these are refused whatever they are called: the
+-- Events_-prefixed samples below must be rejected exactly as the foreign ones
+-- are. That is why the rule reads no target.
+CREATE VIEW dbo.PayrollSummary AS SELECT 1 AS One;
+ALTER VIEW dbo.Events_Summary AS SELECT 2 AS Two;
+DROP VIEW dbo.SomeoneElsesView;
+CREATE PROCEDURE dbo.Payroll_Pay AS SELECT 1;
+ALTER PROCEDURE dbo.SomeoneElsesProcedure AS SELECT 1;
+DROP PROC dbo.Events_Recount;
+CREATE FUNCTION dbo.Events_Rate () RETURNS int AS BEGIN RETURN 1 END;
+DROP FUNCTION dbo.Payroll_Rate;
+CREATE TRIGGER TR_Events_Audit ON dbo.Events_Events AFTER INSERT AS SELECT 1;
+DROP TRIGGER dbo.TR_Payroll;
+CREATE SCHEMA finance;
+DROP SEQUENCE dbo.PayrollSeq;
+CREATE SYNONYM dbo.Payroll2 FOR dbo.Payroll;
+CREATE TYPE dbo.MoneyList AS TABLE (Amount int);
+CREATE LOGIN app_reader FROM WINDOWS;
+CREATE USER app_reader FOR LOGIN app_reader;
+CREATE ROLE events_writer;
 
 -- events-table-prefix: the database is shared and the development account holds
 -- db_owner, so a table name that does not say it is ours is the one mistake

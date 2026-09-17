@@ -145,6 +145,29 @@ export async function findRegistration(
   return row === undefined ? null : toRegistration(row);
 }
 
+/**
+ * One row by its own id, on the pool.
+ *
+ * Paired with `readRegistrationById` below exactly as `updateRegistration` is
+ * with `updateRegistrationOn`, and for the same reason: the seat-claim path
+ * needs this read on its own transaction, under the event-row lock, while a
+ * route deciding whether a row exists at all needs it outside one. It sits up
+ * here with the ordinary reads because that is what it is -- the section below
+ * is the runner-taking half.
+ *
+ * It is also where **id case stops being anybody else's problem.** The
+ * parameter is bound as a `uniqueidentifier`, and SQL Server compares those by
+ * value rather than by spelling, so `F1AEB57F-…` and `f1aeb57f-…` find the same
+ * row; `toRegistration` then lower-cases what comes back. A route that compared
+ * a URL segment against an already-normalised `id` in JavaScript could not do
+ * either, and answered a correct upper-case id with a 404 -- which is what both
+ * decision routes used to do. Nothing above `lib/data/` should know the storage
+ * engine has an opinion about case, and with this it does not have to.
+ */
+export async function getRegistration(id: string): Promise<Registration | null> {
+  return readRegistrationById(await getPool(), id);
+}
+
 /* ------------------------------------------- reads for the seat-claim path */
 
 /*

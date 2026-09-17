@@ -62,9 +62,16 @@ export const POST = withErrorHandling(
 
     // From the store, not from `detail.requests`: a row that is already `going`
     // is a conflict to report, not a row to pretend does not exist.
-    const rows = await db.registrations.list({ eventId: detail.event.id });
-    const registration = rows.find((row) => row.id === registrationId);
-    if (!registration) throw ApiError.notFound();
+    //
+    // Looked up by id and checked against this event, exactly as `approve`
+    // beside it does -- same mechanism, so the two cannot drift on which ids
+    // they accept or on what they disclose. See that route for why the lookup
+    // rather than a scan is what handles an id's case.
+    const registration = await db.registrations.get(registrationId);
+
+    if (!registration || registration.eventId !== detail.event.id) {
+      throw ApiError.notFound();
+    }
 
     const availability = getRequestDecisionAvailability(detail.event, {
       goingCount: detail.goingCount,

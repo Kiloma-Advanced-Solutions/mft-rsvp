@@ -44,6 +44,13 @@
  * now offers no way to create a registration except the safe one. Everything
  * else here remains one statement against one table.
  *
+ * `registrations.update` is held to the same line by its patch type rather than
+ * by a comment: `RegistrationUpdate` admits no `status: "going"`, and no
+ * `eventId` or `userId` either, so the generic write can neither hand out a
+ * place nor move one to another event or another person. `lib/data/seats.ts`
+ * keeps the full `RegistrationPatch` because granting a place under the lock is
+ * its job.
+ *
  * Most updates also take an expected status, which makes the write conditional
  * on the row still being in the state the caller decided against. A `null`
  * return means it was not, which is a conflict rather than a missing row --
@@ -61,6 +68,7 @@ import {
 } from "./data/events";
 import {
   findRegistration,
+  getRegistration,
   listRegistrations,
   removeRegistration,
   updateRegistration,
@@ -83,7 +91,56 @@ import type {
 export type EventInput = Omit<EventRecord, "id" | "createdAt" | "updatedAt">;
 export type EventPatch = Partial<EventInput>;
 
+/**
+ * Every field of a registration a write may touch. **`lib/data/` only.**
+ *
+ * The full surface, including `status: "going"`, because `lib/data/seats.ts`
+ * legitimately needs it: granting a place is exactly what that module is for,
+ * and it does it under the event-row lock. See `RegistrationUpdate` below for
+ * what the store hands to product code, which is a good deal less.
+ */
 export type RegistrationPatch = Partial<Omit<Registration, "id" | "createdAt">>;
+
+/**
+ * What `registrations.update` accepts -- and the three things it does not.
+ *
+ * `status: "going"` is absent because raising the `going` count is the one
+ * write this store will not perform generically. `claimSeat` and `approve`
+ * exist for it and take the event-row lock first; a third way in would put an
+ * event over its capacity with nothing to catch it, since no constraint can
+ * express that rule (`lib/data/seats.ts` explains why). The file already warned
+ * about this in prose -- *"a future write path that sets `Status = N'going'`
+ * without coming through here silently breaks the invariant"* -- and this is
+ * the same warning where the compiler can read it.
+ *
+ * `eventId` and `userId` are absent because they are not a patch at all. Moving
+ * a row to another event is re-parenting it past every capacity check both
+ * events ever ran, and moving it to another person hands somebody else's place
+ * away. Neither is something the product does, and both were expressible.
+ *
+ * `updatedAt` stays permitted and stays ignored, as it always has been -- the
+ * stamp is the store's to apply. See `assignPatch` in
+ * `lib/data/registrations.ts`.
+ *
+ * Nothing here is a runtime check: the two real callers write `cancelled` and
+ * `rejected` and are unaffected. It is the invariant made structural, so the
+ * next caller cannot be the one that breaks it.
+ *
+ * **`eventId?: never` rather than simply leaving the keys out**, and the
+ * difference is the whole value of the type. Omitting them is only enforced
+ * against an object literal, because TypeScript lets a *variable* carry
+ * properties its target does not declare -- so `update(id, patch)` with a
+ * `patch` built elsewhere would have slipped both through, which is exactly the
+ * shape a future caller would write. `never` makes the key itself
+ * unsatisfiable, so there is no way to hold a value of this type that has one.
+ */
+export type RegistrationUpdate = Partial<
+  Omit<Registration, "id" | "eventId" | "userId" | "createdAt" | "status">
+> & {
+  status?: Exclude<RegistrationStatus, "going">;
+  eventId?: never;
+  userId?: never;
+};
 
 /**
  * A new persistent entity id.
@@ -175,6 +232,24 @@ export const db = {
       return listRegistrations(filter);
     },
 
+    /**
+     * One registration by its own id, whoever it belongs to.
+     *
+     * For the two routes that are handed a `registrationId` in the URL: a host
+     * deciding somebody else's request knows the row's id and not the pair that
+     * identifies it. **Whether that row is one this caller may decide is not
+     * answered here** -- it is a plain lookup, and both routes check
+     * `eventId` against the event they already authorised before doing
+     * anything with what comes back.
+     *
+     * Looking a row up rather than scanning the event's rows for a matching id
+     * is also what makes the id's case the database's business instead of a
+     * route's -- see `getRegistration` in `lib/data/registrations.ts`.
+     */
+    async get(id: string): Promise<Registration | null> {
+      return getRegistration(id);
+    },
+
     /** A person has at most one registration per event. */
     async find(eventId: string, userId: string): Promise<Registration | null> {
       return findRegistration(eventId, userId);
@@ -186,10 +261,15 @@ export const db = {
      * transition passes it -- withdrawing, rejecting, reviving -- so two writers
      * deciding the same row cannot both win. A `null` return then means the row
      * moved, which routes report as a conflict.
+     *
+     * It cannot grant a place, and it cannot move a row to another event or
+     * another person -- `RegistrationUpdate` does not admit any of the three.
+     * Withdrawing and rejecting are what remain, and neither can raise the
+     * `going` count, which is why neither needs the event lock.
      */
     async update(
       id: string,
-      patch: RegistrationPatch,
+      patch: RegistrationUpdate,
       expectedStatus?: RegistrationStatus,
     ): Promise<Registration | null> {
       return updateRegistration(id, patch, now(), expectedStatus);

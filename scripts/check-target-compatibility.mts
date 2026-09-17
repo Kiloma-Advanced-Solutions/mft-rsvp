@@ -286,12 +286,21 @@ async function run(): Promise<number> {
       );
     const returned = stamp.recordset[0].roundTripped;
     const isoMatches = returned.toISOString() === sent.toISOString();
+    // A failure, not a note. An exact round trip is a contract the application
+    // relies on rather than a property it would like: `datetime2(3)` is exactly
+    // JavaScript's millisecond precision, and on the strength of that
+    // `db.events.create` and `claimSeat` both return the record they just wrote
+    // instead of re-reading it. If this target does not preserve the value, the
+    // API hands a client a timestamp the database does not hold -- silently,
+    // and on a write path. A conforming target cannot fail this, so reporting
+    // it as `info` only ever hid a target that should have been rejected.
     record(
-      isoMatches ? "ok" : "info",
+      isoMatches ? "ok" : "fail",
       "datetime2(3) round-trip",
       isoMatches
         ? "millisecond precision and UTC preserved exactly"
-        : `sent ${sent.toISOString()}, got back ${returned.toISOString()}`,
+        : `sent ${sent.toISOString()}, got back ${returned.toISOString()}` +
+          " -- lib/data/rows.ts and the two create paths assume this is lossless",
     );
 
     /* 10 -- representative parameter binding, including NULL */

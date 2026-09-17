@@ -12,7 +12,7 @@ we have *run*. Three tiers, and they must never be conflated:
 
 | | Tier | Status |
 | --- | --- | --- |
-| **A** | **Statically enforced in this repository.** No construct introduced after 2008 R2 appears in our SQL; no type is used that post-dates the floor or is wrong for our purposes; `GO` is handled by our own runner rather than assumed executable by the driver; DDL only ever targets an `Events_`-prefixed table. | Enforced by `npm run check:tsql` plus review. **A guardrail, not a proof.** |
+| **A** | **Statically enforced in this repository.** No construct introduced after 2008 R2 appears in our SQL; no type is used that post-dates the floor or is wrong for our purposes; `GO` is handled by our own runner rather than assumed executable by the driver; DDL only ever targets an `Events_`-prefixed table, and no non-table persisted object is created at all. | Enforced by `npm run check:tsql` plus review. **A guardrail, not a proof.** |
 | **B** | **Executed and verified against Azure SQL DEV.** The schema creates, the constraints hold, migrations apply idempotently, and the product behaviour of M1–M5 survives, checked as all five personas. | Verified — **for Azure SQL only.** |
 | **C** | **Unverified against a real SQL Server 2008 R2 server.** TLS, certificates, TDS negotiation, driver behaviour, migration execution, collation, permissions, locking semantics. | **Not verified. Deployment-preflight items.** |
 
@@ -158,7 +158,7 @@ check.**
 | `truncate` | `TRUNCATE TABLE` | Fails on a table a foreign key references (`Events_Users` and `Events_Events` are both targets) and has no `CASCADE` in T-SQL. Use `DELETE` against explicitly named tables. |
 | `drop-database-or-schema` | `DROP DATABASE`, `DROP SCHEMA` | Only application-owned `Events_*` objects may ever be dropped. |
 
-### OWNERSHIP — DDL aimed at an object this application does not own
+### OWNERSHIP — DDL aimed at an object this application must not touch
 
 Not a compatibility question either, and reported as its own third class for the
 same reason: so the 2008 R2 claim above is never diluted by a different kind of
@@ -171,12 +171,15 @@ what stops it.
 
 | Rule id | Construct | Why we reject it |
 | --- | --- | --- |
+| `non-table-object-ddl` | `CREATE`/`ALTER`/`DROP` of a `VIEW`, `PROCEDURE`/`PROC`, `FUNCTION`, `TRIGGER`, `SCHEMA`, `SEQUENCE`, `SYNONYM`, `TYPE`, `LOGIN`, `USER` or `ROLE` — **at any name** | Rule 11 of the shared-database rules below, made mechanical. These objects are not ours to create *anywhere*, so unlike every other rule here it reads no target and applies no prefix test: `CREATE VIEW dbo.Events_Summary` is refused exactly as `CREATE VIEW dbo.PayrollSummary` is. Before it existed, `DDL_TARGET` covered only `TABLE` and `INDEX`, so a plain `DROP VIEW dbo.SomeoneElsesView` passed the whole guard — a few forms were caught incidentally by `create-or-alter`, `drop-if-exists`, `drop-database-or-schema` and `create-sequence`, which made the gap look smaller than it was. `EXEC sp_rename`, `GRANT`/`REVOKE`/`DENY` and dynamic SQL are deliberately **not** covered; naming them starts the slide into the T-SQL parser this is not. Nor are object forms whose keyword is **not adjacent to the verb** — `CREATE PARTITION FUNCTION`, `CREATE PARTITION SCHEME`, `CREATE XML SCHEMA COLLECTION`, `CREATE FULLTEXT CATALOG` — so read the list of keywords above as exactly what it catches, not as every object SQL Server has. The rule is also the noisiest here: a line of English *beginning* `Create user …` or `Drop schema …` matches, which the self-test pins on purpose. |
 | `events-table-prefix` | `CREATE`/`ALTER`/`DROP TABLE`, and `CREATE`/`DROP INDEX … ON …`, whose target table is not named `Events_…` | Rule 1 of the shared-database rules below, made mechanical. Every table this application creates, alters, drops or indexes is its own, and its name has to say so. Temp tables (`#Scratch`) are refused too — nothing here creates one, and the preflight script's "no temporary tables" promise is easier to keep with no exception than with one. |
 | `events-dml-target-prefix` | `INSERT INTO …`, `UPDATE …`, `DELETE FROM …` whose target table is not named `Events_…` | The same boundary applied to writes. Reading an unrelated organizational table would be somebody else's business; writing to one is ours. Reads are deliberately not covered — `SELECT` may look anywhere, including at catalog views. |
 | `events-migration-history-immutable` | `DELETE FROM`, `UPDATE` or `TRUNCATE TABLE` against `Events_SchemaMigrations` | That table is app-owned, so `events-dml-target-prefix` admits it. It may still only ever be **appended** to: wiping it would make the schema state unknowable, and shared-database rule 6 keeps it out of every data reset. `INSERT` stays allowed — recording a migration is the one write it exists for. The overlap with `truncate` is intentional: if that rule were ever relaxed, this invariant should still hold. |
 
-These rules read the *target* of a statement rather than the statement itself, so
-they need a predicate as well as a pattern — the only rules that do.
+The last three read the *target* of a statement rather than the statement
+itself, so they need a predicate as well as a pattern — the only rules that do.
+`non-table-object-ddl` is a plain pattern precisely because it has no target
+question to ask: the object type alone settles it.
 
 Cases they deliberately stay quiet on, each of which would otherwise be a false
 positive:
@@ -384,10 +387,24 @@ one. Every slice that touches it must obey:
     something the runner does.** `lib/data/migrate.mts` deliberately never
     enumerates the catalog — a tool that discovers objects at runtime is the
     shape rule 5 rejects — so the automated half of this guarantee is
-    `npm run check:tsql`, which refuses any `CREATE`/`ALTER`/`DROP` or write
-    aimed at a name that is not `Events_`-prefixed, in the files themselves.
+    `npm run check:tsql`. Precisely what it refuses, in the files themselves:
+    table and index DDL aimed at a name that is not `Events_`-prefixed
+    (`events-table-prefix`), a write aimed at one (`events-dml-target-prefix`),
+    and DDL against a non-table persisted object of one of the keywords it
+    lists, whatever its name (`non-table-object-ddl`, rule 11 — see there for
+    the forms it does not reach). It reads no catalog and cannot see SQL
+    assembled at runtime, so the snapshot above remains the authoring step.
 11. No stored procedures, views, triggers, functions or jobs — every persisted
-    object is a table we named.
+    object is a table we named. Enforced by `non-table-object-ddl`, which
+    refuses `CREATE`/`ALTER`/`DROP` of a view, procedure, function, trigger,
+    schema, sequence, synonym, type, login, user or role **regardless of its
+    name** — an `Events_`-prefixed view is no more ours to create than anybody
+    else's, which is why that rule is the one ownership rule with no prefix
+    test. It matches on those keywords only: a form that puts a modifier
+    between the verb and the keyword (`CREATE PARTITION FUNCTION`,
+    `CREATE XML SCHEMA COLLECTION`, `CREATE FULLTEXT CATALOG`) is outside its
+    coverage, as are `EXEC sp_rename`, `GRANT`/`REVOKE`/`DENY` and dynamic SQL.
+    This rule is the mechanical half of rule 11; review is the other half.
 12. **Credentials stay outside source control.** Real values live only in an
     untracked local env file; `.env.example` carries names and placeholders
     only. Never prefix a database variable with `NEXT_PUBLIC_` — that would

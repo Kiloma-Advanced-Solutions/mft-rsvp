@@ -42,6 +42,14 @@
  * database will stop it. If you are about to add one, add it to this file
  * instead.
  *
+ * One half of that is no longer only a warning. `db.registrations.update` takes
+ * `RegistrationUpdate`, which does not admit `going` -- so the store's generic
+ * write cannot grant a place, and this module keeps the full
+ * `RegistrationPatch` because granting one is what it is for. What no type can
+ * check is a *new* statement written under `lib/data/`: `updateRegistrationOn`
+ * still takes the wide patch, as it must, so anything calling it from outside
+ * this file is back to being a comment's problem.
+ *
  * What is deliberately NOT here, because none of it can raise the count:
  * withdrawing, rejecting, and requesting a place on an approval event. Those
  * are ordinary single-statement writes, made safe by the expected-status

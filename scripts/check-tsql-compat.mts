@@ -57,7 +57,8 @@ type Rule = {
    *
    * A pattern alone can say "this is a `CREATE TABLE`"; only a predicate can
    * say "and the table it creates is not one of ours". Omitted means every
-   * match is a finding, which is how every FORBIDDEN and DISCOURAGED rule works.
+   * match is a finding: that is how every FORBIDDEN and DISCOURAGED rule works,
+   * and `non-table-object-ddl` too, because the object type alone condemns it.
    */
   violates?: (match: RegExpExecArray) => boolean;
 };
@@ -335,6 +336,11 @@ const QUALIFIED = String.raw`${IDENTIFIER}(?:\s*\.\s*${IDENTIFIER})*`;
  * `drop-if-exists` is what reports that, and one mistake should produce one
  * finding.
  *
+ * Tables and indexes are the whole of it, and that is correct rather than a
+ * gap: every other kind of persisted object is refused outright by
+ * `NON_TABLE_OBJECT_DDL` below, prefix or no prefix, so there is no target to
+ * read for one.
+ *
  * Not covered: the deprecated `DROP INDEX table.index` form, which puts the
  * table in the middle of a dotted name. Nothing here writes it, and the modern
  * `DROP INDEX index ON table` form is what this matches.
@@ -345,6 +351,50 @@ const DDL_TARGET = new RegExp(
     String.raw`\b(?:CREATE|DROP)\s+(?:UNIQUE\s+)?(?:CLUSTERED\s+|NONCLUSTERED\s+)?INDEX\s+${QUALIFIED}\s+ON\s+(${QUALIFIED})`,
   "i",
 );
+
+/**
+ * DDL against a persisted object that is not a table.
+ *
+ * **This rule reads no target, and that is the point.** Shared-database rule 11
+ * is not "these must be ours" but "these must not exist": *no stored
+ * procedures, views, triggers, functions or jobs -- every persisted object is a
+ * table we named.* So `CREATE VIEW dbo.Events_Summary` is refused exactly as
+ * `CREATE VIEW dbo.PayrollSummary` is, and there is nothing to extract.
+ *
+ * That is why it is a bare pattern with no `violates` predicate while the
+ * three rules below it need one. It is also what keeps this cheap: matching a verb
+ * and an object keyword needs no notion of where the name sits, which differs
+ * for every one of these -- after the verb for a view, after `ON` for a
+ * trigger, and nowhere at all for `CREATE SCHEMA`.
+ *
+ * Without it, `DDL_TARGET` below covers `TABLE` and `INDEX` and nothing else,
+ * so `DROP VIEW dbo.SomeoneElsesView` and `ALTER PROCEDURE
+ * dbo.SomeoneElsesProcedure` passed the whole guard silently. A few were caught
+ * incidentally -- `create-or-alter` sees `CREATE OR ALTER VIEW`,
+ * `drop-if-exists` sees `DROP VIEW IF EXISTS`, `drop-database-or-schema` sees
+ * `DROP SCHEMA` and `create-sequence` sees `CREATE SEQUENCE` -- which made the
+ * gap look smaller than it was. The plain forms were not covered at all.
+ *
+ * `LOGIN`, `USER` and `ROLE` are here for the same reason the list is a list:
+ * they are server- and database-level objects this application has no business
+ * creating, and it holds `db_owner` on a shared organizational database.
+ *
+ * Not covered, deliberately: `EXEC sp_rename`, `GRANT`/`REVOKE`/`DENY`, and
+ * anything reached through dynamic SQL. Naming them would start the slide into
+ * the general T-SQL parser this file is explicitly not -- see "What it
+ * guarantees, and what it does not" in the contract document.
+ *
+ * Also not covered, and worth knowing because it is not obvious from the
+ * pattern: **the object keyword has to sit immediately after the verb.** Any
+ * modifier in between evades this, so `CREATE PARTITION FUNCTION`,
+ * `CREATE PARTITION SCHEME`, `CREATE XML SCHEMA COLLECTION` and
+ * `CREATE FULLTEXT CATALOG` all pass. Nothing in this project partitions, uses
+ * XML schema collections or indexes full text, so they are left out rather than
+ * enumerated -- but the list above is the object *keywords* this catches, not
+ * every object SQL Server has.
+ */
+const NON_TABLE_OBJECT_DDL =
+  /\b(?:CREATE|ALTER|DROP)\s+(?:VIEW|PROC(?:EDURE)?|FUNCTION|TRIGGER|SCHEMA|SEQUENCE|SYNONYM|TYPE|LOGIN|USER|ROLE)\b/i;
 
 /**
  * The table a matched statement acts on: the first capture group that took
@@ -431,15 +481,29 @@ const OWNED_PREFIX = "Events_";
 const HISTORY_TABLE = "Events_SchemaMigrations";
 
 /**
- * Objects this application does not own. Not a compatibility question at all --
+ * Objects this application must not touch. Not a compatibility question at all --
  * a third class so the 2008 R2 claim is never diluted by it, and so the report
  * says which kind of mistake was made.
  *
  * The database is a shared organizational one and the development account holds
  * `db_owner`, so nothing on the server side would stop a mistyped
  * `CREATE TABLE Users`. This is what stops it.
+ *
+ * Two kinds of mistake live here, and they are answered differently:
+ *
+ *   - a table or index aimed at a name that is not ours -- refused by reading
+ *     the target and checking the prefix;
+ *   - a view, procedure, function, trigger or other persisted object of any
+ *     name -- refused outright, because shared-database rule 11 says this
+ *     application owns no such object. Nothing is read from those statements
+ *     because an `Events_`-prefixed one is no better.
  */
 const OWNERSHIP: Rule[] = [
+  {
+    id: "non-table-object-ddl",
+    pattern: NON_TABLE_OBJECT_DDL,
+    instead: `nothing -- shared-database rule 11: the only persisted object this application owns is a table it named. A dbo.${OWNED_PREFIX}Thing view or procedure is refused too, which is why this rule reads no target`,
+  },
   {
     id: "events-table-prefix",
     pattern: DDL_TARGET,
@@ -687,7 +751,7 @@ function runScan(): number {
     `\n${findings.length} finding(s): ${count("FORBIDDEN")} FORBIDDEN (after ` +
       `the 2008 R2 floor), ${count("DISCOURAGED")} DISCOURAGED (available, ` +
       `rejected by design), ${count("OWNERSHIP")} OWNERSHIP (an object this ` +
-      `application does not own).`,
+      `application must not touch).`,
   );
   return 1;
 }
@@ -725,6 +789,56 @@ const DISCRIMINATION: Array<[string, string, boolean]> = [
   ["identity", "CREATE TABLE t (Id int IDENTITY(1,1))", true],
   ["current-timestamp", "SELECT Ver FROM t WHERE Ver > CAST(N'x' AS datetime2)", false],
   ["current-timestamp", "UPDATE t SET UpdatedAt = CURRENT_TIMESTAMP", true],
+  // non-table-object-ddl: the prefix is irrelevant -- these objects may not
+  // exist at all, so `Events_`-prefixed samples must match just as foreign ones
+  // do. That asymmetry against every other ownership rule is the rule.
+  ["non-table-object-ddl", "CREATE VIEW dbo.PayrollSummary AS SELECT 1 AS One", true],
+  ["non-table-object-ddl", "CREATE VIEW dbo.Events_Summary AS SELECT 1 AS One", true],
+  ["non-table-object-ddl", "ALTER VIEW dbo.Events_Summary AS SELECT 2 AS Two", true],
+  ["non-table-object-ddl", "DROP VIEW dbo.SomeoneElsesView", true],
+  ["non-table-object-ddl", "CREATE PROCEDURE dbo.Payroll_Pay AS SELECT 1", true],
+  ["non-table-object-ddl", "ALTER PROCEDURE dbo.SomeoneElsesProcedure AS SELECT 1", true],
+  ["non-table-object-ddl", "DROP PROC dbo.Payroll_Pay", true],
+  ["non-table-object-ddl", "CREATE FUNCTION dbo.Events_Rate () RETURNS int AS BEGIN RETURN 1 END", true],
+  ["non-table-object-ddl", "DROP FUNCTION dbo.Payroll_Rate", true],
+  ["non-table-object-ddl", "CREATE TRIGGER TR_X ON dbo.Events_Events AFTER INSERT AS SELECT 1", true],
+  ["non-table-object-ddl", "DROP TRIGGER dbo.TR_Payroll", true],
+  ["non-table-object-ddl", "CREATE SCHEMA finance", true],
+  ["non-table-object-ddl", "DROP SEQUENCE dbo.PayrollSeq", true],
+  ["non-table-object-ddl", "CREATE SYNONYM dbo.Payroll2 FOR dbo.Payroll", true],
+  ["non-table-object-ddl", "CREATE TYPE dbo.MoneyList AS TABLE (Amount int)", true],
+  /*
+   * The false-positive boundary, pinned rather than papered over.
+   *
+   * This rule is a bare verb-plus-noun pattern -- it has no `USING`, no `SET`,
+   * no `FROM` to demand, because the object type alone condemns the statement.
+   * The cost is that an English sentence *beginning* with the same two words is
+   * indistinguishable to it, and `SQL_STATEMENT` cannot help: a line starting
+   * `Create` is exactly what the gate is looking for.
+   *
+   * So these are recorded as matches, which is what they are. They are not
+   * approval -- they are the limitation made visible and testable. Mid-sentence
+   * prose, which is how this repository actually writes, stays clean and is
+   * covered in `ORDINARY_TEMPLATES` below.
+   *
+   * Narrowing the rule to exclude them was considered and rejected: nothing
+   * cheap separates `CREATE USER app_reader` from `Create user rows first`, and
+   * a heuristic that tried would weaken detection of the real DDL this rule
+   * exists to catch. If a line-initial phrase like these ever does fail the
+   * check, reword the message -- do not loosen the rule.
+   */
+  ["non-table-object-ddl", "Create user fixtures before events", true],
+  ["non-table-object-ddl", "Drop schema-level objects by hand", true],
+  ["non-table-object-ddl", "Alter type of the capacity column", true],
+  ["non-table-object-ddl", "Create role assignments are out of scope", true],
+  ["non-table-object-ddl", "Drop user data older than a year?", true],
+  // And what it must leave alone: table DDL is the other rules' business, and
+  // a column called `Type` or a table called `Procedures` is not DDL at all.
+  ["non-table-object-ddl", "CREATE TABLE dbo.Events_Users (Id uniqueidentifier NOT NULL)", false],
+  ["non-table-object-ddl", "DROP TABLE dbo.Events_Users", false],
+  ["non-table-object-ddl", "CREATE UNIQUE NONCLUSTERED INDEX IX_A ON dbo.Events_Users (Id)", false],
+  ["non-table-object-ddl", "ALTER TABLE dbo.Events_Events ADD Kind nvarchar(16) NULL", false],
+  ["non-table-object-ddl", "SELECT Id FROM dbo.Events_Users ORDER BY Id ASC", false],
   // events-table-prefix: what the application owns, and what it does not.
   ["events-table-prefix", "CREATE TABLE dbo.Events_Users (Id uniqueidentifier NOT NULL)", false],
   ["events-table-prefix", "CREATE TABLE [dbo].[Events_Users] (Id uniqueidentifier NOT NULL)", false],
@@ -1008,6 +1122,26 @@ function selftest(): number {
     "const f = `Delete from your calendar?`;",
     "const g = `Merge the two drafts into one`;",
     "const h = `${count} people are going`;",
+    /*
+     * The vocabulary `non-table-object-ddl` introduced -- `create user`,
+     * `drop schema`, `alter type`, `create role`, `drop user`. That rule is a
+     * bare verb-plus-noun pattern with no structural requirement, unlike the
+     * TAIL-guarded write rules above, so it is the one most able to read
+     * English as DDL. These pin the half of the boundary that is safe: prose
+     * where the phrase falls **mid-sentence**, which is how this repository's
+     * messages read. What keeps them quiet is `SQL_STATEMENT` -- no line begins
+     * with a statement verb, so the literal is never handed to a rule at all.
+     * If that gate is ever widened, these are what fail first.
+     *
+     * The other half of the boundary -- the same phrase at the *start* of a
+     * line -- does match, and is pinned as such in `DISCRIMINATION` above
+     * rather than pretended away here.
+     */
+    "const i = `Could not create user ${name}`;",
+    "const j = `Refusing to create user rows on a non-empty schema`;",
+    "const k = `This command will not create role or drop user records.`;",
+    "const l = `Nothing here will alter type or drop schema objects`;",
+    "const m = `Please drop view of the old dashboard`;",
   ];
   for (const sample of ORDINARY_TEMPLATES) {
     const hits = scanText(
