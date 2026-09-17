@@ -42,7 +42,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 
 export const ACCESS_LABELS: Record<EventAccess, string> = {
   open: "פתוח",
-  approval: "דרוש אישור",
+  approval: "נדרש אישור",
   invite: "בהזמנה בלבד",
 };
 
