@@ -6,7 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Avatar, Badge, useToast } from "@/components/ui";
 import { fetchJson } from "@/lib/api";
 import { cx } from "@/lib/cx";
-import { PERSONA_LABELS, nowViewingAsLabel } from "@/lib/labels";
+import { PERSONA_LABELS, ROLE_LABELS, nowViewingAsLabel } from "@/lib/labels";
 import type { User } from "@/lib/types";
 
 import styles from "./PersonaSwitcher.module.css";
@@ -91,7 +91,7 @@ export function PersonaSwitcher({
           <span className={styles.triggerName} dir="auto">
             {currentUser.name}
           </span>
-          <span className={styles.triggerRole}>{currentUser.role}</span>
+          <span className={styles.triggerRole}>{ROLE_LABELS[currentUser.role]}</span>
         </span>
         <span className={styles.caret} aria-hidden>
           ▼
@@ -122,7 +122,9 @@ export function PersonaSwitcher({
                     {user.title}
                   </span>
                 </span>
-                <Badge tone={active ? "primary" : "neutral"}>{user.role}</Badge>
+                <Badge tone={active ? "primary" : "neutral"}>
+                  {ROLE_LABELS[user.role]}
+                </Badge>
                 {active && (
                   <span className={styles.check} aria-hidden>
                     ✓

@@ -17,7 +17,26 @@ import type {
   RegistrationStatus,
   RequestDecisionAvailability,
   RequestDecisionClosedReason,
+  UserRole,
 } from "./types";
+
+/* ------------------------------------------------------------------- roles */
+
+/**
+ * What a person may do, independent of any single event.
+ *
+ * Presentation only. The stored value, the session and every rule in
+ * `lib/permissions.ts` keep reading `admin` / `organizer` / `member`; this map
+ * exists so the persona switcher can say it in Hebrew without any of that
+ * changing. `מארגן/ת` is the role that may create events, which is not the same
+ * thing as `מארח` -- that is the per-event relationship, and it has its own
+ * word in `DETAIL_LABELS.hosts`.
+ */
+export const ROLE_LABELS: Record<UserRole, string> = {
+  admin: "מנהל/ת",
+  organizer: "מארגן/ת",
+  member: "חבר/ה",
+};
 
 /* ------------------------------------------------------------------ access */
 
@@ -140,7 +159,13 @@ export const BOARD_LABELS = {
  */
 export function eventCountLabel(shown: number, total: number): string {
   if (shown === total) return `${eventCount(total)} בלוח`;
-  return `מוצגים ${shown} מתוך ${total} אירועים`;
+  /*
+    The noun after `מתוך` agrees with the *total*, not with `shown`, so the
+    total goes through the same helper rather than being pasted in front of a
+    hardcoded plural -- otherwise a board of one or two events reads
+    "מתוך 2 אירועים" instead of "מתוך שני אירועים".
+  */
+  return `מוצגים ${shown} מתוך ${eventCount(total)}`;
 }
 
 /**
@@ -695,9 +720,15 @@ export function goingCountLabel(going: number): string {
   return attendeeCount(going);
 }
 
-/** "3 מתוך 40 משתתפים" — the meter's headline when there is a cap. */
+/**
+ * "3 מתוך 40 משתתפים" — the meter's headline when there is a cap.
+ *
+ * Same agreement rule as `eventCountLabel()`: the noun follows the capacity, so
+ * the capacity goes through `attendeeCount()` rather than being pasted in front
+ * of a hardcoded plural.
+ */
 export function capacityCountLabel(going: number, capacity: number): string {
-  return `${going} מתוך ${capacity} משתתפים`;
+  return `${going} מתוך ${attendeeCount(capacity)}`;
 }
 
 /** "נותר מקום אחד", "נותרו שני מקומות", "נותרו 7 מקומות". */
