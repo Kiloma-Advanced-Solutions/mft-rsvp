@@ -46,6 +46,8 @@ import { resolve } from "node:path";
 import sql from "mssql";
 import type { ConnectionPool, Transaction } from "mssql";
 
+import { createRedactor } from "./redact.mts";
+
 /**
  * Duplicated from `lib/data/client.ts` rather than imported, because that
  * module is `server-only` and a bare-Node process cannot resolve it.
@@ -287,36 +289,6 @@ class SeedError extends Error {
     this.name = "SeedError";
     this.exitCode = exitCode;
   }
-}
-
-/** Builds a masker from the connection string without revealing it. */
-function createRedactor(connectionString: string): (text: string) => string {
-  const secrets = new Set<string>([connectionString]);
-
-  for (const pair of connectionString.split(";")) {
-    const separator = pair.indexOf("=");
-    if (separator === -1) continue;
-
-    const key = pair.slice(0, separator).trim();
-    const value = pair.slice(separator + 1).trim();
-    if (value === "") continue;
-
-    if (/password|pwd|token|secret|key/i.test(key)) secrets.add(value);
-
-    if (/^(server|data source|addr|address|network address)$/i.test(key)) {
-      secrets.add(value);
-      const [host] = value.split(",");
-      if (host !== undefined && host.trim() !== "") secrets.add(host.trim());
-    }
-  }
-
-  const ordered = [...secrets].sort((a, b) => b.length - a.length);
-
-  return (text) => {
-    let safe = text;
-    for (const secret of ordered) safe = safe.split(secret).join("***");
-    return safe;
-  };
 }
 
 /** Whatever the driver threw, reduced to fields that are safe to show. */
@@ -917,9 +889,16 @@ async function main(): Promise<number> {
 
   const connectionString = readConnectionString();
   const redact = createRedactor(connectionString);
-  const pool = new sql.ConnectionPool(connectionString);
+  // Constructed **inside** the try, and that placement is the point: `mssql`
+  // parses the connection string in the `ConnectionPool` constructor, so a
+  // malformed one throws right here. Outside the try that throw escaped this
+  // function and reached Node's default handler, which prints an unredacted
+  // stack -- the one path in this command that bypassed the redactor. Nothing
+  // about the connection, the pool or retries changes; only where the call sits.
+  let pool: ConnectionPool | undefined;
 
   try {
+    pool = new sql.ConnectionPool(connectionString);
     await pool.connect();
 
     if (argument === "--status") return await status(pool);
@@ -934,7 +913,8 @@ async function main(): Promise<number> {
     console.error(`  ${OUTCOME[phase]}\n`);
     return 1;
   } finally {
-    await pool.close().catch(() => undefined);
+    // `?.` because a constructor that threw leaves nothing to close.
+    await pool?.close().catch(() => undefined);
   }
 }
 

@@ -15,16 +15,21 @@
  *   npm run db:check
  *
  * The connection string is read from the environment and never printed. Output
- * passes through a redactor, and driver errors are reported field by field
- * rather than dumped, because a driver error can carry connection detail.
+ * passes through the redactor in `lib/data/redact.mts` -- shared with the two
+ * database CLIs, because all three used to carry their own copy and all three
+ * therefore carried the same bug -- and driver errors are reported field by
+ * field rather than dumped, because a driver error can carry connection detail.
  *
- * Node built-ins plus `mssql`; no dependency of its own, and it runs with bare
- * `node` because `.mts` is always an ES module.
+ * Node built-ins plus `mssql` and that one local module; no npm dependency of
+ * its own, and it runs with bare `node` because `.mts` is always an ES module.
  */
 
 import { randomUUID } from "node:crypto";
 
 import sql from "mssql";
+import type { ConnectionPool } from "mssql";
+
+import { createRedactor } from "../lib/data/redact.mts";
 
 /**
  * Deliberately duplicated from `lib/data/client.ts` rather than imported.
@@ -36,52 +41,6 @@ import sql from "mssql";
  * name is the whole of the overlap.
  */
 const CONNECTION_STRING_VAR = "EVENTS_DB_CONNECTION_STRING";
-
-/* ------------------------------------------------------------- redaction */
-
-/**
- * Builds a redactor from the connection string without revealing it.
- *
- * Masks credentials and the server address wherever they appear in output,
- * including inside a driver error we did not write. The database name and user
- * are left readable: they are diagnostics this script exists to report, and
- * neither is a credential. The server address is masked because it is
- * infrastructure identity that nothing here needs -- a failure is diagnosed
- * from the error code, not from a host name the operator already knows.
- */
-function createRedactor(connectionString: string): (text: string) => string {
-  const secrets = new Set<string>([connectionString]);
-
-  for (const pair of connectionString.split(";")) {
-    const separator = pair.indexOf("=");
-    if (separator === -1) continue;
-
-    const key = pair.slice(0, separator).trim();
-    const value = pair.slice(separator + 1).trim();
-    if (value === "") continue;
-
-    if (/password|pwd|token|secret|key/i.test(key)) {
-      secrets.add(value);
-    }
-
-    if (/^(server|data source|addr|address|network address)$/i.test(key)) {
-      secrets.add(value);
-      // A connection string writes `host,port`; the driver reports `host:port`.
-      // Adding the bare host masks it in both forms.
-      const [host] = value.split(",");
-      if (host !== undefined && host.trim() !== "") secrets.add(host.trim());
-    }
-  }
-
-  // Longest first, so a secret that contains another is masked whole.
-  const ordered = [...secrets].sort((a, b) => b.length - a.length);
-
-  return (text) => {
-    let safe = text;
-    for (const secret of ordered) safe = safe.split(secret).join("***");
-    return safe;
-  };
-}
 
 /** Whatever the driver threw, reduced to fields that are safe to show. */
 function describeError(error: unknown, redact: (text: string) => string): string {
@@ -134,9 +93,18 @@ async function run(): Promise<number> {
   }
 
   const redact = createRedactor(connectionString);
-  const pool = new sql.ConnectionPool(connectionString);
+
+  // Constructed **inside** the try, for the same reason `migrate.mts` and
+  // `seed.mts` do it: `mssql` parses the connection string in the
+  // `ConnectionPool` constructor, so a malformed one throws here. This script
+  // has no top-level handler at all, so outside the try that throw went
+  // straight to Node and printed an unredacted stack. Inside, it lands on the
+  // `preflight aborted` result below like every other failure.
+  let pool: ConnectionPool | undefined;
 
   try {
+    pool = new sql.ConnectionPool(connectionString);
+
     /* 1 -- connection and authentication */
     await pool.connect();
     record("ok", "connect / authenticate", "connection established");
@@ -379,8 +347,9 @@ async function run(): Promise<number> {
     record("fail", "preflight aborted", describeError(error, redact));
     return 1;
   } finally {
-    // Let the CLI exit rather than sitting on an idle pool.
-    await pool.close().catch(() => undefined);
+    // Let the CLI exit rather than sitting on an idle pool. `?.` because a
+    // constructor that threw leaves nothing to close.
+    await pool?.close().catch(() => undefined);
   }
 }
 
