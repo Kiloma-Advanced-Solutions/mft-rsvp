@@ -160,12 +160,12 @@ export const BOARD_LABELS = {
 export function eventCountLabel(shown: number, total: number): string {
   if (shown === total) return `${eventCount(total)} בלוח`;
   /*
-    The noun after `מתוך` agrees with the *total*, not with `shown`, so the
-    total goes through the same helper rather than being pasted in front of a
-    hardcoded plural -- otherwise a board of one or two events reads
-    "מתוך 2 אירועים" instead of "מתוך שני אירועים".
+    No participle: "מוצגים" would have had to agree with `shown`, and putting
+    `shown` through `eventCount()` as well to fix that says "אירועים" twice.
+    Without a verb there is nothing to agree, for any count. The noun still
+    follows the *total*, which is what `eventCount()` is handed.
   */
-  return `מוצגים ${shown} מתוך ${eventCount(total)}`;
+  return `${shown} מתוך ${eventCount(total)}`;
 }
 
 /**
