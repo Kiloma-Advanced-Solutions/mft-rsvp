@@ -17,21 +17,40 @@ import type {
   RegistrationStatus,
   RequestDecisionAvailability,
   RequestDecisionClosedReason,
+  UserRole,
 } from "./types";
+
+/* ------------------------------------------------------------------- roles */
+
+/**
+ * What a person may do, independent of any single event.
+ *
+ * Presentation only. The stored value, the session and every rule in
+ * `lib/permissions.ts` keep reading `admin` / `organizer` / `member`; this map
+ * exists so the persona switcher can say it in Hebrew without any of that
+ * changing. `מארגן/ת` is the role that may create events, which is not the same
+ * thing as `מארח` -- that is the per-event relationship, and it has its own
+ * word in `DETAIL_LABELS.hosts`.
+ */
+export const ROLE_LABELS: Record<UserRole, string> = {
+  admin: "מנהל/ת",
+  organizer: "מארגן/ת",
+  member: "חבר/ה",
+};
 
 /* ------------------------------------------------------------------ access */
 
 export const ACCESS_LABELS: Record<EventAccess, string> = {
-  open: "Open",
-  approval: "Approval needed",
-  invite: "Invite only",
+  open: "פתוח",
+  approval: "נדרש אישור",
+  invite: "בהזמנה בלבד",
 };
 
 /** The longer explanation, for forms and the detail page. */
 export const ACCESS_DESCRIPTIONS: Record<EventAccess, string> = {
-  open: "Anyone can see this event and register in one click.",
-  approval: "Anyone can see this event, but you decide who gets in.",
-  invite: "Only people you invite can see this event at all.",
+  open: "כל אחד יכול לראות את האירוע ולהירשם בלחיצה אחת.",
+  approval: "כל אחד יכול לראות את האירוע, אבל אתם מחליטים מי נכנס.",
+  invite: "רק מי שתזמינו יוכל לראות את האירוע.",
 };
 
 export const ACCESS_TONES: Record<EventAccess, BadgeTone> = {
@@ -46,9 +65,9 @@ export const ACCESS_ORDER: EventAccess[] = ["open", "approval", "invite"];
 /* ------------------------------------------------------------------ status */
 
 export const EVENT_STATUS_LABELS: Record<EventStatus, string> = {
-  draft: "Draft",
-  published: "Published",
-  cancelled: "Cancelled",
+  draft: "טיוטה",
+  published: "פורסם",
+  cancelled: "בוטל",
 };
 
 export const EVENT_STATUS_TONES: Record<EventStatus, BadgeTone> = {
@@ -60,11 +79,11 @@ export const EVENT_STATUS_TONES: Record<EventStatus, BadgeTone> = {
 /* ----------------------------------------------------------- registrations */
 
 export const REGISTRATION_LABELS: Record<RegistrationStatus, string> = {
-  going: "Going",
-  pending: "Awaiting approval",
-  rejected: "Not approved",
-  cancelled: "Not going",
-  waitlisted: "Waitlisted",
+  going: "מגיע/ה",
+  pending: "ממתין לאישור",
+  rejected: "לא אושר",
+  cancelled: "לא מגיע/ה",
+  waitlisted: "ברשימת המתנה",
 };
 
 export const REGISTRATION_TONES: Record<RegistrationStatus, BadgeTone> = {
@@ -78,12 +97,12 @@ export const REGISTRATION_TONES: Record<RegistrationStatus, BadgeTone> = {
 /* -------------------------------------------------------------- categories */
 
 export const CATEGORY_LABELS: Record<EventCategory, string> = {
-  engineering: "Engineering",
-  design: "Design",
-  product: "Product",
-  learning: "Learning",
-  social: "Social",
-  company: "Company",
+  engineering: "הנדסה",
+  design: "עיצוב",
+  product: "מוצר",
+  learning: "למידה",
+  social: "חברתי",
+  company: "כלל־חברה",
 };
 
 export const CATEGORY_ORDER: EventCategory[] = [
@@ -101,38 +120,37 @@ export const CATEGORY_ORDER: EventCategory[] = [
 export function locationLabel(location: EventLocation): string {
   switch (location.kind) {
     case "in_person":
-      return location.venue ?? "In person";
+      return location.venue ?? LOCATION_KIND_LABELS.in_person;
     case "online":
-      return location.platform ?? "Online";
+      return location.platform ?? LOCATION_KIND_LABELS.online;
     case "hybrid":
       return [location.venue, location.platform].filter(Boolean).join(" + ");
   }
 }
 
 export const LOCATION_KIND_LABELS: Record<EventLocation["kind"], string> = {
-  in_person: "In person",
-  online: "Online",
-  hybrid: "Hybrid",
+  in_person: "מפגש פיזי",
+  online: "מקוון",
+  hybrid: "היברידי",
 };
 
 /* ------------------------------------------------------------------- board */
 
 /** The board's own words: its sections, its filters and its empty states. */
 export const BOARD_LABELS = {
-  title: "Board",
-  upcoming: "Upcoming",
-  past: "Past",
-  categoryFilter: "Category",
-  accessFilter: "Access",
-  allCategories: "All categories",
-  allAccessModes: "All access modes",
-  clearFilters: "Clear filters",
-  emptyTitle: "Nothing on the board for you yet",
+  title: "לוח האירועים",
+  upcoming: "אירועים קרובים",
+  past: "אירועים שעברו",
+  categoryFilter: "קטגוריה",
+  accessFilter: "אופן הכניסה",
+  allCategories: "כל הקטגוריות",
+  allAccessModes: "כל אופני הכניסה",
+  clearFilters: "ניקוי הסינון",
+  emptyTitle: "עדיין אין כאן אירועים בשבילכם",
   emptyDescription:
-    "There are no events you can see right now. Events appear here once a host publishes one, or invites you to one.",
-  noMatchesTitle: "No events match these filters",
-  noMatchesDescription:
-    "Nothing you can see matches that combination. Clear the filters to get the whole board back.",
+    "אין כרגע אירועים שאתם יכולים לראות. אירועים יופיעו כאן ברגע שמארח יפרסם אירוע, או יזמין אתכם לאירוע.",
+  noMatchesTitle: "אין אירועים שתואמים את הסינון",
+  noMatchesDescription: "שום אירוע שאתם יכולים לראות לא תואם את השילוב הזה.",
 };
 
 /**
@@ -140,26 +158,45 @@ export const BOARD_LABELS = {
  * `total` is everything the viewer is allowed to see.
  */
 export function eventCountLabel(shown: number, total: number): string {
-  const noun = total === 1 ? "event" : "events";
-  if (shown === total) return `${total} ${noun} you can see.`;
-  return `Showing ${shown} of ${total} ${noun} you can see.`;
+  if (shown === total) return `${eventCount(total)} בלוח`;
+  /*
+    No participle: "מוצגים" would have had to agree with `shown`, and putting
+    `shown` through `eventCount()` as well to fix that says "אירועים" twice.
+    Without a verb there is nothing to agree, for any count. The noun still
+    follows the *total*, which is what `eventCount()` is handed.
+  */
+  return `${shown} מתוך ${eventCount(total)}`;
+}
+
+/**
+ * "אירוע אחד", "שני אירועים", "7 אירועים".
+ *
+ * Hebrew counts one and two differently from everything above them -- two is a
+ * dual form and not a numeral -- so a count cannot be pasted in front of a noun
+ * the way `${n} events` can. Every counted phrase in this file goes through a
+ * helper like this one.
+ */
+function eventCount(n: number): string {
+  if (n === 1) return "אירוע אחד";
+  if (n === 2) return "שני אירועים";
+  return `${n} אירועים`;
 }
 
 /* ------------------------------------------------------------------ detail */
 
 /** The event detail screen's own words: its sections and its host tools. */
 export const DETAIL_LABELS = {
-  back: "Back to board",
-  about: "About this event",
-  hosts: "Hosted by",
-  attendees: "Who is going",
-  noAttendees: "Nobody has registered yet.",
-  hostTools: "Host tools",
-  hostToolsDescription: "Only you and other hosts see this.",
-  edit: "Edit event",
-  publish: "Publish draft",
-  delete: "Delete event",
-  factInvited: "Invited",
+  back: "חזרה ללוח",
+  about: "על האירוע",
+  hosts: "מארחים",
+  attendees: "מי מגיע",
+  noAttendees: "אף אחד עוד לא נרשם.",
+  hostTools: "כלי מארח",
+  hostToolsDescription: "רק אתם והמארחים האחרים רואים את זה.",
+  edit: "עריכת האירוע",
+  publish: "פרסום הטיוטה",
+  delete: "מחיקת האירוע",
+  factInvited: "מוזמנים",
 };
 
 /**
@@ -174,13 +211,13 @@ type RegistrationCtaCopy = {
 };
 
 const CLOSED_NOTES: Record<RegistrationClosedReason, string> = {
-  draft: "This event is still a draft, so nobody can register yet.",
-  cancelled: "This event was cancelled, so registration is closed.",
-  started: "This event has passed.",
-  full: "This event is full.",
+  draft: "האירוע עדיין טיוטה, ולכן אי אפשר להירשם אליו.",
+  cancelled: "האירוע בוטל, וההרשמה סגורה.",
+  started: "האירוע כבר עבר.",
+  full: "האירוע מלא.",
   rejected:
-    "Your request was not approved. A host can still approve you from their queue.",
-  not_invited: "This event is invite only, and you are not on the invite list.",
+    "הבקשה שלכם לא אושרה. מארח עדיין יכול לאשר אתכם מתוך התור שלו.",
+  not_invited: "האירוע בהזמנה בלבד, ואתם לא ברשימת המוזמנים.",
 };
 
 export function registrationCtaCopy(
@@ -190,17 +227,23 @@ export function registrationCtaCopy(
     case "open":
       return availability.action === "request"
         ? {
-            action: "Request a place",
-            note: "A host decides who gets in, so this creates a request.",
+            action: "בקשת מקום",
+            note: "מארח מחליט מי נכנס, ולכן זו בקשה ולא הרשמה.",
           }
-        : { action: "Register", note: "You will be confirmed straight away." };
+        : { action: "הרשמה", note: "ההרשמה תאושר מיד." };
 
+    /*
+      English called both of these "Withdraw". Hebrew names what is being
+      withdrawn, and the two are not the same thing to the person reading it --
+      a confirmed place and a request that is still waiting. Both still send the
+      same `DELETE`; only the word changes.
+    */
     case "registered":
       return availability.status === "going"
-        ? { action: "Withdraw", note: "You have a confirmed place." }
+        ? { action: "ביטול ההשתתפות", note: "יש לכם מקום מאושר." }
         : {
-            action: "Withdraw",
-            note: "Your request is waiting for a host to decide.",
+            action: "ביטול הבקשה",
+            note: "הבקשה שלכם ממתינה להחלטה של המארח.",
           };
 
     case "closed":
@@ -231,18 +274,18 @@ export function registrationClosedNote(
  */
 export const REGISTRATION_ACTION_COPY = {
   /* Server refusals for the two states `RegistrationClosedReason` cannot name. */
-  alreadyRegistered: "You already have a place at this event.",
-  nothingToWithdraw: "You do not have a place to withdraw from.",
+  alreadyRegistered: "כבר יש לכם מקום באירוע הזה.",
+  nothingToWithdraw: "אין לכם הרשמה לבטל.",
   /** The registration changed underneath the request. */
-  stale: "Your registration has changed. Reload the page and try again.",
+  stale: "ההרשמה שלכם השתנתה. רעננו את הדף ונסו שוב.",
 
   /* Toast titles. The server's own message goes underneath as the description. */
-  registered: "You are going",
-  requested: "Request sent",
-  withdrawn: "You have withdrawn",
-  registerFailed: "Could not register",
-  requestFailed: "Could not send your request",
-  withdrawFailed: "Could not withdraw",
+  registered: "אתם מגיעים",
+  requested: "הבקשה נשלחה",
+  withdrawn: "ההשתתפות בוטלה",
+  registerFailed: "לא הצלחנו לרשום אתכם",
+  requestFailed: "לא הצלחנו לשלוח את הבקשה",
+  withdrawFailed: "לא הצלחנו לבטל",
 };
 
 /* --------------------------------------------------------- approval queue */
@@ -250,63 +293,68 @@ export const REGISTRATION_ACTION_COPY = {
 /**
  * The host's queue of requests on the event detail page.
  *
- * "Not approved" is the wording `REGISTRATION_LABELS.rejected` already uses for
- * the status, so the group heading and the requester's own badge agree. The
+ * The group heading is the plural of the wording `REGISTRATION_LABELS.rejected`
+ * uses for the status, so the heading and the requester's own badge still agree
+ * -- Hebrew inflects a heading over a list of people where English did not. The
  * buttons keep the verbs from `TASKS.md` section 5 — approve and reject.
  */
 export const QUEUE_LABELS = {
-  title: "Requests",
-  description: "Only you and other hosts see this.",
-  rejectedTitle: "Not approved",
-  emptyTitle: "No requests waiting",
+  title: "בקשות",
+  description: "רק אתם והמארחים האחרים רואים את זה.",
+  rejectedTitle: "לא אושרו",
+  emptyTitle: "אין בקשות ממתינות",
   emptyDescription:
-    "Requests to join this event show up here for you to approve or reject.",
-  approve: "Approve",
-  reject: "Reject",
+    "בקשות להצטרף לאירוע הזה יופיעו כאן, ותוכלו לאשר או לדחות אותן.",
+  approve: "אישור",
+  reject: "דחייה",
   /**
    * The accepted consequence of a host switching an event to invite only under
    * somebody who had already asked to come: the row survives, their access does
    * not, and approving them does not hand it back.
    */
   requesterCannotView:
-    "They can no longer see this event, so approving them will not put it back on their board.",
+    "הם כבר לא יכולים לראות את האירוע הזה, ולכן גם אם תאשרו את הבקשה, האירוע לא יחזור ללוח שלהם.",
 };
 
 /**
- * "Requested 3 days ago", or with the decision alongside it.
+ * "הבקשה הוגשה לפני 3 ימים", or with the decision alongside it.
  *
  * The relative wording is produced by `formatRelativeDay()` in `lib/date.ts`,
  * which reads the clock and belongs in a Server Component; this only joins the
  * sentence together so the phrasing stays in one place.
+ *
+ * The English version lower-cased the relative phrase to graft it mid-sentence.
+ * Hebrew has no letter case, so there is nothing to fold and the phrase goes in
+ * as it comes.
  */
 export function requestTimelineLabel(
   requestedRelative: string,
   decidedRelative: string | null,
 ): string {
-  const requested = `Requested ${requestedRelative.toLowerCase()}`;
+  const requested = `הבקשה הוגשה ${requestedRelative}`;
   if (!decidedRelative) return requested;
 
-  return `${requested} · Not approved ${decidedRelative.toLowerCase()}`;
+  return `${requested} · לא אושרה ${decidedRelative}`;
 }
 
 /**
  * Distinguishes one row's buttons from the next row's for a screen reader —
- * a column of identical "Approve" labels says nothing about who is approved.
+ * a column of identical "אישור" labels says nothing about who is approved.
  */
 export function approveRequestLabel(name: string): string {
-  return `Approve ${name}'s request`;
+  return `אישור הבקשה של ${name}`;
 }
 
 export function rejectRequestLabel(name: string): string {
-  return `Reject ${name}'s request`;
+  return `דחיית הבקשה של ${name}`;
 }
 
 const REQUEST_DECISION_NOTES: Record<RequestDecisionClosedReason, string> = {
-  draft: "This event is still a draft, so there is nothing to decide yet.",
-  cancelled: "This event was cancelled, so requests can no longer be decided.",
-  started: "This event has passed, so requests can no longer be decided.",
-  full: "This event is full, so approving would go past capacity.",
-  not_decidable: "There is nothing left to decide on this request.",
+  draft: "האירוע עדיין טיוטה, ולכן אין עדיין מה להחליט.",
+  cancelled: "האירוע בוטל, ולכן אי אפשר עוד להחליט על בקשות.",
+  started: "האירוע כבר עבר, ולכן אי אפשר עוד להחליט על בקשות.",
+  full: "האירוע מלא, ואישור יחרוג מהקיבולת.",
+  not_decidable: "לא נשאר מה להחליט על הבקשה הזו.",
 };
 
 /**
@@ -339,15 +387,15 @@ export function requestDecisionNote(
  */
 export const REQUEST_ACTION_COPY = {
   /* Server refusals for the states `RequestDecisionClosedReason` cannot name. */
-  alreadyRejected: "This request has already been rejected.",
+  alreadyRejected: "הבקשה הזו כבר נדחתה.",
   /** The request changed underneath the decision. */
-  stale: "This request has changed. Reload the page and try again.",
+  stale: "הבקשה הזו השתנתה. רעננו את הדף ונסו שוב.",
 
   /* Toast titles. The server's own message goes underneath as the description. */
-  approved: "Request approved",
-  rejected: "Request rejected",
-  approveFailed: "Could not approve this request",
-  rejectFailed: "Could not reject this request",
+  approved: "הבקשה אושרה",
+  rejected: "הבקשה נדחתה",
+  approveFailed: "לא הצלחנו לאשר את הבקשה",
+  rejectFailed: "לא הצלחנו לדחות את הבקשה",
 };
 
 /* ------------------------------------------------------------- management */
@@ -360,51 +408,52 @@ export const REQUEST_ACTION_COPY = {
  */
 export const MANAGE_LABELS = {
   /** The board's entry point into creation. */
-  create: "New event",
-  createTitle: "New event",
+  create: "אירוע חדש",
+  createTitle: "אירוע חדש",
   createDescription:
-    "It starts as a draft, so nobody else can see it until you publish.",
-  createSubmit: "Create draft",
+    "האירוע מתחיל כטיוטה, כך שאף אחד אחר לא יראה אותו עד שתפרסמו.",
+  createSubmit: "יצירת טיוטה",
   /** Leaves edit mode without leaving the event. */
-  backToEvent: "Back to event",
-  editTitle: "Editing this event",
-  editDescription: "Everyone still sees the same screen. You just see more of it.",
-  editSubmit: "Save changes",
-  cancel: "Cancel",
+  backToEvent: "חזרה לאירוע",
+  editTitle: "עריכת האירוע",
+  editDescription:
+    "כולם עדיין רואים את אותו מסך. לכם מוצגות גם אפשרויות העריכה.",
+  editSubmit: "שמירת השינויים",
+  cancel: "ביטול",
 };
 
 /** The fields of the event form, and the guidance that goes with them. */
 export const EVENT_FORM_LABELS = {
-  title: "Title",
-  summary: "Summary",
+  title: "כותרת",
+  summary: "תקציר",
   /**
    * Guidance, not a limit. Nothing enforces a length -- the card line-clamps a
    * long summary, so a host is trusted to write a sensible one.
    */
-  summaryHint: "One sentence, shown on cards. Around 110 characters reads best.",
-  description: "Description",
-  descriptionHint: "Leave a blank line between paragraphs.",
-  startsAt: "Starts",
-  endsAt: "Ends",
-  category: "Category",
-  access: "Access",
-  capacity: "Capacity",
-  capacityHint: "Confirmed attendees. Leave unlimited for no cap.",
-  capacityUnlimited: "No limit on attendees",
-  capacityPlaceholder: "e.g. 40",
-  locationKind: "How people attend",
-  venue: "Venue",
-  address: "Address",
-  addressHint: "Shown under the venue on the detail page.",
-  url: "Joining link",
-  platform: "Platform",
-  platformHint: 'e.g. "Zoom", "Google Meet".',
+  summaryHint: "משפט אחד, שמוצג על הכרטיסים. סביב 110 תווים נקרא הכי טוב.",
+  description: "תיאור",
+  descriptionHint: "השאירו שורה ריקה בין פסקאות.",
+  startsAt: "מתחיל",
+  endsAt: "מסתיים",
+  category: "קטגוריה",
+  access: "אופן הכניסה",
+  capacity: "קיבולת",
+  capacityHint: "משתתפים מאושרים. השאירו ללא הגבלה כדי לא לקבוע תקרה.",
+  capacityUnlimited: "ללא הגבלת משתתפים",
+  capacityPlaceholder: "למשל 40",
+  locationKind: "איך משתתפים",
+  venue: "מקום",
+  address: "כתובת",
+  addressHint: "מוצגת מתחת למקום בעמוד האירוע.",
+  url: "קישור להצטרפות",
+  platform: "פלטפורמה",
+  platformHint: 'למשל "Zoom", "Google Meet".',
   /** Warns the host what switching to invite-only does to current attendees. */
   accessInviteWarning:
-    "Switching to invite only hides this event from anyone who is not on its invite list, including people who already have a place.",
-  sectionWhen: "When",
-  sectionWhere: "Where",
-  sectionWho: "Who can get in",
+    "מעבר להזמנה בלבד מסתיר את האירוע מכל מי שלא ברשימת המוזמנים, כולל אנשים שכבר יש להם מקום.",
+  sectionWhen: "מתי",
+  sectionWhere: "איפה",
+  sectionWho: "מי יכול להיכנס",
 };
 
 /**
@@ -415,50 +464,50 @@ export const EVENT_FORM_LABELS = {
  * browser or on the server.
  */
 export const EVENT_FORM_ERRORS = {
-  titleRequired: "Give the event a title.",
-  summaryRequired: "Write a one-sentence summary.",
-  descriptionRequired: "Describe the event.",
-  startsAtInvalid: "Choose when the event starts.",
-  endsAtInvalid: "Choose when the event ends.",
-  endsAtBeforeStart: "The end has to be after the start.",
-  categoryInvalid: "Choose a category.",
-  accessInvalid: "Choose how people get in.",
-  capacityInvalid: "Capacity has to be a whole number of seats, or unlimited.",
-  locationKindInvalid: "Choose how people attend.",
-  venueRequired: "Say where it happens.",
-  urlRequired: "Add the joining link.",
+  titleRequired: "תנו לאירוע כותרת.",
+  summaryRequired: "כתבו תקציר של משפט אחד.",
+  descriptionRequired: "תארו את האירוע.",
+  startsAtInvalid: "בחרו מתי האירוע מתחיל.",
+  endsAtInvalid: "בחרו מתי האירוע מסתיים.",
+  endsAtBeforeStart: "הסיום חייב להיות אחרי ההתחלה.",
+  categoryInvalid: "בחרו קטגוריה.",
+  accessInvalid: "בחרו איך נכנסים לאירוע.",
+  capacityInvalid: "הקיבולת חייבת להיות מספר שלם של מקומות, או ללא הגבלה.",
+  locationKindInvalid: "בחרו איך משתתפים.",
+  venueRequired: "כתבו איפה זה קורה.",
+  urlRequired: "הוסיפו את הקישור להצטרפות.",
   /** Shown when the server refuses a form the browser thought was fine. */
-  formRejected: "The server refused these changes.",
+  formRejected: "השרת דחה את השינויים האלה.",
 };
 
 /** What create, edit, publish and delete say once they have been attempted. */
 export const MANAGE_ACTION_COPY = {
   /* Server refusals. */
-  cannotCreate: "You are not allowed to create events.",
-  cannotManage: "You are not allowed to manage this event.",
-  alreadyPublished: "This event is already published.",
-  notADraft: "Only a draft can be published.",
+  cannotCreate: "אין לכם הרשאה ליצור אירועים.",
+  cannotManage: "אין לכם הרשאה לנהל את האירוע הזה.",
+  alreadyPublished: "האירוע הזה כבר פורסם.",
+  notADraft: "אפשר לפרסם רק טיוטה.",
   /** The event moved or disappeared underneath the request. */
-  stale: "This event has changed. Reload the page and try again.",
+  stale: "האירוע הזה השתנה. רעננו את הדף ונסו שוב.",
 
   /* Toast titles. The server's own message goes underneath as the description. */
-  created: "Draft created",
-  createFailed: "Could not create the event",
-  saved: "Changes saved",
-  saveFailed: "Could not save your changes",
-  published: "Event published",
-  publishFailed: "Could not publish this event",
-  deleted: "Event deleted",
-  deleteFailed: "Could not delete this event",
+  created: "הטיוטה נוצרה",
+  createFailed: "לא הצלחנו ליצור את האירוע",
+  saved: "השינויים נשמרו",
+  saveFailed: "לא הצלחנו לשמור את השינויים",
+  published: "האירוע פורסם",
+  publishFailed: "לא הצלחנו לפרסם את האירוע",
+  deleted: "האירוע נמחק",
+  deleteFailed: "לא הצלחנו למחוק את האירוע",
 };
 
 /** The delete confirmation. `ConfirmDialog` renders it. */
 export const DELETE_DIALOG = {
-  title: "Delete this event?",
-  confirm: "Delete event",
-  cancel: "Keep event",
+  title: "למחוק את האירוע?",
+  confirm: "מחיקת האירוע",
+  cancel: "ביטול",
   /** No registrations to lose, so there is nothing extra to warn about. */
-  message: "This cannot be undone. The event is removed for everyone.",
+  message: "אי אפשר לבטל את זה. האירוע יוסר עבור כולם.",
 };
 
 /**
@@ -475,13 +524,221 @@ export function deleteDialogMessage(
   pendingCount: number,
 ): string {
   const parts = [
-    goingCount > 0 &&
-      `${goingCount} confirmed ${goingCount === 1 ? "place" : "places"}`,
-    pendingCount > 0 &&
-      `${pendingCount} pending ${pendingCount === 1 ? "request" : "requests"}`,
+    goingCount > 0 && placeCount(goingCount),
+    pendingCount > 0 && requestCount(pendingCount),
   ].filter((part): part is string => part !== false);
 
   if (parts.length === 0) return DELETE_DIALOG.message;
 
-  return `This cannot be undone. ${parts.join(" and ")} will be deleted with the event.`;
+  /*
+    Two differences from the English. The conjunction is the prefix "ו" rather
+    than a separate word, so it is joined onto the phrase that follows it; and
+    the verb agrees with the subject in both number *and* gender, so a lone
+    place ("מקום", masculine) reads "יימחק", a lone request ("בקשה", feminine)
+    reads "תימחק", and anything plural reads "יימחקו".
+  */
+  const verb =
+    goingCount + pendingCount > 1
+      ? "יימחקו"
+      : pendingCount === 1
+        ? "תימחק"
+        : "יימחק";
+
+  return `אי אפשר לבטל את זה. ${joinWithAnd(parts)} ${verb} יחד עם האירוע.`;
+}
+
+/** "א ו-ב", or just "א" when there is only the one. */
+function joinWithAnd(parts: string[]): string {
+  return parts.length < 2 ? (parts[0] ?? "") : `${parts[0]} ${hebrewAnd(parts[1])}`;
+}
+
+/**
+ * "and", which in Hebrew is a prefix rather than a word -- and which takes a
+ * hyphen before a digit, so "ו-3 בקשות" and not "ו3 בקשות".
+ *
+ * Exported because `lib/date.ts` joins "שעה" to "30 דקות" by the same rule.
+ */
+export function hebrewAnd(phrase: string): string {
+  return /^\d/.test(phrase) ? `ו-${phrase}` : `ו${phrase}`;
+}
+
+/** "מקום מאושר אחד", "שני מקומות מאושרים", "5 מקומות מאושרים". */
+function placeCount(n: number): string {
+  if (n === 1) return "מקום מאושר אחד";
+  if (n === 2) return "שני מקומות מאושרים";
+  return `${n} מקומות מאושרים`;
+}
+
+/** "בקשה ממתינה אחת", "שתי בקשות ממתינות", "5 בקשות ממתינות". */
+function requestCount(n: number): string {
+  if (n === 1) return "בקשה ממתינה אחת";
+  if (n === 2) return "שתי בקשות ממתינות";
+  return `${n} בקשות ממתינות`;
+}
+
+
+/* ----------------------------------------------------------------- the app */
+
+/**
+ * The app frame: the brand, the nav and the document title.
+ *
+ * These had been typed into `AppShell` and `app/layout.tsx`. They are the same
+ * kind of thing as everything above -- words the product says -- so they live
+ * here for the same reason.
+ */
+export const APP_LABELS = {
+  brand: "לוח האירועים",
+  /** Names the top-level nav for a screen reader. */
+  nav: "ראשי",
+  navBoard: "הלוח",
+  navStyleGuide: "מדריך העיצוב",
+  /** `metadata.title.default` and `.template` in the root layout. */
+  documentTitle: "לוח האירועים",
+  documentTitleTemplate: "%s · לוח האירועים",
+  documentDescription:
+    "יצירה, פרסום והרשמה לאירועי החברה — פתוחים, באישור מארח או בהזמנה בלבד.",
+};
+
+/** The persona switcher, which stands in for signing in. */
+export const PERSONA_LABELS = {
+  menuLabel: "צפייה בלוח בתור:",
+  footnote:
+    "אין התחברות בפרויקט הזה. החלפת פרסונה מגדירה עוגייה שהשרת קורא בכל בקשה.",
+  switchFailed: "לא הצלחנו להחליף פרסונה",
+};
+
+/** "צופים עכשיו בתור מיה כהן" — the toast after a successful switch. */
+export function nowViewingAsLabel(name: string): string {
+  return `צופים עכשיו בתור ${name}`;
+}
+
+/**
+ * The words the UI kit says on its own behalf.
+ *
+ * A primitive in `components/ui/` knows nothing about events, but it still has
+ * to say "close" and "loading" somewhere. These are its defaults; anything
+ * event-specific is still passed in by the caller.
+ */
+export const UI_LABELS = {
+  back: "חזרה",
+  close: "סגירה",
+  confirm: "אישור",
+  cancel: "ביטול",
+  optional: "אופציונלי",
+  /** The spinner's accessible name. */
+  loading: "טוען",
+  /** `LoadingBlock`'s visible text, which is the same word plus its ellipsis. */
+  loadingEllipsis: "טוען…",
+  notifications: "התראות",
+  dismissNotification: "סגירת ההתראה",
+  /** The avatar stack's accessible name when there is nobody in it. */
+  nobodyRegistered: "אף אחד עוד לא נרשם",
+};
+
+/** "3 משתתפים: מיה כהן, דניאל לוי" — the avatar stack's accessible name. */
+export function attendingLabel(names: string[]): string {
+  return `${attendeeCount(names.length)}: ${names.join(", ")}`;
+}
+
+/** "משתתף אחד", "שני משתתפים", "7 משתתפים". */
+function attendeeCount(n: number): string {
+  if (n === 1) return "משתתף אחד";
+  if (n === 2) return "שני משתתפים";
+  return `${n} משתתפים`;
+}
+
+/** The 404 screen, which is also what an event you may not see looks like. */
+export const NOT_FOUND_LABELS = {
+  title: "הדף הזה לא קיים",
+  description: "ייתכן שהקישור כבר לא בתוקף, או שהאירוע נמחק.",
+  back: "חזרה ללוח",
+};
+
+/* ------------------------------------------------------- generic refusals */
+
+/**
+ * The refusals `lib/api.ts` produces when a handler has not named its own.
+ *
+ * A specific refusal belongs next to the rule that caused it -- those are in
+ * `MANAGE_ACTION_COPY` and friends above. These are the fallbacks, and they
+ * reach the viewer through the same toasts, so they are copy too.
+ *
+ * Only the `message` is Hebrew. The `code` on an `ApiError` is part of the API
+ * contract and stays as it is.
+ */
+export const API_ERRORS = {
+  forbidden: "אין לכם הרשאה לעשות את זה.",
+  notFound: "לא נמצא.",
+  internal: "משהו השתבש.",
+  invalidJson: "גוף הבקשה חייב להיות JSON תקין.",
+  missingUserId: "חסר `userId`.",
+};
+
+/** "בקשה נכשלה עם סטטוס 500." — when the server sent no message of its own. */
+export function requestFailedLabel(status: number): string {
+  return `הבקשה נכשלה עם סטטוס ${status}.`;
+}
+
+/** "אין פרסונה עם המזהה "u-maya"." */
+export function noSuchPersonaLabel(userId: string): string {
+  return `אין פרסונה עם המזהה "${userId}".`;
+}
+
+/* ------------------------------------------------------ counts on a card */
+
+/**
+ * The attendance line on a card: how many are coming, and how many places are
+ * left.
+ *
+ * `capacity: null` is unlimited, so there is nothing to subtract and the line
+ * is just the headcount.
+ */
+export function attendanceLabel(
+  going: number,
+  capacity: number | null,
+  full: boolean,
+): string {
+  if (full) return CAPACITY_LABELS.full;
+  if (going === 0) return CAPACITY_LABELS.beFirst;
+  if (capacity === null) return goingCountLabel(going);
+  return `${goingCountLabel(going)} · ${placesLeftLabel(capacity - going)}`;
+}
+
+/** The same counts, for the meter on the detail page. */
+export const CAPACITY_LABELS = {
+  full: "מלא",
+  noLimit: "ללא הגבלה",
+  beFirst: "היו הראשונים להירשם",
+  /** The badge on a published event whose start has gone by. */
+  past: "עבר",
+  /** The fallback text of an online event's joining link. */
+  joinLink: "קישור להצטרפות",
+};
+
+/** "משתתף אחד", "שני משתתפים", "7 משתתפים". */
+export function goingCountLabel(going: number): string {
+  return attendeeCount(going);
+}
+
+/**
+ * "3 מתוך 40 משתתפים" — the meter's headline when there is a cap.
+ *
+ * Same agreement rule as `eventCountLabel()`: the noun follows the capacity, so
+ * the capacity goes through `attendeeCount()` rather than being pasted in front
+ * of a hardcoded plural.
+ */
+export function capacityCountLabel(going: number, capacity: number): string {
+  return `${going} מתוך ${attendeeCount(capacity)}`;
+}
+
+/** "נותר מקום אחד", "נותרו שני מקומות", "נותרו 7 מקומות". */
+export function placesLeftLabel(left: number): string {
+  if (left === 1) return "נותר מקום אחד";
+  if (left === 2) return "נותרו שני מקומות";
+  return `נותרו ${left} מקומות`;
+}
+
+/** "מארח: מיה כהן" — bottom-right of a card with no avatar stack. */
+export function hostedByLabel(name: string): string {
+  return `מארח: ${name}`;
 }

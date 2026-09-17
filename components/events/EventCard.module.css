@@ -113,11 +113,17 @@
   padding: 0 var(--space-5);
 }
 
+/*
+  The bottom padding is what separates the badges from the footer below them.
+  Without it the badge row sat flush on the footer's top border, and cards whose
+  content filled the row got no gap at all -- `.footer`'s `margin-top: auto`
+  only opens a gap on cards that are shorter than their row.
+*/
 .badges {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-2);
-  padding: var(--space-4) var(--space-5) 0;
+  padding: var(--space-4) var(--space-5);
 }
 
 /* ---- footer ------------------------------------------------------------- */

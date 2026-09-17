@@ -1,16 +1,23 @@
 /**
  * Date formatting.
  *
- * Locale is pinned to `en-GB` on purpose. Formatting with the ambient locale
+ * Locale is pinned to `he-IL` on purpose. Formatting with the ambient locale
  * makes the server and the browser disagree, which shows up as a React
- * hydration warning that is genuinely annoying to track down.
+ * hydration warning that is genuinely annoying to track down -- so this stays a
+ * literal, and the fact that it is now the same language as the UI does not
+ * make reading it off the request any safer.
+ *
+ * `he-IL` resolves to Latin digits, so a date still looks like "24" and the
+ * calendar tile keeps its design.
  *
  * The `relative*` helpers read the clock, so they belong in Server Components
  * or in an effect. Calling them during a client render can also drift from what
  * the server produced.
  */
 
-const LOCALE = "en-GB";
+import { hebrewAnd } from "./labels";
+
+const LOCALE = "he-IL";
 
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
@@ -39,22 +46,22 @@ export function formatDayNumber(iso: string): string {
   return dayNumber.format(new Date(iso));
 }
 
-/** "Aug" */
+/** "אוג׳" */
 export function formatMonthShort(iso: string): string {
   return monthShort.format(new Date(iso));
 }
 
-/** "Sat" */
+/** "יום ב׳" */
 export function formatWeekdayShort(iso: string): string {
   return weekdayShort.format(new Date(iso));
 }
 
-/** "Saturday, 24 August" */
+/** "יום שני, 24 באוגוסט" */
 export function formatDateLong(iso: string): string {
   return dateLong.format(new Date(iso));
 }
 
-/** "24 August 2026" */
+/** "24 באוגוסט 2026" */
 export function formatDateWithYear(iso: string): string {
   return dateWithYear.format(new Date(iso));
 }
@@ -66,10 +73,18 @@ export function formatTime(iso: string): string {
 
 /** "14:00 – 15:30" */
 export function formatTimeRange(startIso: string, endIso: string): string {
-  return `${formatTime(startIso)} – ${formatTime(endIso)}`;
+  /*
+    Isolated left-to-right. The two times are digits either side of a neutral
+    dash, and in an RTL paragraph the bidi algorithm resolves that dash to the
+    paragraph direction and renders the range end-first -- "15:30 – 14:00".
+    U+2066/U+2069 pin the run to LTR without affecting anything around it, which
+    is what these characters are for; the alternative is a `dir` attribute at
+    every one of the call sites.
+  */
+  return `\u2066${formatTime(startIso)} – ${formatTime(endIso)}\u2069`;
 }
 
-/** "1h 30m", "45m", "3h" */
+/** "שעה ו-30 דקות", "45 דקות", "3 שעות" */
 export function formatDuration(startIso: string, endIso: string): string {
   const ms = new Date(endIso).getTime() - new Date(startIso).getTime();
   if (ms <= 0) return "—";
@@ -77,10 +92,46 @@ export function formatDuration(startIso: string, endIso: string): string {
   const hours = Math.floor(ms / HOUR_MS);
   const minutes = Math.round((ms % HOUR_MS) / MINUTE_MS);
 
-  if (hours === 0) return `${minutes}m`;
-  if (minutes === 0) return `${hours}h`;
-  return `${hours}h ${minutes}m`;
+  if (hours === 0) return minuteCount(minutes);
+  if (minutes === 0) return hourCount(hours);
+  return `${hourCount(hours)} ${hebrewAnd(minuteCount(minutes))}`;
 }
+
+/**
+ * Hebrew counts one and two differently from everything above them -- two is a
+ * dual form, not a numeral -- so a count cannot be pasted in front of a noun
+ * the way `${n}h` can. Every counted phrase below goes through one of these.
+ */
+function hourCount(n: number): string {
+  if (n === 1) return "שעה";
+  if (n === 2) return "שעתיים";
+  return `${n} שעות`;
+}
+
+function minuteCount(n: number): string {
+  if (n === 1) return "דקה";
+  if (n === 2) return "שתי דקות";
+  return `${n} דקות`;
+}
+
+function dayCount(n: number): string {
+  if (n === 1) return "יום";
+  if (n === 2) return "יומיים";
+  return `${n} ימים`;
+}
+
+function weekCount(n: number): string {
+  if (n === 1) return "שבוע";
+  if (n === 2) return "שבועיים";
+  return `${n} שבועות`;
+}
+
+function monthCount(n: number): string {
+  if (n === 1) return "חודש";
+  if (n === 2) return "חודשיים";
+  return `${n} חודשים`;
+}
+
 
 export function isPast(iso: string): boolean {
   return new Date(iso).getTime() < Date.now();
@@ -95,26 +146,27 @@ export function daysUntil(iso: string): number {
   return Math.round((target.getTime() - today.getTime()) / DAY_MS);
 }
 
-/** "Today", "Tomorrow", "In 4 days", "3 days ago", "In 3 weeks". */
+/** "היום", "מחר", "בעוד 4 ימים", "לפני 3 ימים", "בעוד 3 שבועות". */
 export function formatRelativeDay(iso: string): string {
   const days = daysUntil(iso);
 
-  if (days === 0) return "Today";
-  if (days === 1) return "Tomorrow";
-  if (days === -1) return "Yesterday";
+  if (days === 0) return "היום";
+  if (days === 1) return "מחר";
+  if (days === -1) return "אתמול";
 
+  // Same buckets as before; only the wording is Hebrew.
   if (days > 0) {
-    if (days < 7) return `In ${days} days`;
-    if (days < 14) return "Next week";
-    if (days < 31) return `In ${Math.round(days / 7)} weeks`;
-    return `In ${Math.round(days / 30)} months`;
+    if (days < 7) return `בעוד ${dayCount(days)}`;
+    if (days < 14) return "בשבוע הבא";
+    if (days < 31) return `בעוד ${weekCount(Math.round(days / 7))}`;
+    return `בעוד ${monthCount(Math.round(days / 30))}`;
   }
 
   const ago = Math.abs(days);
-  if (ago < 7) return `${ago} days ago`;
-  if (ago < 14) return "Last week";
-  if (ago < 31) return `${Math.round(ago / 7)} weeks ago`;
-  return `${Math.round(ago / 30)} months ago`;
+  if (ago < 7) return `לפני ${dayCount(ago)}`;
+  if (ago < 14) return "בשבוע שעבר";
+  if (ago < 31) return `לפני ${weekCount(Math.round(ago / 7))}`;
+  return `לפני ${monthCount(Math.round(ago / 30))}`;
 }
 
 /**

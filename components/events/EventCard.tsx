@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import { AvatarStack } from "@/components/ui";
 import { cx } from "@/lib/cx";
 import { isPast } from "@/lib/date";
-import { CATEGORY_LABELS } from "@/lib/labels";
+import { CATEGORY_LABELS, attendanceLabel, hostedByLabel } from "@/lib/labels";
 import type { EventRecord, RegistrationStatus, User } from "@/lib/types";
 
 import {
@@ -57,8 +57,16 @@ export function EventCard({
         <DateBlock iso={event.startsAt} accent={event.accent} />
         <div className={styles.headText}>
           <p className={styles.category}>{CATEGORY_LABELS[event.category]}</p>
-          <h3 className={styles.title}>{event.title}</h3>
-          <p className={styles.summary}>{event.summary}</p>
+          {/*
+            The event's own words, in whichever language the host wrote them.
+            See `dir="auto"` note in `PageHeader`.
+          */}
+          <h3 className={styles.title} dir="auto">
+            {event.title}
+          </h3>
+          <p className={styles.summary} dir="auto">
+            {event.summary}
+          </p>
         </div>
       </div>
 
@@ -76,28 +84,15 @@ export function EventCard({
         <span className={styles.attendance}>
           {attendees.length > 0 && <AvatarStack users={attendees} max={4} size="xs" />}
           <span className={cx(styles.attendanceText, full && styles.full)}>
-            <AttendanceText going={going} capacity={event.capacity} full={full} />
+            {attendanceLabel(going, event.capacity, full)}
           </span>
         </span>
-        {hostName && <span className={styles.host}>by {hostName}</span>}
+        {hostName && (
+          <span className={styles.host}>{hostedByLabel(hostName)}</span>
+        )}
       </div>
     </Link>
   );
-}
-
-function AttendanceText({
-  going,
-  capacity,
-  full,
-}: {
-  going: number;
-  capacity: number | null;
-  full: boolean;
-}): ReactNode {
-  if (full) return "Full";
-  if (going === 0) return "Be the first to register";
-  if (capacity === null) return `${going} going`;
-  return `${going} going · ${capacity - going} left`;
 }
 
 /** Responsive grid for a page of `EventCard`s. */

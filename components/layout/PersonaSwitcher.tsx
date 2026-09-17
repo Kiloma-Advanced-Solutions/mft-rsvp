@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { Avatar, Badge, useToast } from "@/components/ui";
 import { fetchJson } from "@/lib/api";
 import { cx } from "@/lib/cx";
+import { PERSONA_LABELS, ROLE_LABELS, nowViewingAsLabel } from "@/lib/labels";
 import type { User } from "@/lib/types";
 
 import styles from "./PersonaSwitcher.module.css";
@@ -65,10 +66,10 @@ export function PersonaSwitcher({
       });
       setOpen(false);
       router.refresh();
-      toast.info(`Now viewing as ${user.name}`, user.title);
+      toast.info(nowViewingAsLabel(user.name), user.title);
     } catch (error) {
       toast.error(
-        "Could not switch persona",
+        PERSONA_LABELS.switchFailed,
         error instanceof Error ? error.message : undefined,
       );
     } finally {
@@ -87,8 +88,10 @@ export function PersonaSwitcher({
       >
         <Avatar user={currentUser} size="sm" />
         <span className={styles.triggerText}>
-          <span className={styles.triggerName}>{currentUser.name}</span>
-          <span className={styles.triggerRole}>{currentUser.role}</span>
+          <span className={styles.triggerName} dir="auto">
+            {currentUser.name}
+          </span>
+          <span className={styles.triggerRole}>{ROLE_LABELS[currentUser.role]}</span>
         </span>
         <span className={styles.caret} aria-hidden>
           ▼
@@ -97,7 +100,7 @@ export function PersonaSwitcher({
 
       {open && (
         <div className={styles.menu} role="menu">
-          <p className={styles.menuLabel}>View the board as</p>
+          <p className={styles.menuLabel}>{PERSONA_LABELS.menuLabel}</p>
 
           {users.map((user) => {
             const active = user.id === currentUser.id;
@@ -112,10 +115,16 @@ export function PersonaSwitcher({
               >
                 <Avatar user={user} size="sm" />
                 <span className={styles.optionText}>
-                  <span className={styles.optionName}>{user.name}</span>
-                  <span className={styles.optionMeta}>{user.title}</span>
+                  <span className={styles.optionName} dir="auto">
+                    {user.name}
+                  </span>
+                  <span className={styles.optionMeta} dir="auto">
+                    {user.title}
+                  </span>
                 </span>
-                <Badge tone={active ? "primary" : "neutral"}>{user.role}</Badge>
+                <Badge tone={active ? "primary" : "neutral"}>
+                  {ROLE_LABELS[user.role]}
+                </Badge>
                 {active && (
                   <span className={styles.check} aria-hidden>
                     ✓
@@ -125,10 +134,7 @@ export function PersonaSwitcher({
             );
           })}
 
-          <p className={styles.footnote}>
-            There is no login in this project. Switching persona sets a cookie the
-            server reads on every request.
-          </p>
+          <p className={styles.footnote}>{PERSONA_LABELS.footnote}</p>
         </div>
       )}
     </div>

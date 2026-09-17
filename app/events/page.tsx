@@ -24,7 +24,12 @@ import type { EventWithContext } from "@/lib/types";
 import styles from "./events.module.css";
 
 export const metadata = {
-  title: BOARD_LABELS.title,
+  /*
+    `absolute` opts this page out of the root layout's "%s · לוח האירועים"
+    template. The board's heading and the product's name are the same words, so
+    the template would have the tab read them twice.
+  */
+  title: { absolute: BOARD_LABELS.title },
 };
 
 /**
@@ -107,7 +112,7 @@ export default async function BoardPage({ searchParams }: PageProps<"/events">) 
 
 /**
  * One titled run of cards. Renders nothing when it is empty, so a board with no
- * history does not grow a lonely "Past" heading.
+ * history does not grow a lonely "אירועים שעברו" heading.
  */
 function BoardSection({
   title,

@@ -11,6 +11,7 @@
 
 import { ApiError, jsonOk, readJson, withErrorHandling } from "@/lib/api";
 import { db } from "@/lib/db";
+import { API_ERRORS, noSuchPersonaLabel } from "@/lib/labels";
 import { getCurrentUser, setCurrentUser } from "@/lib/session";
 
 export const GET = withErrorHandling(async () => {
@@ -26,12 +27,12 @@ export const POST = withErrorHandling(async (request: Request) => {
   const body = await readJson<{ userId?: unknown }>(request);
 
   if (typeof body.userId !== "string" || body.userId.length === 0) {
-    throw ApiError.badRequest("`userId` is required.");
+    throw ApiError.badRequest(API_ERRORS.missingUserId);
   }
 
   const user = await db.users.get(body.userId);
   if (!user) {
-    throw ApiError.notFound(`No persona with id "${body.userId}".`);
+    throw ApiError.notFound(noSuchPersonaLabel(body.userId));
   }
 
   await setCurrentUser(user.id);

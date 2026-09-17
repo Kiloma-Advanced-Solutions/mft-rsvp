@@ -1,4 +1,5 @@
 import { cx } from "@/lib/cx";
+import { UI_LABELS } from "@/lib/labels";
 
 import styles from "./Spinner.module.css";
 
@@ -13,13 +14,17 @@ export function Spinner({
     <span
       className={cx(styles.spinner, styles[size], className)}
       role="status"
-      aria-label="Loading"
+      aria-label={UI_LABELS.loading}
     />
   );
 }
 
 /** Full-block loading state, for `loading.tsx` and Suspense fallbacks. */
-export function LoadingBlock({ label = "Loading…" }: { label?: string }) {
+export function LoadingBlock({
+  label = UI_LABELS.loadingEllipsis,
+}: {
+  label?: string;
+}) {
   return (
     <div className={styles.centered}>
       <Spinner />
