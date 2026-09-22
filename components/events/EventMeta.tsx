@@ -194,22 +194,32 @@ function LocationDetails({ location }: { location: EventLocation }) {
   const showsVenue = location.kind !== "online";
   const showsLink = location.kind !== "in_person";
 
+  /*
+    `dir="auto"` goes on each line rather than on the wrapper. On the wrapper it
+    also sets the wrapper's `direction`, so a Latin venue turned the whole block
+    LTR and both lines aligned away from the icon. Per line, each still picks its
+    own direction while the block stays in the document's.
+  */
   return (
-    <span className={styles.metaText} dir="auto">
-      {showsVenue ? (location.venue ?? LOCATION_KIND_LABELS[location.kind]) : null}
-      {showsVenue && showsLink ? " · " : null}
-      {showsLink && location.url ? (
-        <a
-          className={styles.metaLink}
-          href={location.url}
-          target="_blank"
-          rel="noreferrer"
-        >
-          {location.platform ?? CAPACITY_LABELS.joinLink}
-        </a>
-      ) : null}
+    <span className={styles.metaText}>
+      <span dir="auto">
+        {showsVenue ? (location.venue ?? LOCATION_KIND_LABELS[location.kind]) : null}
+        {showsVenue && showsLink ? " · " : null}
+        {showsLink && location.url ? (
+          <a
+            className={styles.metaLink}
+            href={location.url}
+            target="_blank"
+            rel="noreferrer"
+          >
+            {location.platform ?? CAPACITY_LABELS.joinLink}
+          </a>
+        ) : null}
+      </span>
       {location.address && (
-        <span className={styles.metaSub}>{location.address}</span>
+        <span className={styles.metaSub} dir="auto">
+          {location.address}
+        </span>
       )}
     </span>
   );

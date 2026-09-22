@@ -92,7 +92,15 @@
   color: var(--color-text);
 }
 
+/*
+  Shrink-wrapped like `.personText`: each line is only as wide as its own text,
+  so a line shorter than its neighbour still begins at the icon instead of
+  drifting to the far edge of a box sized by the longer one.
+*/
 .metaStack .metaText {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
   white-space: normal;
 }
 
