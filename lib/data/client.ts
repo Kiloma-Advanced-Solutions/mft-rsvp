@@ -3,9 +3,16 @@
  *
  * `import "server-only"` on the line below is the database boundary. It is the
  * deepest point in the chain, so it protects everything above it transitively:
- * this is the only module that imports the driver or reads the connection
- * string, and a Client Component that reached `lib/db.ts` would trip this import
- * on the way down. That is why the marker lives here and nowhere else.
+ * this is the only module that reads the connection string or owns the pool's
+ * lifecycle, every module that reaches the database comes through it, and a
+ * Client Component that reached `lib/db.ts` would trip this import on the way
+ * down. That is why the marker lives here and nowhere else.
+ *
+ * Its siblings under `lib/data/` do import `mssql` themselves, for the type
+ * constants a parameter needs -- `sql.UniqueIdentifier` and the rest. That is
+ * not a breach of the boundary: a type constant names a column type, carries no
+ * connection and opens nothing. What belongs here alone is the configuration
+ * and the pool.
  *
  *   Server Component / Route Handler -> lib/db.ts -> lib/data/* -> mssql -> SQL Server
  *
