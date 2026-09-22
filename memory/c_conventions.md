@@ -13,6 +13,7 @@ this file.
 | API conventions | [CLAUDE.md](../CLAUDE.md) · helpers in [lib/api.ts](../lib/api.ts) · worked example [app/api/session/route.ts](../app/api/session/route.ts) |
 | Styling — tokens, CSS Modules, both themes | [CLAUDE.md](../CLAUDE.md) · tokens in [app/styles/tokens.css](../app/styles/tokens.css) |
 | User-facing copy | [CLAUDE.md](../CLAUDE.md) · vocabulary in [lib/labels.ts](../lib/labels.ts) |
+| UI language, direction and bidi — Hebrew copy, RTL, logical properties, `dir="auto"` | [a_system.md](a_system.md) "Language and direction" · words in [lib/labels.ts](../lib/labels.ts) · dates in [lib/date.ts](../lib/date.ts) |
 | Verification commands | the scripts in [package.json](../package.json), in the order [CLAUDE.md](../CLAUDE.md) requires |
 | Definition of done | [TASKS.md](../TASKS.md) §7 |
 | Milestone requirements | [TASKS.md](../TASKS.md) §5 |
