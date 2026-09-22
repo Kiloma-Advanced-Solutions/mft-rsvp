@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { cx } from "@/lib/cx";
+import { UI_LABELS, attendingLabel } from "@/lib/labels";
 import type { User } from "@/lib/types";
 
 import styles from "./Avatar.module.css";
@@ -50,8 +51,8 @@ export function AvatarStack({
       className={cx(styles.stack, className)}
       aria-label={
         users.length === 0
-          ? "Nobody registered yet"
-          : `${users.length} attending: ${users.map((user) => user.name).join(", ")}`
+          ? UI_LABELS.nobodyRegistered
+          : attendingLabel(users.map((user) => user.name))
       }
     >
       {shown.map((user) => (
@@ -86,8 +87,12 @@ export function Person({
     <span className={cx(styles.person, className)}>
       <Avatar user={user} size={size} />
       <span className={styles.personText}>
-        <span className={styles.personName}>{user.name}</span>
-        <span className={styles.personMeta}>{meta ?? user.title}</span>
+        <span className={styles.personName} dir="auto">
+          {user.name}
+        </span>
+        <span className={styles.personMeta} dir="auto">
+          {meta ?? user.title}
+        </span>
       </span>
     </span>
   );

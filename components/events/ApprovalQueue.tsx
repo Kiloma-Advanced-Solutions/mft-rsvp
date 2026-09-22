@@ -144,7 +144,7 @@ function RequestRow({
         />
 
         {registration.message && (
-          <blockquote className={styles.message}>
+          <blockquote className={styles.message} dir="auto">
             {registration.message}
           </blockquote>
         )}

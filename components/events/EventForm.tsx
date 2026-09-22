@@ -142,8 +142,15 @@ export function EventForm({
   return (
     <form className={styles.form} onSubmit={submit} noValidate>
       <div className={styles.fields}>
+        {/*
+          The free-text controls take their direction from what is typed into
+          them rather than from the document. The interface is Hebrew, but an
+          event's title or venue may not be, and an RTL text box puts an English
+          sentence's full stop at the wrong end. The structured controls -- the
+          dates, the capacity, the pickers -- are left alone.
+        */}
         <Field label={EVENT_FORM_LABELS.title} required error={errors.title}>
-          <Input name="title" defaultValue={initialValues.title} />
+          <Input name="title" defaultValue={initialValues.title} dir="auto" />
         </Field>
 
         <Field
@@ -152,7 +159,7 @@ export function EventForm({
           hint={EVENT_FORM_LABELS.summaryHint}
           error={errors.summary}
         >
-          <Input name="summary" defaultValue={initialValues.summary} />
+          <Input name="summary" defaultValue={initialValues.summary} dir="auto" />
         </Field>
 
         <Field
@@ -165,6 +172,7 @@ export function EventForm({
             name="description"
             rows={6}
             defaultValue={initialValues.description}
+            dir="auto"
           />
         </Field>
       </div>
@@ -226,6 +234,7 @@ export function EventForm({
               <Input
                 name="locationVenue"
                 defaultValue={initialValues.locationVenue}
+                dir="auto"
               />
             </Field>
             <Field
@@ -236,6 +245,7 @@ export function EventForm({
               <Input
                 name="locationAddress"
                 defaultValue={initialValues.locationAddress}
+                dir="auto"
               />
             </Field>
           </FieldRow>
@@ -251,6 +261,7 @@ export function EventForm({
               <Input
                 name="locationUrl"
                 defaultValue={initialValues.locationUrl}
+                dir="auto"
               />
             </Field>
             <Field
@@ -261,6 +272,7 @@ export function EventForm({
               <Input
                 name="locationPlatform"
                 defaultValue={initialValues.locationPlatform}
+                dir="auto"
               />
             </Field>
           </FieldRow>

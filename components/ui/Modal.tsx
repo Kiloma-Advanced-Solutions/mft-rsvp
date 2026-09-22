@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import type { ReactNode } from "react";
 
 import { cx } from "@/lib/cx";
+import { UI_LABELS } from "@/lib/labels";
 
 import { Button } from "./Button";
 import styles from "./Modal.module.css";
@@ -75,7 +76,7 @@ export function Modal({
               type="button"
               className={styles.close}
               onClick={onClose}
-              aria-label="Close"
+              aria-label={UI_LABELS.close}
             >
               ✕
             </button>
@@ -100,8 +101,8 @@ export function ConfirmDialog({
   onConfirm,
   title,
   message,
-  confirmLabel = "Confirm",
-  cancelLabel = "Cancel",
+  confirmLabel = UI_LABELS.confirm,
+  cancelLabel = UI_LABELS.cancel,
   destructive = false,
   loading = false,
 }: {

@@ -94,8 +94,13 @@
   --radius-full: 999px;
 
   /* ---- Typography ------------------------------------------------------ */
-  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
-    "Segoe UI", Roboto, sans-serif;
+  /*
+    Rubik is the interface font, and renders the Latin in the UI as well as the
+    Hebrew -- it is loaded with both subsets. Geist follows it only as a
+    fallback for glyphs Rubik does not carry. `--font-mono` is unchanged.
+  */
+  --font-sans: var(--font-rubik), var(--font-geist-sans), ui-sans-serif,
+    system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
 
   --text-xs: 0.75rem;

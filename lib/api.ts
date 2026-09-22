@@ -11,6 +11,8 @@
  * `app/api/session/route.ts` for a worked example of the whole pattern.
  */
 
+import { API_ERRORS, requestFailedLabel } from "./labels";
+
 /** Throw this anywhere inside a handler wrapped in `withErrorHandling`. */
 export class ApiError extends Error {
   readonly status: number;
@@ -33,11 +35,11 @@ export class ApiError extends Error {
     return new ApiError(400, message, { code: "bad_request", details });
   }
 
-  static forbidden(message = "You are not allowed to do that.") {
+  static forbidden(message = API_ERRORS.forbidden) {
     return new ApiError(403, message, { code: "forbidden" });
   }
 
-  static notFound(message = "Not found.") {
+  static notFound(message = API_ERRORS.notFound) {
     return new ApiError(404, message, { code: "not_found" });
   }
 
@@ -82,7 +84,7 @@ export function withErrorHandling<Args extends unknown[]>(
         });
       }
       console.error("[api] unhandled error", error);
-      return jsonError(500, "Something went wrong.", { code: "internal" });
+      return jsonError(500, API_ERRORS.internal, { code: "internal" });
     }
   };
 }
@@ -92,7 +94,7 @@ export async function readJson<T = unknown>(request: Request): Promise<T> {
   try {
     return (await request.json()) as T;
   } catch {
-    throw ApiError.badRequest("Request body must be valid JSON.");
+    throw ApiError.badRequest(API_ERRORS.invalidJson);
   }
 }
 
@@ -117,7 +119,7 @@ export async function fetchJson<T>(
   if (!response.ok) {
     const message =
       (payload as { error?: { message?: string } } | null)?.error?.message ??
-      `Request failed with status ${response.status}.`;
+      requestFailedLabel(response.status);
     throw new Error(message);
   }
 

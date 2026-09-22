@@ -6,6 +6,7 @@ import type {
 } from "react";
 
 import { cx } from "@/lib/cx";
+import { UI_LABELS } from "@/lib/labels";
 
 import styles from "./Field.module.css";
 
@@ -52,7 +53,7 @@ export function Field({
             </span>
           )}
         </span>
-        {optional && !required && <span className={styles.optional}>Optional</span>}
+        {optional && !required && <span className={styles.optional}>{UI_LABELS.optional}</span>}
       </span>
 
       {children}

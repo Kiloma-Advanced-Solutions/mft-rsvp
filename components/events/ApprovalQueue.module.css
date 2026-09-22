@@ -45,8 +45,8 @@
 /* Quoted, so the requester's own words are visibly theirs and not ours. */
 .message {
   margin: 0;
-  padding-left: var(--space-4);
-  border-left: 2px solid var(--color-border-strong);
+  padding-inline-start: var(--space-4);
+  border-inline-start: 2px solid var(--color-border-strong);
   font-size: var(--text-sm);
   line-height: var(--leading-normal);
   color: var(--color-text-muted);
