@@ -1,0 +1,421 @@
+# SQL Server 2008 R2 compatibility
+
+## The contract
+
+**Application-authored schema and T-SQL are written to the SQL Server 2008 R2
+feature floor (product version 10.50, compatibility level 100), and that floor
+is statically enforced by `npm run check:tsql`. Runtime verification has only
+been performed against Azure SQL DEV.**
+
+That is a claim about what we *write*. It is deliberately not a claim about what
+we have *run*. Three tiers, and they must never be conflated:
+
+| | Tier | Status |
+| --- | --- | --- |
+| **A** | **Statically enforced in this repository.** No construct introduced after 2008 R2 appears in our SQL; no type is used that post-dates the floor or is wrong for our purposes; `GO` is handled by our own runner rather than assumed executable by the driver; DDL only ever targets an `Events_`-prefixed table, and no non-table persisted object is created at all. | Enforced by `npm run check:tsql` plus review. **A guardrail, not a proof.** |
+| **B** | **Executed and verified against Azure SQL DEV.** The schema creates, the constraints hold, migrations apply idempotently, and the product behaviour of M1–M5 survives, checked as all five personas. | Verified — **for Azure SQL only.** |
+| **C** | **Unverified against a real SQL Server 2008 R2 server.** TLS, certificates, TDS negotiation, driver behaviour, migration execution, collation, permissions, locking semantics. | **Not verified. Deployment-preflight items.** |
+
+Azure SQL accepting our T-SQL is **necessary but not sufficient** evidence of
+2008 R2 compatibility, because Azure SQL also accepts everything newer. That
+asymmetry is the entire reason the static guard exists.
+
+### Language to use, and language to avoid
+
+Do not write, in code comments, PR descriptions, or documentation:
+
+- ~~"SQL Server 2008 R2 compatible"~~ (unqualified)
+- ~~"verified against SQL Server 2008 R2"~~
+- ~~"tested for backwards compatibility"~~
+
+Write instead:
+
+> written to the SQL Server 2008 R2 feature floor and statically enforced;
+> runtime verification has only been performed against Azure SQL DEV.
+
+Sections **"The contract"** and **"Rejected constructs"** are a **project
+contract** — they constrain what may be merged, and the guard enforces them.
+Everything else here is developer documentation explaining how to work within
+it.
+
+## The feature floor
+
+What M6 uses, and why each is safe at the floor.
+
+| Feature | Note |
+| --- | --- |
+| `uniqueidentifier`, `NEWID()` | Both predate 2008 and both are within the floor. **This project uses no UUID default at all** — see "Ids have exactly one generator" below. |
+| `datetime2(3)` | Introduced in SQL Server **2008**. Three fractional digits is exactly JavaScript millisecond precision, so `toISOString()` round-trips unchanged. |
+| `nvarchar`, `nvarchar(max)` | `nvarchar(max)` since 2005. Used for host-editable free text, because the application enforces no maximum length and a bounded column would invent one. |
+| PRIMARY KEY, composite PRIMARY KEY, FOREIGN KEY, UNIQUE, CHECK | All long available. `CHECK ... IN (...)` is the only way to express an enum — SQL Server has no enum type in any version. |
+| `ON DELETE CASCADE` / `NO ACTION` | Since 2000. (`SET NULL` / `SET DEFAULT` since 2005, unused here.) |
+| Transactions, `TRY … CATCH` | `TRY … CATCH` since 2005. DDL is transactional, which the migration runner relies on. |
+| `RAISERROR` | The 2008 R2 way to raise an error. `THROW` is 2012 — see below. |
+| `OBJECT_ID` | The existence-check idiom: `IF OBJECT_ID(N'dbo.X', N'U') IS NOT NULL`. |
+| `WITH (UPDLOCK, ROWLOCK)` | Long available. Update locks are held until the transaction completes, which is the per-event mutex the capacity-sensitive writes need. |
+| `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `ORDER BY` | `ORDER BY` is the **only** ordering guarantee. A clustered index is not one. |
+| `@@ROWCOUNT` | Reflects only the *immediately preceding* statement — capture it into a variable before running anything else. |
+| `ROW_NUMBER()`, `RANK()`, `DENSE_RANK()`, `NTILE()` | Since 2005. The 2012 window functions are not available. |
+
+### Ids have exactly one generator
+
+Every persistent id is produced by the application — `crypto.randomUUID()` at
+runtime, fixed literals in the fixtures — and the columns are plain
+`uniqueidentifier NOT NULL` with **no `DEFAULT NEWID()`**.
+
+That is a deliberate choice rather than a compatibility one. A default would
+make an `INSERT` that forgot to bind an id succeed, storing a row under an id
+the application never learns; without one, the same mistake fails immediately on
+`NOT NULL`. The `PRIMARY KEY` still enforces uniqueness either way, so the
+default would buy nothing and cost the fail-fast behaviour.
+
+`NEWID()` stays on the allowed list — it is legal at the floor, and
+`scripts/tsql-fixtures/allowed.sql` still demonstrates it — because *this
+application choosing not to use a construct* is not the same as the construct
+being unavailable. Only `NEWSEQUENTIALID()` is rejected outright, and for an
+unrelated reason.
+
+### `GO` needs special handling
+
+`GO` is a **client batch separator, not T-SQL**. The `mssql` driver cannot
+execute a script containing it. `lib/data/migrate.mts` splits each file on a line
+that contains nothing but `GO` and executes the batches in order inside one
+transaction on one connection, which is what lets the identical `.sql` file run
+both through the runner and by hand in Azure Data Studio.
+
+The split is deliberately not a plain line match. Comments, single-quoted
+literals and bracketed or double-quoted identifiers are first blanked out with
+spaces of the same length — the same technique `check-tsql-compat.mts` uses — and
+the separators are located in that masked copy, so a `GO` inside a comment or a
+string is not a batch boundary. A batch left holding only comments is dropped
+rather than sent to the server.
+
+`GO n` — the repeat-count form — is **rejected**, not interpreted. Guessing that
+one wrong would change how many times a batch runs.
+
+### `timestamp` is not a date type
+
+SQL Server's `timestamp` is a deprecated synonym for `rowversion`: an 8-byte
+auto-incrementing **binary row-version counter** with no date or time component,
+unrelated to the SQL standard's `TIMESTAMP`. It must never be used for
+`CreatedAt`, `UpdatedAt`, `StartsAt`, `EndsAt` or `DecidedAt` — all of which are
+`datetime2(3)` — and must not be introduced as a concurrency token either, since
+event edits are deliberately last-write-wins.
+
+## Rejected constructs
+
+### FORBIDDEN — introduced after SQL Server 2008 R2
+
+Using one of these breaks the floor. Curated rather than exhaustive: these are
+the constructs somebody writing *this* schema and data layer might plausibly
+reach for.
+
+| Rule id | Construct | Since | Write instead |
+| --- | --- | --- | --- |
+| `drop-if-exists` | `DROP TABLE\|INDEX\|VIEW\|… IF EXISTS` | 2016 | `IF OBJECT_ID(N'dbo.X', N'U') IS NOT NULL DROP TABLE dbo.X;` |
+| `create-or-alter` | `CREATE OR ALTER` | 2016 | `IF OBJECT_ID(…) IS NULL CREATE … ELSE ALTER …` |
+| `throw` | `THROW` | 2012 | `RAISERROR(N'message', 16, 1)` |
+| `try-convert-cast-parse` | `TRY_CONVERT`, `TRY_CAST`, `TRY_PARSE` | 2012 | validate in the application, or `ISDATE`/`ISNUMERIC` |
+| `parse` | `PARSE(… AS …)` | 2012 | `CONVERT(...)`, or parse in the application |
+| `concat` | `CONCAT(…)` | 2012 | `+` with `ISNULL(x, N'')` |
+| `concat-ws` | `CONCAT_WS(…)` | 2017 | `+` with `ISNULL(x, N'')` |
+| `string-split-agg` | `STRING_SPLIT`, `STRING_AGG` | 2016 / 2017 | a junction table |
+| `trim` | `TRIM(…)` | 2017 | `LTRIM(RTRIM(x))` |
+| `at-time-zone` | `AT TIME ZONE` | 2016 | store UTC; convert in the application |
+| `json-functions` | `JSON_VALUE`, `JSON_QUERY`, `JSON_MODIFY`, `ISJSON`, `OPENJSON`, … | 2016 | flat columns and junction tables |
+| `for-json` | `FOR JSON` | 2016 | shape the result in the application |
+| `fetch-next` | `FETCH NEXT\|FIRST` | 2012 | `TOP (n)`, or `ROW_NUMBER()` in a subquery |
+| `offset-rows` | `OFFSET n ROWS` | 2012 | `TOP (n)`, or `ROW_NUMBER()` in a subquery |
+| `iif` | `IIF(…)` | 2012 | `CASE WHEN … THEN … ELSE … END` |
+| `choose` | `CHOOSE(…)` | 2012 | `CASE WHEN … THEN … ELSE … END` |
+| `format` | `FORMAT(…)` | 2012 | `CONVERT(...)` with a style, or `lib/date.ts` |
+| `eomonth` | `EOMONTH(…)` | 2012 | `DATEADD`/`DATEDIFF` arithmetic |
+| `fromparts` | `DATEFROMPARTS`, `DATETIME2FROMPARTS`, … | 2012 | build the value in the application and bind it |
+| `create-sequence` | `CREATE SEQUENCE` | 2012 | not needed — ids are UUIDs |
+| `next-value-for` | `NEXT VALUE FOR` | 2012 | not needed — ids are UUIDs |
+| `post-2008-window-functions` | `LAG`, `LEAD`, `FIRST_VALUE`, `LAST_VALUE`, `PERCENTILE_*`, `CUME_DIST`, `PERCENT_RANK` | 2012 | `ROW_NUMBER()`, `RANK()`, `DENSE_RANK()`, `NTILE()` |
+| `window-frame` | `ROWS\|RANGE BETWEEN` | 2012 | a self-join or correlated subquery |
+| `greatest-least` | `GREATEST`, `LEAST` | 2022 | `CASE WHEN a > b THEN a ELSE b END` |
+
+### DISCOURAGED — available at the floor, rejected by our design
+
+Not compatibility problems. Reported as a separate class so the compatibility
+claim above is never diluted by our own style choices. **These also fail the
+check.**
+
+| Rule id | Construct | Why we reject it |
+| --- | --- | --- |
+| `merge` | `MERGE` | Available since 2008, but needs `HOLDLOCK` to be race-free and is harder to read. The capacity transaction already holds the row lock and knows whether the row exists, so `IF`/`ELSE` is clearer and equally correct. |
+| `datetime-type` | `datetime` | ~3.33 ms accuracy; rounds to `.000`/`.003`/`.007` and would corrupt the stored ISO timestamp. Use `datetime2(3)`. |
+| `rowversion` | `timestamp`, `rowversion` | Not a date type. See above. |
+| `server-clock` | `GETDATE`, `GETUTCDATE`, `SYSDATETIME`, `SYSUTCDATETIME`, `SYSDATETIMEOFFSET` | The application supplies every timestamp, as `lib/db.ts` does today. Server clocks also introduce a second source of time. |
+| `current-timestamp` | `CURRENT_TIMESTAMP` | Same rule. |
+| `identity` | `IDENTITY` | Ids are application-generated UUIDs; there are no identity columns. |
+| `scope-identity` | `SCOPE_IDENTITY()` | Nothing to read back. Its presence would mean identity columns were reintroduced. |
+| `newsequentialid` | `NEWSEQUENTIALID()` | Leaks the host MAC address, and ids are generated in the application. |
+| `alter-database` | `ALTER DATABASE` | A shared organizational database — its settings are not ours to change. |
+| `snapshot-isolation` | `ALLOW_SNAPSHOT_ISOLATION`, `READ_COMMITTED_SNAPSHOT`, `ISOLATION LEVEL SNAPSHOT` | Requires a database-level change we do not own. Use `WITH (UPDLOCK, ROWLOCK)` under the default `READ COMMITTED`. |
+| `truncate` | `TRUNCATE TABLE` | Fails on a table a foreign key references (`Events_Users` and `Events_Events` are both targets) and has no `CASCADE` in T-SQL. Use `DELETE` against explicitly named tables. |
+| `drop-database-or-schema` | `DROP DATABASE`, `DROP SCHEMA` | Only application-owned `Events_*` objects may ever be dropped. |
+
+### OWNERSHIP — DDL aimed at an object this application must not touch
+
+Not a compatibility question either, and reported as its own third class for the
+same reason: so the 2008 R2 claim above is never diluted by a different kind of
+mistake. **These also fail the check.**
+
+The database is a shared organizational one and the development account holds
+`db_owner`, so nothing on the server side would stop a mistyped
+`CREATE TABLE Users` from creating a table in somebody else's database. This is
+what stops it.
+
+| Rule id | Construct | Why we reject it |
+| --- | --- | --- |
+| `non-table-object-ddl` | `CREATE`/`ALTER`/`DROP` of a `VIEW`, `PROCEDURE`/`PROC`, `FUNCTION`, `TRIGGER`, `SCHEMA`, `SEQUENCE`, `SYNONYM`, `TYPE`, `LOGIN`, `USER` or `ROLE` — **at any name** | Rule 11 of the shared-database rules below, made mechanical. These objects are not ours to create *anywhere*, so unlike every other rule here it reads no target and applies no prefix test: `CREATE VIEW dbo.Events_Summary` is refused exactly as `CREATE VIEW dbo.PayrollSummary` is. Before it existed, `DDL_TARGET` covered only `TABLE` and `INDEX`, so a plain `DROP VIEW dbo.SomeoneElsesView` passed the whole guard — a few forms were caught incidentally by `create-or-alter`, `drop-if-exists`, `drop-database-or-schema` and `create-sequence`, which made the gap look smaller than it was. `EXEC sp_rename`, `GRANT`/`REVOKE`/`DENY` and dynamic SQL are deliberately **not** covered; naming them starts the slide into the T-SQL parser this is not. Nor are object forms whose keyword is **not adjacent to the verb** — `CREATE PARTITION FUNCTION`, `CREATE PARTITION SCHEME`, `CREATE XML SCHEMA COLLECTION`, `CREATE FULLTEXT CATALOG` — so read the list of keywords above as exactly what it catches, not as every object SQL Server has. The rule is also the noisiest here: a line of English *beginning* `Create user …` or `Drop schema …` matches, which the self-test pins on purpose. |
+| `events-table-prefix` | `CREATE`/`ALTER`/`DROP TABLE`, and `CREATE`/`DROP INDEX … ON …`, whose target table is not named `Events_…` | Rule 1 of the shared-database rules below, made mechanical. Every table this application creates, alters, drops or indexes is its own, and its name has to say so. Temp tables (`#Scratch`) are refused too — nothing here creates one, and the preflight script's "no temporary tables" promise is easier to keep with no exception than with one. |
+| `events-dml-target-prefix` | `INSERT INTO …`, `UPDATE …`, `DELETE FROM …` whose target table is not named `Events_…` | The same boundary applied to writes. Reading an unrelated organizational table would be somebody else's business; writing to one is ours. Reads are deliberately not covered — `SELECT` may look anywhere, including at catalog views. |
+| `events-migration-history-immutable` | `DELETE FROM`, `UPDATE` or `TRUNCATE TABLE` against `Events_SchemaMigrations` | That table is app-owned, so `events-dml-target-prefix` admits it. It may still only ever be **appended** to: wiping it would make the schema state unknowable, and shared-database rule 6 keeps it out of every data reset. `INSERT` stays allowed — recording a migration is the one write it exists for. The overlap with `truncate` is intentional: if that rule were ever relaxed, this invariant should still hold. |
+
+The last three read the *target* of a statement rather than the statement
+itself, so they need a predicate as well as a pattern — the only rules that do.
+`non-table-object-ddl` is a plain pattern precisely because it has no target
+question to ask: the object type alone settles it.
+
+Cases they deliberately stay quiet on, each of which would otherwise be a false
+positive:
+
+- a table variable (`DECLARE @Rows TABLE …`), which is not a table;
+- any `SELECT`, because reading is neither DDL nor a write;
+- `DROP TABLE IF EXISTS dbo.Events_Users`, where the `IF EXISTS` is stepped over
+  so that `drop-if-exists` reports the one real mistake rather than two;
+- **`ON DELETE NO ACTION`**, which appears on all eight foreign keys in
+  `migrations/0001`. This is why `FROM` is required after `DELETE`: a looser
+  pattern would read every foreign key as a delete of a table called `NO`;
+- **`WHEN MATCHED THEN UPDATE SET`**, which names no target. This is why `UPDATE`
+  carries a `(?!SET\b)` lookahead.
+
+**Not covered:** the deprecated `DROP INDEX table.index` form, which buries the
+table in the middle of a dotted name; the `FROM`-less write forms
+(`INSERT dbo.T …`, `DELETE dbo.T`), which are legal T-SQL nothing here writes;
+and `UPDATE <alias> … FROM <table> AS <alias>`, where the alias would be read as
+the target. Write statements the way this repository already does and none of
+them arises.
+
+## How `npm run check:tsql` works
+
+```bash
+npm run check:tsql                              # scan the repository
+node scripts/check-tsql-compat.mts --selftest   # prove the checker itself works
+```
+
+Node built-ins only — no dependency, and it runs with bare `node` because
+`.mts` is always an ES module. It is covered by `npm run typecheck` and
+`npm run lint` like any other file in the project.
+
+**Scan roots** (an allow-list, so the checker and its fixtures are structurally
+out of scope):
+
+- `migrations/**/*.sql` — the whole file is T-SQL
+- `lib/data/**/*.{ts,mts}` — T-SQL extracted from template literals
+
+> **Adding a new home for T-SQL means adding it to `SCAN_ROOTS` in the same
+> commit.** That is the guard's one maintenance obligation.
+
+This is why the migration runner lives at `lib/data/migrate.mts` and not in
+`scripts/`, even though it is a CLI: under `lib/data/` its statements are scanned
+for free. **`scripts/` must not be added as a scan root.** It cannot be:
+`scripts/check-tsql-compat.mts` carries SQL samples inside ordinary quoted
+strings — including a backtick-delimited `SELECT TRIM(...)` inside a
+double-quoted TypeScript string — and because `keepOnlySqlTemplateLiterals` is a
+character scanner with no knowledge of JavaScript string context, scanning that
+directory makes the guard fail on its own fixtures.
+
+**How it avoids false positives:**
+
+1. SQL comments (`--`, `/* */`) and single-quoted string literals are blanked
+   before matching — replaced with spaces of the same length, so reported line
+   numbers stay true. A comment explaining that `DROP TABLE IF EXISTS` is banned
+   therefore does not fail the check.
+2. In TypeScript, only backtick template literals are inspected, **and** only
+   those containing a SQL anchor (`SELECT`, `INSERT INTO`, `UPDATE`, `FROM`,
+   `WHERE`, `ORDER BY`, …). This is what stops the `throw` keyword — used in
+   every route handler — from being read as `THROW`.
+3. Patterns are word-boundary and call-shape anchored, so `TRIM(` does not match
+   `LTRIM(`/`RTRIM(`, `CONCAT(` does not match `CONCAT_WS(`, `datetime` does not
+   match `datetime2`, `FORMAT(` does not match `FORMATMESSAGE(`, and modern
+   `DROP … IF EXISTS` does not match the safe `IF OBJECT_ID(…) … DROP TABLE`
+   idiom.
+
+**Self-test.** `--selftest` asserts that `scripts/tsql-fixtures/allowed.sql`
+produces no findings, that **every** rule fires at least once in
+`scripts/tsql-fixtures/forbidden.sql` (so a new rule without a sample fails),
+that the discrimination cases above behave, that comments and string literals
+are inert, and that every rule id appears in this document — which is what stops
+the checker and this file drifting apart. Neither fixture is ever executed
+against a database.
+
+### What it guarantees, and what it does not
+
+**Reliably catches:** any construct on the curated lists appearing in the T-SQL
+this repository authors.
+
+**Cannot catch:**
+
+- Post-2008 features nobody added to the list. It is hand-maintained; this is
+  its central limitation.
+- Semantic differences: implicit conversion rules, query plans, optimizer or
+  locking behaviour, collation-sensitive comparison.
+- SQL assembled at runtime from fragments, or a statement split across template
+  literals so that no single literal contains a SQL anchor. **Keep one statement
+  per literal.**
+- Anything in the driver, wire protocol, or server configuration — see below.
+
+**A zero-file pass means nothing.** The command prints how many files it
+scanned. Until `migrations/` or `lib/data/` exist, it scans zero files and
+passes trivially; that is expected, and it is not evidence of SQL coverage.
+Once real SQL exists, verification must confirm the scanned count is non-zero.
+
+It is a **curated regex scanner, not a T-SQL parser**, and it offers no
+parser-level guarantee.
+
+## Deployment preflight — unverified
+
+A static guard does not address any of the following. None of it can be verified
+during M6, because there is no access to the real SQL Server 2008 R2 server.
+
+| Risk | Why the guard cannot help |
+| --- | --- |
+| **TLS protocol** | An unpatched 2008 R2 speaks TLS 1.0; Node 24's minimum is TLS 1.2. The handshake can fail before any statement is evaluated. Needs SP3 plus the TLS 1.2 update **on the server**. |
+| **Certificates** | A typical 2008 R2 self-signed certificate is SHA-1 signed with a small RSA key, which OpenSSL 3 rejects at its default security level. |
+| **Node / OpenSSL 3** | Same root cause. **Do not weaken TLS, cipher, or certificate settings to work around this.** If a secure connection is impossible, report it as a server-side update requirement and let the organization decide. |
+| **TDS negotiation** | Tedious defaults to TDS 7.4 (2012+); 2008 R2 speaks 7.3. `tdsVersion` is configuration, not a hard-coded value. |
+| **Driver compatibility** | That `mssql`/Tedious can talk to that specific deployment at all. |
+| **Collation** | A case-sensitive or binary collation would affect the lowercase status literals in the `CHECK` constraints. |
+| **Permissions** | Whether the deployment account may create the application's tables. |
+| **Locking / runtime behaviour** | `UPDLOCK` semantics under that server's optimizer, and `@@ROWCOUNT` behaviour in its engine. |
+
+The preflight script (`scripts/check-target-compatibility.mts`, added in the
+connectivity slice) runs these checks against whatever server it is pointed at.
+Running it against the real target is the outstanding verification item.
+
+## The seat-claim protocol
+
+One product invariant cannot be a constraint:
+
+> the number of `going` registrations never exceeds the event's capacity
+
+It spans rows and two tables, so no `CHECK` can express it. It is a transaction
+protocol instead, implemented once in [lib/data/seats.ts](../lib/data/seats.ts).
+Every write that can raise the `going` count — direct registration, and a host's
+approval — does this inside one transaction:
+
+1. take the event row with `WITH (UPDLOCK, ROWLOCK)`;
+2. read the event, the `going` count and the registration row, all under it;
+3. re-run the same pure rule from `lib/permissions.ts` the route already ran;
+4. write, with the row's expected status as a predicate;
+5. commit, which releases the lock.
+
+`UPDLOCK` is the load-bearing part: an update lock is held to the end of the
+transaction and is incompatible with another update lock, so the count read at
+step 2 cannot move before the write at step 4. `ROWLOCK` is conventional rather
+than necessary — a primary-key seek already locks one row.
+
+**There is no `HOLDLOCK` and no range lock, deliberately.** A phantom `going`
+row could only come from another seat claim, and that claim must take the same
+event row first. The guarantee is the protocol, not the lock's scope — so a
+future write path that sets `Status = N'going'` without going through
+`seats.ts` breaks the invariant, and nothing in the database will catch it.
+
+Isolation level is untouched: the default `READ COMMITTED`, with lock hints
+where they are needed. `db:check` reports whether the target runs that level
+with row versioning (`READ_COMMITTED_SNAPSHOT`), because Azure SQL turns it on
+by default and a stock 2008 R2 does not. The protocol is correct either way —
+`UPDLOCK` is requested explicitly and honoured under both — but the report says
+which engine the evidence came from rather than leaving it assumed.
+
+Transitions that cannot raise the count — withdrawing, rejecting, requesting a
+place on an `approval` event, publishing — take no lock. They are single
+statements made safe by the same expected-status predicate:
+`UPDATE … WHERE Id = @id AND Status = @expectedStatus`. Zero rows affected means
+somebody else decided first, which the route reports as a conflict.
+
+**Lock order is the event side first, always.** `removeEvent` takes the event
+row before deleting the registrations that reference it, for that reason alone —
+without it, a delete and a seat claim hold what the other needs next and
+deadlock. No transaction in this application acquires two event rows.
+
+`db:reset` obeys the same rule at table granularity: it clears every event, so
+there is no single row to take, and it opens its transaction with
+`SELECT COUNT(*) FROM dbo.Events_Events WITH (TABLOCKX, HOLDLOCK)` before
+deleting anything. `HOLDLOCK` is what makes that a lock *ordering* rather than a
+gesture — without it the lock would be released at the end of the statement and
+a seat claim could still slip in between. Both hints predate the floor. Reset
+remains a destructive development command: the lock removes the known cycle
+between a reset and a seat claim, which is not the same as proving no deadlock
+is possible, and neither is it a reason to run one while an application is
+serving traffic.
+
+## Shared-database safety rules
+
+The database is a **shared organizational database**, not a disposable local
+one. Every slice that touches it must obey:
+
+1. Only application-owned objects, every one prefixed **`Events_`**.
+2. **No `ALTER DATABASE`** in any form — including compatibility level, even
+   though setting it to 100 would give real execution-level validation. That is
+   exactly why it is named here as forbidden.
+3. Never modify, delete, or interfere with unrelated organizational objects or
+   data.
+4. **No database-wide destructive operation.** Never reset or drop the database
+   or a schema.
+5. **No dynamically discovered destructive logic.** A runtime `LIKE 'Events_%'`
+   sweep is *more* dangerous than an explicit list, because a future unrelated
+   organizational table sharing the prefix would be silently wiped. Destructive
+   operations name their tables as string constants.
+6. **`Events_SchemaMigrations` is never part of an application-data reset** —
+   reset is a data operation; wiping migration history would make the schema
+   state unknowable. Enforced by `events-migration-history-immutable`, and by
+   the reset's target list being five hard-coded names that do not include it.
+7. `DELETE`, never `TRUNCATE` (see `truncate` above).
+8. Reset requires **two independent guards**: `NODE_ENV !== "production"` *and*
+   an explicit opt-in environment variable, absent by default.
+9. Destructive operations run inside a transaction with `TRY … CATCH` /
+   `ROLLBACK`.
+10. Every DDL change proves the boundary: snapshot `sys.tables` before and
+    after and confirm the difference contains only our objects. **This is a
+    migration-authoring step performed by whoever writes the migration, not
+    something the runner does.** `lib/data/migrate.mts` deliberately never
+    enumerates the catalog — a tool that discovers objects at runtime is the
+    shape rule 5 rejects — so the automated half of this guarantee is
+    `npm run check:tsql`. Precisely what it refuses, in the files themselves:
+    table and index DDL aimed at a name that is not `Events_`-prefixed
+    (`events-table-prefix`), a write aimed at one (`events-dml-target-prefix`),
+    and DDL against a non-table persisted object of one of the keywords it
+    lists, whatever its name (`non-table-object-ddl`, rule 11 — see there for
+    the forms it does not reach). It reads no catalog and cannot see SQL
+    assembled at runtime, so the snapshot above remains the authoring step.
+11. No stored procedures, views, triggers, functions or jobs — every persisted
+    object is a table we named. Enforced by `non-table-object-ddl`, which
+    refuses `CREATE`/`ALTER`/`DROP` of a view, procedure, function, trigger,
+    schema, sequence, synonym, type, login, user or role **regardless of its
+    name** — an `Events_`-prefixed view is no more ours to create than anybody
+    else's, which is why that rule is the one ownership rule with no prefix
+    test. It matches on those keywords only: a form that puts a modifier
+    between the verb and the keyword (`CREATE PARTITION FUNCTION`,
+    `CREATE XML SCHEMA COLLECTION`, `CREATE FULLTEXT CATALOG`) is outside its
+    coverage, as are `EXEC sp_rename`, `GRANT`/`REVOKE`/`DENY` and dynamic SQL.
+    This rule is the mechanical half of rule 11; review is the other half.
+12. **Credentials stay outside source control.** Real values live only in an
+    untracked local env file; `.env.example` carries names and placeholders
+    only. Never prefix a database variable with `NEXT_PUBLIC_` — that would
+    inline it into the browser bundle.
+
+## Related
+
+- Milestone requirements: [TASKS.md](../TASKS.md) §5, the M6 section.
+- The domain model: [lib/types.ts](../lib/types.ts).
+- House style and the verification chain: [CLAUDE.md](../CLAUDE.md).
+
+The schema itself, product and permission rules, and driver configuration are
+**not** duplicated here — they live in the migration files, `TASKS.md` §4, and
+the connectivity slice's `.env.example` respectively.

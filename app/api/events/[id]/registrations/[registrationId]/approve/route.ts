@@ -71,10 +71,28 @@ export const POST = withErrorHandling(
     // Read back from the store rather than from `detail.requests`, which holds
     // only the decidable rows: a row that is already `going` should refuse as a
     // conflict, not disappear into a 404.
-    const rows = await db.registrations.list({ eventId: detail.event.id });
-    const registration = rows.find((row) => row.id === registrationId);
-    if (!registration) throw ApiError.notFound();
+    //
+    // By id, and the lookup is what compares it: `uniqueidentifier` is matched
+    // by value, so a correct id in any case finds its row. Scanning this
+    // event's rows for `row.id === registrationId` did not -- the store
+    // lower-cases ids on the way out, so an upper-case id in the URL matched
+    // nothing and a host got a 404 for a request that was sitting in front of
+    // them.
+    const registration = await db.registrations.get(registrationId);
 
+    // A row that is not this event's is not this host's to decide, and answers
+    // the same 404 as a row that does not exist -- so a host of one event
+    // learns nothing about another's. Reading by id rather than within the
+    // event is what makes this check explicit instead of incidental;
+    // `approveRequest` re-runs it under the lock for the same reason.
+    if (!registration || registration.eventId !== detail.event.id) {
+      throw ApiError.notFound();
+    }
+
+    // The refusal the host sees, from the snapshot this request loaded. As on
+    // the registration route, it is the right basis for the message and the
+    // wrong basis for the write -- `detail.goingCount` was true when it was
+    // read, and approving is exactly the action that can make it untrue.
     const availability = getRequestDecisionAvailability(detail.event, {
       goingCount: detail.goingCount,
       registration,
@@ -88,16 +106,32 @@ export const POST = withErrorHandling(
       );
     }
 
-    const decided = await db.registrations.update(registration.id, {
-      status: "going",
-      decidedBy: viewer.id,
-      decidedAt: new Date().toISOString(),
-      // `message` is deliberately untouched: it is what the person wrote for
-      // this cycle, and it stays the record of why the host said yes.
-    });
+    // Approving is a seat claim: it locks the event row, re-counts under the
+    // lock, re-runs the rule above, and writes only if the row is still in the
+    // status this decision was made against. Two hosts approving into one seat
+    // cannot both succeed. `message` stays untouched throughout -- it is what
+    // the person wrote, and it remains the record of why the host said yes.
+    const decision = await db.registrations.approve(
+      detail.event.id,
+      registration.id,
+      viewer.id,
+    );
 
-    if (!decided) throw ApiError.conflict(REQUEST_ACTION_COPY.stale);
-
-    return jsonOk({ registration: decided });
+    switch (decision.outcome) {
+      case "approved":
+        return jsonOk({ registration: decision.registration });
+      case "refused":
+        throw ApiError.conflict(
+          requestDecisionNote(decision.availability) ??
+            REQUEST_ACTION_COPY.stale,
+        );
+      case "stale":
+        throw ApiError.conflict(REQUEST_ACTION_COPY.stale);
+      case "not_found":
+      case "gone":
+        // The row or its event went away while this request was in flight --
+        // the same 404 either would have produced above.
+        throw ApiError.notFound();
+    }
   },
 );

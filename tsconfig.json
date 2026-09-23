@@ -6,6 +6,13 @@
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
+    // The database CLIs run under bare `node`, which strips types but still
+    // resolves ESM strictly: `lib/data/migrate.mts` importing its redactor has
+    // to name `./redact.mts` exactly, because neither an extensionless
+    // specifier nor a `.mjs` one resolves at runtime. This lets `tsc` accept
+    // the specifier Node requires. Safe with `noEmit` above -- it only permits
+    // the extension in an import path and changes nothing that is emitted.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",

@@ -1,9 +1,8 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { db } from "@/lib/db";
 import { APP_LABELS } from "@/lib/labels";
-import { getCurrentUser } from "@/lib/session";
+import { getCurrentUser, listPersonas } from "@/lib/session";
 
 import { NavLink } from "./NavLink";
 import { PersonaSwitcher } from "./PersonaSwitcher";
@@ -19,7 +18,8 @@ import styles from "./AppShell.module.css";
 export async function AppShell({ children }: { children: ReactNode }) {
   const [currentUser, users] = await Promise.all([
     getCurrentUser(),
-    db.users.list(),
+    // The switcher's own order, not the store's -- see `listPersonas()`.
+    listPersonas(),
   ]);
 
   return (

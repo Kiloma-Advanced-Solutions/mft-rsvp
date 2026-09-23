@@ -31,6 +31,7 @@ import {
   Textarea,
 } from "@/components/ui";
 import { db } from "@/lib/db";
+import { SEED_EVENT_IDS, SEED_USER_IDS } from "@/lib/seed";
 import type { BadgeTone, BadgeVariant } from "@/components/ui";
 import type { EventAccess, RegistrationStatus } from "@/lib/types";
 
@@ -134,13 +135,35 @@ export default async function StyleGuidePage() {
   // A handful of real fixtures, so the cards below show genuine states rather
   // than lorem ipsum: something upcoming, something full, a draft, a past one.
   const sampleEvents = [
-    events.find((event) => event.id === "e-design-critique"),
-    events.find((event) => event.id === "e-oncall-training"),
-    events.find((event) => event.id === "e-leadership-offsite"),
-    events.find((event) => event.id === "e-hack-day"),
-    events.find((event) => event.id === "e-postmortem"),
-    events.find((event) => event.id === "e-sprint-retro"),
-  ].filter((event) => event !== undefined);
+    SEED_EVENT_IDS.designCritique,
+    SEED_EVENT_IDS.oncallTraining,
+    SEED_EVENT_IDS.leadershipOffsite,
+    SEED_EVENT_IDS.hackDay,
+    SEED_EVENT_IDS.postmortem,
+    SEED_EVENT_IDS.sprintRetro,
+  ]
+    .map((id) => events.find((event) => event.id === id))
+    .filter((event) => event !== undefined);
+
+  /*
+    The people the demos below use, picked by seed identity for the same reason
+    the events above are: the demos want particular personas, and reading them
+    off array positions meant they silently became whoever the store happened to
+    return first. Anyone missing from the fixtures is dropped rather than left as
+    a hole.
+  */
+  const demoPeople = [
+    SEED_USER_IDS.maya,
+    SEED_USER_IDS.daniel,
+    SEED_USER_IDS.priya,
+    SEED_USER_IDS.tom,
+    SEED_USER_IDS.sara,
+  ]
+    .map((id) => users.find((user) => user.id === id))
+    .filter((user) => user !== undefined);
+
+  // Named for what each demo wants of them: two hosts and two members.
+  const [organizer, secondHost, member, secondMember] = demoPeople;
 
   return (
     <div>
@@ -364,26 +387,30 @@ export default async function StyleGuidePage() {
         <div className={styles.block}>
           <p className={styles.subhead}>Avatar sizes</p>
           <div className={styles.row}>
-            <Avatar user={users[0]} size="xs" />
-            <Avatar user={users[1]} size="sm" />
-            <Avatar user={users[2]} size="md" />
-            <Avatar user={users[3]} size="lg" />
+            <Avatar user={organizer} size="xs" />
+            <Avatar user={secondHost} size="sm" />
+            <Avatar user={member} size="md" />
+            <Avatar user={secondMember} size="lg" />
           </div>
         </div>
 
         <div className={styles.block}>
           <p className={styles.subhead}>Stack, with overflow</p>
           <div className={styles.row}>
-            <AvatarStack users={users.slice(0, 3)} size="sm" />
-            <AvatarStack users={[...users, ...users]} max={4} size="sm" />
+            <AvatarStack users={demoPeople.slice(0, 3)} size="sm" />
+            <AvatarStack
+              users={[...demoPeople, ...demoPeople]}
+              max={4}
+              size="sm"
+            />
           </div>
         </div>
 
         <div className={styles.block}>
           <p className={styles.subhead}>Named</p>
           <div className={styles.row}>
-            <Person user={users[0]} />
-            <Person user={users[2]} meta="Requested 2 days ago" />
+            <Person user={organizer} />
+            <Person user={member} meta="Requested 2 days ago" />
           </div>
         </div>
       </Section>
@@ -495,7 +522,7 @@ export default async function StyleGuidePage() {
             <EventCard
               key={event.id}
               event={event}
-              attendees={users.slice(0, (index % 4) + 1)}
+              attendees={demoPeople.slice(0, (index % 4) + 1)}
               goingCount={event.capacity === 3 ? 3 : (index % 4) + 1}
               viewerStatus={index === 0 ? "pending" : index === 1 ? "going" : null}
               hostName={

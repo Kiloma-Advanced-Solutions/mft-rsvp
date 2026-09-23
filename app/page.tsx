@@ -1,8 +1,8 @@
 import Link from "next/link";
 
 import { Avatar, Badge, Card, buttonClass } from "@/components/ui";
-import { db } from "@/lib/db";
 import { ACCESS_DESCRIPTIONS, ACCESS_LABELS, ACCESS_TONES } from "@/lib/labels";
+import { listPersonas } from "@/lib/session";
 import type { EventAccess } from "@/lib/types";
 
 import styles from "./page.module.css";
@@ -21,7 +21,7 @@ const GIVEN = [
   "Design tokens, light and dark, in `app/styles/tokens.css`",
   "A UI kit: buttons, badges, cards, fields, modals, toasts, avatars",
   "`EventCard` and the event chrome — dates, access badges, capacity meters",
-  "An in-memory store with 12 seeded events and 5 people",
+  "A SQL Server data layer with 12 seeded events and 5 people",
   "Persona switching, so you can be an organizer or a member",
   "`/api/session` as the worked example of the API house style",
 ];
@@ -36,7 +36,8 @@ const YOURS = [
 ];
 
 export default async function StartHerePage() {
-  const users = await db.users.list();
+  // Same order as the switcher, and as the persona table in `TASKS.md` §3.
+  const users = await listPersonas();
 
   return (
     <div>
@@ -149,12 +150,13 @@ export default async function StartHerePage() {
           ⚑
         </span>
         <div>
-          <p className={styles.calloutTitle}>Data lives in memory</p>
+          <p className={styles.calloutTitle}>Data lives in SQL Server</p>
           <p className={styles.calloutBody}>
-            Everything resets when the dev server restarts. To put the fixtures
-            back without restarting, <code>POST /api/dev/reset</code>. There is no
-            database and there does not need to be one — see{" "}
-            <code>lib/db.ts</code>.
+            What you change here stays changed, and restarting the dev server
+            does not put it back. To restore the fixtures, run{" "}
+            <code>EVENTS_DB_ALLOW_RESET=yes npm run db:reset</code> — it is a
+            command and not an endpoint, on purpose. The persistence boundary is{" "}
+            <code>lib/db.ts</code>; the README has the setup.
           </p>
         </div>
       </aside>
