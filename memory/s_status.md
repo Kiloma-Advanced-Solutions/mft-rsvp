@@ -6,7 +6,11 @@ progresses — it is current state, not a changelog.
 ## Active milestone
 
 **None in progress.** M1–M5 are complete and merged: all three `must`
-milestones and both `should` milestones are done.
+milestones and both `should` milestones are done. Since then one piece of
+non-milestone work has also merged into `yardenah/events-board` — the UI was
+localized to Hebrew and RTL (PR #25). It changed presentation only: no rule,
+route, stored value or API contract moved. What it fixed in place is in
+[a_system.md](a_system.md).
 
 What remains is the stretch list, which nothing has started. `TASKS.md` §5
 gives it in the order it would be picked up — the calendar view first, then the
@@ -119,4 +123,5 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-09-06 — M5 complete and merged; no milestone in progress.
+Last updated: 2026-09-22 — Hebrew/RTL localization merged into
+`yardenah/events-board`; no milestone in progress.

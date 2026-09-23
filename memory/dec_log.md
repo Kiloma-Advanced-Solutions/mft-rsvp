@@ -28,7 +28,7 @@ there:
   [lib/db.ts](../lib/db.ts) header;
 - cookie personas instead of authentication →
   [lib/session.ts](../lib/session.ts) header;
-- the locale pinned to `en-GB` to avoid hydration mismatch →
+- the locale pinned to `he-IL` to avoid hydration mismatch →
   [lib/date.ts](../lib/date.ts) header;
 - route handlers rather than Server Actions, and the styling rules →
   [CLAUDE.md](../CLAUDE.md).
@@ -632,3 +632,37 @@ Consequences: an empty `requests` array means "nothing to decide, or not yours
 to decide", and `viewerCanManage` is what distinguishes them. Approving somebody
 who has lost visibility makes them `going` without restoring their access —
 accepted, and stated on the row itself, with re-inviting them the way to fix it.
+
+---
+
+## 2026-09-16 — The UI is Hebrew and RTL; the domain stays English
+
+Context: the board was built in English, left to right. Localizing it raised a
+question the brief does not answer — how far the translation goes. Stored
+values, the API contract and the query string are all readable text too, and
+translating them was a coherent option.
+
+Decision: the translation stops at the display layer.
+[app/layout.tsx](../app/layout.tsx) sets `lang="he"` and `dir="rtl"` once, Rubik
+becomes the interface font, and [lib/labels.ts](../lib/labels.ts) maps every
+domain value to its Hebrew word. Every stored value, union member,
+query-parameter value and `ApiError` `code` keeps its English identifier.
+Direction-sensitive CSS became logical properties rather than a mirrored
+stylesheet, and anything a person wrote is rendered `dir="auto"`.
+
+Rationale: a translated enum would have to change [lib/types.ts](../lib/types.ts),
+the store, the permission rules and the API contract at once, so a presentation
+change would become a domain change — the opposite of the separation the shared
+rules layer exists to keep. It would also make the query string and every rule
+bilingual, with no reader better off. Logical properties mean one stylesheet
+serves either direction, so the mirroring is done by `dir` rather than
+maintained by hand.
+
+Consequences: `/`, `/styleguide` and the fixtures stayed English, which is
+deliberate and is why mixed-direction content is the normal case here rather
+than an edge case. Hebrew's dual number means counted phrases cannot be
+interpolated and go through helpers. [lib/date.ts](../lib/date.ts) keeps the
+wording of dates, durations and relative days rather than routing it through
+`lib/labels.ts`. The placement rule for `dir="auto"` — on the text run, never on
+a layout wrapper — is a convention rather than a decision, and lives in
+[a_system.md](a_system.md).
