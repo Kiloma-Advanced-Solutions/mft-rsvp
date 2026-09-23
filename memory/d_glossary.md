@@ -10,6 +10,14 @@ thing as TypeScript structure, which is why this file exists.
 This file explains terminology. It is not a second specification, so no rule
 tables are reproduced here.
 
+The code values below — `open`, `pending`, `draft` and the rest — stay English.
+They are stored values and union members, not copy. The other terms are this
+project's own English vocabulary for discussing the domain, and they are equally
+fine to keep using in code, comments and documentation. Either way, the Hebrew a
+user sees is presentation: a display label, mapped in
+[lib/labels.ts](../lib/labels.ts), with the boundary between the two described
+in [a_system.md](a_system.md).
+
 ## People
 
 - **member** — the baseline role. Browses the events they may see, and registers.
@@ -67,9 +75,10 @@ for the five seeded personas and what each is useful for.
 - `waitlisted` — exists in the type, but nothing in the app produces it. It is
   there for a stretch goal.
 
-Registration statuses have their own user-facing wording — `pending` displays as
-"Awaiting approval", `cancelled` as "Not going". Import that copy from
-[lib/labels.ts](../lib/labels.ts) rather than inventing it.
+Registration statuses have their own user-facing wording, and it is Hebrew:
+`pending` displays as "ממתין לאישור", `cancelled` as "לא מגיע/ה". The *values*
+are unchanged — what this glossary defines is the identifier, not the label.
+Import the copy from [lib/labels.ts](../lib/labels.ts) rather than inventing it.
 
 → [lib/types.ts](../lib/types.ts) for `Registration` and `RegistrationStatus`;
 [TASKS.md](../TASKS.md) §4 for what registering, withdrawing and re-registering do.

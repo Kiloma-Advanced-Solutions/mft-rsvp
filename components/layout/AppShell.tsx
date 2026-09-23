@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { APP_LABELS } from "@/lib/labels";
 import { getCurrentUser, listPersonas } from "@/lib/session";
 
 import { NavLink } from "./NavLink";
@@ -29,12 +30,12 @@ export async function AppShell({ children }: { children: ReactNode }) {
             <span className={styles.brandMark} aria-hidden>
               E
             </span>
-            <span className={styles.brandName}>Events Board</span>
+            <span className={styles.brandName}>{APP_LABELS.brand}</span>
           </Link>
 
-          <nav className={styles.nav} aria-label="Main">
-            <NavLink href="/events">Board</NavLink>
-            <NavLink href="/styleguide">Style guide</NavLink>
+          <nav className={styles.nav} aria-label={APP_LABELS.nav}>
+            <NavLink href="/events">{APP_LABELS.navBoard}</NavLink>
+            <NavLink href="/styleguide">{APP_LABELS.navStyleGuide}</NavLink>
           </nav>
 
           <PersonaSwitcher currentUser={currentUser} users={users} />

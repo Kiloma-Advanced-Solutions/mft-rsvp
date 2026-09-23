@@ -29,11 +29,12 @@ Two constraints shape the design, both stated in `TASKS.md` §1:
 
 ## Request flow
 
-**Page render (the common path).** `app/layout.tsx` wraps everything in
-`ToastProvider` and `AppShell`. `AppShell` is a Server Component that reads the
-session and the user list directly. Pages are Server Components too, and read the
-store directly — no fetch, no API hop. Only leaves that need state or handlers
-become Client Components.
+**Page render (the common path).** `app/layout.tsx` sets the document's
+language, direction and fonts — see "Language and direction" below — and wraps
+everything in `ToastProvider` and `AppShell`. `AppShell` is a Server Component
+that reads the session and the user list directly. Pages are Server Components
+too, and read the store directly — no fetch, no API hop. Only leaves that need
+state or handlers become Client Components.
 
 ```
 app/layout.tsx → AppShell (server) → page (server) → lib/db
@@ -124,7 +125,111 @@ anything new; it probably already exists.
 Every colour, space, radius, shadow and type size is a token, defined for light
 and dark (via `prefers-color-scheme` and a `data-theme` attribute). Components
 each have one `.module.css` beside them. The rules governing all of this are in
-[CLAUDE.md](../CLAUDE.md).
+[CLAUDE.md](../CLAUDE.md). Rules that depend on reading direction have their own
+conventions, in the next section.
+
+### Language and direction — Hebrew, RTL
+
+The product UI is Hebrew and the document is right-to-left.
+[app/layout.tsx](../app/layout.tsx) sets `lang="he"` and `dir="rtl"` once on
+`<html>`, and that is the only place a layout direction is declared outright: no
+component hardcodes `dir="rtl"` or `dir="ltr"` of its own, and no layout is
+mirrored by hand. The one `dir` a component may carry is `dir="auto"` on
+free-form content, which delegates the decision to the content rather than
+overriding the document — see "Free-form content" below. It is not an exception
+to the convention; it is part of it.
+
+Rubik is the interface font, loaded through `next/font` with the Hebrew *and*
+Latin subsets and placed in front of Geist in `--font-sans`, so Latin inside a
+Hebrew sentence keeps the same face.
+
+The workshop scaffolding is deliberately not translated — `/` and `/styleguide`
+are still English, and so are the seeded fixtures in
+[lib/seed.ts](../lib/seed.ts). That is what makes the mixed-direction handling
+below load-bearing rather than theoretical.
+
+**Presentation changed; the domain did not.** Every stored value, union member,
+URL query value and `ApiError` `code` keeps its English identifier —
+`open`/`approval`/`invite`, `draft`/`published`/`cancelled`,
+`going`/`pending`/`rejected`, the categories, the roles, `not_found`,
+`forbidden`. Hebrew lives only in the display layer:
+[lib/labels.ts](../lib/labels.ts) maps each value to its word, the board's
+`<option value>` is still the enum member so the query string stays English, and
+only an `ApiError`'s `message` is Hebrew. Do not translate an internal value
+because a screen shows it in Hebrew.
+
+**Where the words are.** [lib/labels.ts](../lib/labels.ts) owns the product's
+vocabulary, and the localization moved into it the strings the product UI had
+been typing into JSX — the app frame, the nav, the document title, the UI kit's
+own "close" and "loading", and the API's generic refusals. Import from there
+rather than writing a string into a component. The one part with its own home is
+[lib/date.ts](../lib/date.ts), which owns the wording of dates, durations and
+relative days; it imports `hebrewAnd` from `lib/labels.ts` so the two agree on
+grammar.
+
+The domain maps are typed against their unions (`Record<EventAccess, string>`
+and so on), so a new access mode, status or category is a **compile error** until
+its Hebrew label exists. That is the guarantee that the display layer cannot
+quietly fall behind the domain, and it is the reason a new domain value is added
+in `lib/types.ts` and `lib/labels.ts` together.
+
+`lib/labels.ts` is a vocabulary file, not a locale bundle. The app is
+single-locale: one Hebrew UI, with `he-IL` and `dir="rtl"` static, no runtime
+language switch and no i18n framework or message-catalog layer anywhere in the
+dependencies. That is what the product currently asks for rather than a
+prohibition — but nothing here is a translation system yet, so do not write code
+that assumes one.
+
+**Counted phrases go through a helper.** Hebrew inflects one and two separately
+from everything above them, so there is no equivalent of `${n} events`. Every
+counted phrase is built by a small function — for example `eventCount`,
+`attendeeCount`, `placeCount`, `hourCount`, `dayCount`. A new counted string
+adds one of those rather than interpolating a number in front of a noun.
+
+**Dates.** The locale is pinned to `he-IL` — still a literal, and still to stop
+the server and the browser disagreeing; the header in
+[lib/date.ts](../lib/date.ts) explains why. A time *range* is wrapped in
+U+2066/U+2069 isolates, because an RTL paragraph otherwise resolves the neutral
+dash to the paragraph direction and renders the range end-first.
+
+**Logical CSS, not mirrored CSS.** Direction-sensitive rules use
+`margin-inline-start`, `padding-inline-start`, `border-inline-start`,
+`inset-inline-end` and `text-align: start`, so `dir` alone mirrors the app.
+Rules that are not direction-sensitive are left alone — `Button`'s spinner keeps
+`border-right-color`, because a rotating shape has no reading direction. Do not
+mechanically reverse a layout that does not depend on direction. Directional
+glyphs in text are *not* mirrored by `dir` and are authored for the reading
+direction: `PageHeader`'s back arrow is `→`.
+
+**Free-form content takes its own direction.** Anything a person wrote — an
+event's title, summary, description, venue, address or link, a person's name or
+job title, a request's message — is rendered with `dir="auto"`, and the
+free-text inputs in `EventForm` carry it too. The structured controls (the
+dates, the capacity, the pickers) do not.
+
+`dir="auto"` sets the computed `direction` of the element it is placed on, and
+`direction` governs the inline alignment of everything inside that element. That
+is true of any container, not only a flex or grid one. So put it on **the text
+run itself, rather than on a wrapper that lays out several independent lines or
+items**: on a wrapper, one Latin value changes the direction context for its
+siblings too, and they all align away from the document's start edge. That is
+what pulled `LocationDetails`'s venue and address away from their icon.
+
+Placement is not the only failure. Even with `dir="auto"` correctly on the text
+runs, flex sizing can misplace them: a stretched column makes the short line as
+wide as the long one, and a Latin value then sits at the far end of that box
+rather than beside what it belongs to. A column of text next to an avatar or an
+icon therefore shrink-wraps its children (`align-items: flex-start`) instead of
+stretching them. When something looks wrongly spaced in RTL, the two questions
+are "is `dir="auto"` on the run or on a wrapper?" and "is the box wider than its
+text?".
+
+**Typecheck, lint and build catch none of this.** A misplaced `dir="auto"` and a
+stretched box both compile perfectly. Anything touching free-form text or
+direction-sensitive layout is checked by looking at it, with both a Hebrew and a
+Latin value in the same field — the seeded fixtures are English while the chrome
+is Hebrew, so the mixed case is the one the app shows by default and costs
+nothing to exercise.
 
 ## The derived layer — `lib/permissions.ts` and `lib/events.ts`
 
@@ -425,6 +530,7 @@ Current position: [s_status.md](s_status.md).
 | User-facing copy | [lib/labels.ts](../lib/labels.ts) |
 | Date formatting and grouping | [lib/date.ts](../lib/date.ts) |
 | Design tokens | [app/styles/tokens.css](../app/styles/tokens.css) |
+| Language, direction and fonts | [app/layout.tsx](../app/layout.tsx) — `lang`, `dir` and the font variables · font stack in [app/styles/tokens.css](../app/styles/tokens.css) |
 | UI kit barrel | [components/ui/index.ts](../components/ui/index.ts) |
 | The approval queue, and its decision buttons | [components/events/ApprovalQueue.tsx](../components/events/ApprovalQueue.tsx) · [components/events/RequestDecisionActions.tsx](../components/events/RequestDecisionActions.tsx) |
 | Event components | [components/events/](../components/events/) |

@@ -23,11 +23,11 @@ wins. **Supporting** means: useful background, safe to skip.
 | [lib/db.ts](../lib/db.ts) | How data is read and written — async, deep-copying, server only. Its header explains why each property exists | **Authoritative** |
 | [lib/api.ts](../lib/api.ts) | The route-handler and fetch helpers: `withErrorHandling`, `ApiError`, `jsonOk`, `readJson`, `fetchJson` | **Authoritative** |
 | [app/api/session/route.ts](../app/api/session/route.ts) | The API house style end to end. Copy this shape | **Authoritative** worked example |
-| [lib/labels.ts](../lib/labels.ts) | The product's vocabulary and badge tones. Import copy from here rather than typing strings into JSX | **Authoritative** for user-facing wording |
-| [lib/date.ts](../lib/date.ts) | Date formatting and calendar-day grouping, locale pinned to avoid hydration mismatch | **Authoritative** |
+| [lib/labels.ts](../lib/labels.ts) | The product's Hebrew vocabulary and badge tones — the display label for every domain value, plus the app frame, the UI kit's own words and the API's generic refusal messages. Import copy from here rather than typing strings into JSX | **Authoritative** for user-facing wording |
+| [lib/date.ts](../lib/date.ts) | Date, duration and relative-day formatting, and calendar-day grouping. The locale is pinned to `he-IL` to avoid a hydration mismatch, and the Hebrew wording of durations and relative days lives here rather than in `lib/labels.ts` | **Authoritative** |
 | [lib/seed.ts](../lib/seed.ts) | The fixtures: 12 events, 5 people, every state covered, and the default persona | **Authoritative** for test data |
 | [components/ui/](../components/ui/) · [components/events/](../components/events/) · [components/layout/](../components/layout/) | What already exists, and what it expects to be passed | **Authoritative** |
-| [app/styles/tokens.css](../app/styles/tokens.css) | Every colour, space, radius, shadow and type size, light and dark | **Authoritative** |
+| [app/styles/tokens.css](../app/styles/tokens.css) | Every colour, space, radius, shadow and type size, light and dark, and the font stack, Rubik first | **Authoritative** |
 
 ## Orientation and operation
 

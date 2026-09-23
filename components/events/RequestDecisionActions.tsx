@@ -43,7 +43,7 @@ export function RequestDecisionActions({
 }: {
   eventId: string;
   registrationId: string;
-  /** Only for the accessible name — a column of "Approve" says nothing. */
+  /** Only for the accessible name — a column of "אישור" says nothing. */
   requesterName: string;
   canApprove: boolean;
   canReject: boolean;

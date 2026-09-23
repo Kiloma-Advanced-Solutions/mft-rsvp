@@ -66,14 +66,14 @@
 }
 
 .stack > * {
-  margin-left: -7px;
+  margin-inline-start: -7px;
   box-shadow:
     0 0 0 2px var(--color-surface),
     inset 0 0 0 1px rgba(255, 255, 255, 0.14);
 }
 
 .stack > *:first-child {
-  margin-left: 0;
+  margin-inline-start: 0;
 }
 
 .overflow {
@@ -92,9 +92,19 @@
   min-width: 0;
 }
 
+/*
+  `align-items: flex-start` so the two lines are each only as wide as their own
+  text. Stretched, they were as wide as the longer of the two, and the name --
+  which carries `dir="auto"` and so goes LTR for a Latin name -- then sat at the
+  far edge of that box, away from the avatar. The effect showed up wherever the
+  second line is much longer than the name, such as a request's timeline in the
+  approval queue. This aligns to the inline start, so it is the avatar's side in
+  either direction.
+*/
 .personText {
   display: flex;
   flex-direction: column;
+  align-items: flex-start;
   min-width: 0;
 }
 

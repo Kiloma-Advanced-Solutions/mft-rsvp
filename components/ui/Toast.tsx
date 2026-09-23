@@ -10,6 +10,7 @@ import {
 import type { ReactNode } from "react";
 
 import { cx } from "@/lib/cx";
+import { UI_LABELS } from "@/lib/labels";
 
 import styles from "./Toast.module.css";
 
@@ -74,7 +75,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={api}>
       {children}
-      <div className={styles.viewport} role="region" aria-label="Notifications">
+      <div className={styles.viewport} role="region" aria-label={UI_LABELS.notifications}>
         {items.map((item) => (
           <div
             key={item.id}
@@ -91,7 +92,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               type="button"
               className={styles.dismiss}
               onClick={() => dismiss(item.id)}
-              aria-label="Dismiss notification"
+              aria-label={UI_LABELS.dismissNotification}
             >
               ✕
             </button>
