@@ -75,7 +75,9 @@ are the truth.
 | How should Claude write code here? | [CLAUDE.md](../CLAUDE.md) — **authoritative** |
 | Anything about this version of Next.js | [AGENTS.md](../AGENTS.md) → `node_modules/next/dist/docs/` — read before writing Next code |
 | Who is the current user? Can I trust an identity? | [lib/session.ts](../lib/session.ts) — `getCurrentUser()`, the only trusted identity, server only |
-| Where does data come from? | [lib/db.ts](../lib/db.ts) — async in-memory store, server only · fixtures in [lib/seed.ts](../lib/seed.ts) |
+| Where does data come from? | [a_system.md](a_system.md) "Data layer" · [lib/db.ts](../lib/db.ts) — the persistence boundary over SQL Server, server only · statements in [lib/data/](../lib/data/) · fixtures defined in [lib/seed.ts](../lib/seed.ts) |
+| Writing SQL or a migration? | [docs/sql-server-2008r2-compatibility.md](../docs/sql-server-2008r2-compatibility.md) — **authoritative** · runner rules in the header of [lib/data/migrate.mts](../lib/data/migrate.mts) · schema in [migrations/](../migrations/) · operating contract in [u_environment.md](u_environment.md) |
+| Changing anything that can make a registration `going`? | [a_system.md](a_system.md) "Seat-taking and concurrency" · [lib/data/seats.ts](../lib/data/seats.ts) — **authoritative** |
 | What are the API conventions? | [lib/api.ts](../lib/api.ts) + [app/api/session/route.ts](../app/api/session/route.ts) as the worked example |
 | How are dates formatted and grouped? | [lib/date.ts](../lib/date.ts) |
 | What words does the product use? | [lib/labels.ts](../lib/labels.ts) |
@@ -94,6 +96,7 @@ are the truth.
 | Question | Where |
 | --- | --- |
 | How do I run the dev server, reset data, or switch persona? | [u_environment.md](u_environment.md) |
+| Database setup, migrate, seed or reset? | [u_environment.md](u_environment.md) → [README.md](../README.md) "The database" — **authoritative** for the workflow · variables in [.env.example](../.env.example) |
 | Which commands verify my work? | the scripts in [package.json](../package.json), run in the order [CLAUDE.md](../CLAUDE.md) requires |
 | Which personas do I switch between to test visibility? | [TASKS.md](../TASKS.md) §3 · seeded in [lib/seed.ts](../lib/seed.ts) |
 | What counts as done? | [TASKS.md](../TASKS.md) §7 — **authoritative** |

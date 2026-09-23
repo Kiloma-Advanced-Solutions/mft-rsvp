@@ -24,8 +24,17 @@ Do not add:
 Much of this project's rationale is already written where it applies, and stays
 there:
 
-- the async, deep-copying, `globalThis`-backed store →
+- the persistence boundary, the application's ownership of ids and
+  timestamps, and the narrowed registration writes →
   [lib/db.ts](../lib/db.ts) header;
+- the seat-claim protocol, its locking and why no range lock is needed →
+  [lib/data/seats.ts](../lib/data/seats.ts) header;
+- a duplicate key as a domain outcome, and a deadlock deliberately not →
+  [lib/data/errors.ts](../lib/data/errors.ts) header;
+- the cached application pool and its lifecycle →
+  [lib/data/client.ts](../lib/data/client.ts) header;
+- the SQL Server feature floor, the rejected constructs and the shared-database
+  rules → [docs/sql-server-2008r2-compatibility.md](../docs/sql-server-2008r2-compatibility.md);
 - cookie personas instead of authentication →
   [lib/session.ts](../lib/session.ts) header;
 - the locale pinned to `he-IL` to avoid hydration mismatch →
@@ -666,3 +675,114 @@ wording of dates, durations and relative days rather than routing it through
 `lib/labels.ts`. The placement rule for `dir="auto"` — on the text run, never on
 a layout wrapper — is a convention rather than a decision, and lives in
 [a_system.md](a_system.md).
+
+---
+
+## 2026-09-14 — Persistence is SQL Server through hand-written statements, behind the existing store contract
+
+Context: M6 had to replace the in-memory store with a real database without
+changing the product's behaviour or its API contracts ([TASKS.md](../TASKS.md)
+§5). The organization's target is SQL Server, reached today through an Azure SQL
+development database that also accepts every newer construct. The open choices
+were the access layer — an ORM, a query builder, or the driver with
+hand-written statements — and how much of the existing store contract to keep.
+
+Decision: SQL Server through the `mssql` driver, with every statement written
+by hand under [lib/data/](../lib/data/), and no ORM. [lib/db.ts](../lib/db.ts)
+keeps its role and its contract as the one persistence boundary product code
+imports; it holds no SQL itself, and it goes on generating ids and timestamps
+at runtime. Compatibility with the SQL Server target is an architectural
+constraint on what may be written, not an afterthought:
+[docs/sql-server-2008r2-compatibility.md](../docs/sql-server-2008r2-compatibility.md)
+is the contract, and it is statically enforced.
+
+Rationale: the runtime available cannot prove compatibility, because it accepts
+more than the target does — so the guarantee has to be a guard over the SQL we
+write, and a guard can only judge statements it can see whole. An ORM would
+generate its SQL out of sight of that guard and choose constructs on our behalf.
+Keeping the store contract is what let the move happen without redesigning the
+product: the domain model and the rules in
+[lib/permissions.ts](../lib/permissions.ts) did not change, and the pages and
+routes kept their shape. They did still need changes — where concurrency
+semantics moved, and where code had relied on the old store's ordering or
+behaviour — but those were changes at the boundary, not to the product, and the
+driver stayed out of product code.
+
+Consequences: every new query is hand-written, reviewed against the
+compatibility contract, and placed where `check:tsql` scans it. The detailed
+rules — the feature floor, rejected constructs, object ownership — live in the
+compatibility document and are not restated in this log. Later milestones that
+need schema changes add migrations rather than altering tables by hand.
+
+---
+
+## 2026-09-14 — Reset is a CLI command; the HTTP reset endpoint was removed
+
+Context: the supplied starter reset the in-memory data through
+`POST /api/dev/reset`, guarded only by refusing production builds. Once the data
+lived in a shared organizational database, a reset became a destructive
+operation against tables that persist, reached with an account holding far more
+permission than the project needs. The endpoint could have been reimplemented
+against SQL behind a stronger guard, or removed.
+
+Decision: the endpoint was deleted rather than reimplemented, and reset is a
+CLI command only. It needs two independent conditions — a non-production
+environment, and an explicit opt-in supplied at the moment of the reset — and
+the opt-in may not be stored in the local env file.
+
+Rationale: the guard that matters is intent stated at the time of the action,
+and a web request cannot state it: anything a request could carry, a page, a
+script or a stray `curl` could carry too. The application has no authentication
+at all — identity is a persona cookie by design — so there is no boundary behind
+which an HTTP reset could safely sit. An opt-in parked in a file would
+pre-authorise every future reset and turn the guard into a one-time setup step.
+Nothing in the product called the endpoint; every reference to it was prose.
+
+Consequences: restoring the fixtures means running the command deliberately,
+with the dev server stopped. Application code must not depend on the
+administration tooling, and lint rejects static imports of it from application
+code. The workflow itself is in [README.md](../README.md) "The database", not
+here.
+
+---
+
+## 2026-09-15 — Capacity is held by a seat-claim protocol; supersedes the accepted final-seat race
+
+Context: the 2026-08-30 entry "The final-seat capacity race is accepted, not
+solved" left two registrations able to take the last seat, and expected that in
+a real database this would be closed by "a constraint or a transaction". The
+2026-09-06 entry "Decisions close with registration, and capacity closes only
+approving" recorded that M5 left the same race open for approvals. M6
+introduced the database, and a constraint turned out not to be available: "the
+`going` count never exceeds capacity" spans rows and two tables, which no
+`CHECK` can express.
+
+Decision: capacity correctness is a transaction protocol, implemented once in
+[lib/data/seats.ts](../lib/data/seats.ts). At application runtime only its two
+operations — claiming a seat and approving a request — may produce `going`.
+Each locks the event row, re-reads the event, the `going` count and the
+registration inside the transaction, re-runs the existing rule from
+[lib/permissions.ts](../lib/permissions.ts), and writes with the status it read
+as a compare-and-set predicate before committing. Writes that cannot raise the
+count stay compare-and-set transitions that do not take the event-row seat
+lock. The store's generic registration writes were narrowed, at the type level,
+so they cannot grant a place. **This entry supersedes the 2026-08-30 decision to
+accept the race, and the part of the 2026-09-06 entry's consequences that kept
+it open;** both are left as written.
+
+Rationale: the 2026-08-30 entry rejected a store-level reservation because it
+would push a business rule into the storage layer that `lib/permissions.ts`
+exists to keep out. Re-running the same pure function under the lock answers
+that objection rather than overriding it — the rule still has one
+implementation, now checked twice: once by the route for the message the caller
+sees, once inside the transaction for what is true. Nothing is restated in
+T-SQL. Re-reading without a lock, the other option that entry rejected, would
+still have left a window; the lock is what closes it.
+
+Consequences: a future runtime write that sets `going` outside `seats.ts`
+breaks the invariant, and nothing in the database will catch it — the protocol,
+not a constraint, is the guarantee, which [a_system.md](a_system.md) states as a
+boundary. Every application transaction acquires the event side first. Seat
+claims for one event serialize. A host lowering capacity below attendance is
+still allowed and still evicts nobody, so an over-capacity event remains
+possible; what the protocol prevents is a seat-taking write adding to it.
