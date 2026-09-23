@@ -10,9 +10,12 @@ thing as TypeScript structure, which is why this file exists.
 This file explains terminology. It is not a second specification, so no rule
 tables are reproduced here.
 
-Every term below is the **internal identifier**, and it stays English. The
-Hebrew a user sees is a display label; the mapping is in
-[lib/labels.ts](../lib/labels.ts), and the boundary between the two is described
+The code values below — `open`, `pending`, `draft` and the rest — stay English.
+They are stored values and union members, not copy. The other terms are this
+project's own English vocabulary for discussing the domain, and they are equally
+fine to keep using in code, comments and documentation. Either way, the Hebrew a
+user sees is presentation: a display label, mapped in
+[lib/labels.ts](../lib/labels.ts), with the boundary between the two described
 in [a_system.md](a_system.md).
 
 ## People

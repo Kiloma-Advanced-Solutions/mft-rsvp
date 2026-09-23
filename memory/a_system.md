@@ -132,7 +132,13 @@ conventions, in the next section.
 
 The product UI is Hebrew and the document is right-to-left.
 [app/layout.tsx](../app/layout.tsx) sets `lang="he"` and `dir="rtl"` once on
-`<html>`; no component sets its own direction and nothing is mirrored by hand.
+`<html>`, and that is the only place a layout direction is declared outright: no
+component hardcodes `dir="rtl"` or `dir="ltr"` of its own, and no layout is
+mirrored by hand. The one `dir` a component may carry is `dir="auto"` on
+free-form content, which delegates the decision to the content rather than
+overriding the document — see "Free-form content" below. It is not an exception
+to the convention; it is part of it.
+
 Rubik is the interface font, loaded through `next/font` with the Hebrew *and*
 Latin subsets and placed in front of Geist in `--font-sans`, so Latin inside a
 Hebrew sentence keeps the same face.
@@ -161,11 +167,24 @@ rather than writing a string into a component. The one part with its own home is
 relative days; it imports `hebrewAnd` from `lib/labels.ts` so the two agree on
 grammar.
 
+The domain maps are typed against their unions (`Record<EventAccess, string>`
+and so on), so a new access mode, status or category is a **compile error** until
+its Hebrew label exists. That is the guarantee that the display layer cannot
+quietly fall behind the domain, and it is the reason a new domain value is added
+in `lib/types.ts` and `lib/labels.ts` together.
+
+`lib/labels.ts` is a vocabulary file, not a locale bundle. The app is
+single-locale: one Hebrew UI, with `he-IL` and `dir="rtl"` static, no runtime
+language switch and no i18n framework or message-catalog layer anywhere in the
+dependencies. That is what the product currently asks for rather than a
+prohibition — but nothing here is a translation system yet, so do not write code
+that assumes one.
+
 **Counted phrases go through a helper.** Hebrew inflects one and two separately
 from everything above them, so there is no equivalent of `${n} events`. Every
-counted phrase is built by a small function — `eventCount`, `attendeeCount`,
-`placeCount`, `hourCount`, `dayCount`. A new counted string adds one of those
-rather than interpolating a number in front of a noun.
+counted phrase is built by a small function — for example `eventCount`,
+`attendeeCount`, `placeCount`, `hourCount`, `dayCount`. A new counted string
+adds one of those rather than interpolating a number in front of a noun.
 
 **Dates.** The locale is pinned to `he-IL` — still a literal, and still to stop
 the server and the browser disagreeing; the header in
@@ -188,14 +207,29 @@ job title, a request's message — is rendered with `dir="auto"`, and the
 free-text inputs in `EventForm` carry it too. The structured controls (the
 dates, the capacity, the pickers) do not.
 
-`dir="auto"` also sets that element's `direction`, so it goes on **the text run
-itself, never on a wrapper that lays out other things**. On a flex or grid
-parent it flips the whole box and drags unrelated children to the far edge —
-which is what pulled `LocationDetails`'s two lines away from their icon. For the
-same reason a column of text beside an avatar or an icon is shrink-wrapped with
-`align-items: flex-start`: stretched, the short line is as wide as the long one,
-and its `dir="auto"` content then lands at the far end of that box instead of
-next to the avatar.
+`dir="auto"` sets the computed `direction` of the element it is placed on, and
+`direction` governs the inline alignment of everything inside that element. That
+is true of any container, not only a flex or grid one. So put it on **the text
+run itself, rather than on a wrapper that lays out several independent lines or
+items**: on a wrapper, one Latin value changes the direction context for its
+siblings too, and they all align away from the document's start edge. That is
+what pulled `LocationDetails`'s venue and address away from their icon.
+
+Placement is not the only failure. Even with `dir="auto"` correctly on the text
+runs, flex sizing can misplace them: a stretched column makes the short line as
+wide as the long one, and a Latin value then sits at the far end of that box
+rather than beside what it belongs to. A column of text next to an avatar or an
+icon therefore shrink-wraps its children (`align-items: flex-start`) instead of
+stretching them. When something looks wrongly spaced in RTL, the two questions
+are "is `dir="auto"` on the run or on a wrapper?" and "is the box wider than its
+text?".
+
+**Typecheck, lint and build catch none of this.** A misplaced `dir="auto"` and a
+stretched box both compile perfectly. Anything touching free-form text or
+direction-sensitive layout is checked by looking at it, with both a Hebrew and a
+Latin value in the same field — the seeded fixtures are English while the chrome
+is Hebrew, so the mixed case is the one the app shows by default and costs
+nothing to exercise.
 
 ## The derived layer — `lib/permissions.ts` and `lib/events.ts`
 
