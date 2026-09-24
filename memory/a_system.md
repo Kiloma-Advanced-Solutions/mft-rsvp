@@ -102,9 +102,9 @@ Server Component / Route Handler → lib/session, lib/events → lib/db.ts → l
   database**: ids are UUIDs with no database default, and no statement reads a
   server clock. At runtime `lib/db.ts` generates entity ids and record stamps
   (`createdAt`, `updatedAt`); other domain timestamps may be set elsewhere in
-  the application — the reject route stamps its own `decidedAt`. The fixtures'
-  come from [lib/seed.ts](../lib/seed.ts), and the migration history's from the
-  migration runner.
+  the application — the reject route stamps its own `decidedAt`. Fixture ids
+  and timestamps come from [lib/seed.ts](../lib/seed.ts), and migration-history
+  timestamps come from the migration runner.
 - **It keeps the old store's contract** where that still applies — every method
   async, a miss is `null` (or `false` for a delete), reads return fresh
   objects, and in a patch a key present with `undefined` clears the field while
@@ -153,9 +153,11 @@ rendering. It matters for writes in two different ways:
   (`getEventDetailForViewer`), and guards the transition itself, where there is
   one, with an expected-status compare-and-set.
 
-The mixed-moment window is narrow today, because co-host and invite rows have no
-write path of their own beyond an event's creation and deletion — but it is not
-closed, so do not treat a loaded aggregate as though it were a lock.
+The mixed-moment window is narrow today: no current product route writes co-host
+or invite rows on their own — creating an event writes empty lists, and deleting
+one removes them. But `db.events.update` still replaces either list when a patch
+names it, so the window is not closed; do not treat a loaded aggregate as though
+it were a stable snapshot or a lock.
 
 **Errors.** In the application, one driver failure is a domain outcome: a
 duplicate key in the seat claim, which the product already words as "you already
@@ -617,11 +619,13 @@ Current position: [s_status.md](s_status.md).
 
 ## Seat-taking and concurrency
 
-One product invariant — **the number of `going` registrations never exceeds the
-event's capacity** — spans rows and tables, so no database constraint can
-express it. **Capacity is not enforced by the database.** It is held by an
-application protocol, and the distinction is what a future change must not
-blur.
+The capacity rule is a rule about seat-taking: **a seat-taking operation may add
+a `going` registration only while the authoritative `going` count is below the
+event's capacity, or when capacity is unlimited.** It is not a promise that the
+count never exceeds capacity — see the last point below. The rule spans rows and
+tables, so no database constraint can express it. **Capacity is not enforced by
+the database.** It is held by an application protocol, and the distinction is
+what a future change must not blur.
 
 **What the database does guarantee**, by constraint: at most one registration
 per person per event; valid enum values; a capacity that is unlimited or at
@@ -662,9 +666,12 @@ The rest of the rules around it:
   event rows.
 - **The seed and reset tooling is out of band.** It writes the fixtures —
   including registrations already `going` — into an empty or just-cleared
-  schema, holding a lock on the whole events table from its first statement,
-  under its own safety model ([u_environment.md](u_environment.md)). It is
-  bootstrap, not a runtime seat claim, and does not weaken the invariant above.
+  schema, under its own safety model ([u_environment.md](u_environment.md)).
+  Its write transaction takes a lock on the whole events table before it
+  mutates anything, and seed checks the tables are empty under that lock; the
+  schema check, and reset's before-counts, are read beforehand outside it. It
+  is bootstrap, not a runtime seat claim, so the seat-taking rule does not
+  apply to it.
 - **Capacity lowered by a host is not a seat claim.** M4 lets a host lower
   capacity below current attendance and evicts nobody, so `goingCount >
   capacity` stays a reachable state; what the protocol prevents is a seat-taking
