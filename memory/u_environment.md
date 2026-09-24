@@ -10,13 +10,65 @@ The dev server is launched from the `events-board` configuration in
 **port 3000**. Use that configuration rather than starting a server by hand.
 Installation and the plain-terminal equivalent are in [README.md](../README.md).
 
-## Data lifetime and reset
+Starting the process is not the same as serving a page. The pool opens on first
+use, so the dev server starts with no database at all. But every page sits
+inside the app frame, `AppShell`, which resolves the current or default persona
+from the database — so no framed page serves successfully until the connection
+string is configured, the schema has been migrated and the fixtures have been
+seeded. Seeding is not optional in practice: the application has no way to
+create a user, and the default persona exists only because the fixtures supply
+it. A framework error page rendering is not the app working. The sequence is in
+[README.md](../README.md) "The database".
 
-Data lives in memory and is thrown away when the dev server restarts. To restore
-the fixtures without restarting, POST to `/api/dev/reset` — see
-[app/api/dev/reset/route.ts](../app/api/dev/reset/route.ts), which refuses to run
-in a production build. The fixtures themselves — 12 events, 5 people, every state
-covered — are in [lib/seed.ts](../lib/seed.ts).
+## The database
+
+Data lives in SQL Server and survives a dev-server restart. It is a **shared
+organizational database**, not a disposable local one.
+
+- **Configuration** is one server-only variable, set in the untracked local env
+  file. [.env.example](../.env.example) is authoritative for which variables
+  exist and what they mean.
+- **Setup, migrate, seed, reset and the read-only status checks** — the workflow
+  and its commands are in [README.md](../README.md) "The database", which is
+  authoritative. The fixtures — 12 events, 5 people, every state covered — are
+  defined in [lib/seed.ts](../lib/seed.ts); seeding only ever fills an empty
+  schema and never deletes.
+- **Reset is a CLI command and only a command.** There is no HTTP endpoint that
+  resets anything. It refuses in production, and it needs an explicit opt-in
+  supplied **for that invocation** — which must never be parked in `.env.local`;
+  reset inspects that file and refuses if the opt-in is declared there. Stop the
+  dev server before resetting. Why it works this way: [dec_log.md](dec_log.md).
+- **What we may and may not do to a shared database** — object naming, what
+  destructive statements may target, migration history — is in
+  [docs/sql-server-2008r2-compatibility.md](../docs/sql-server-2008r2-compatibility.md)
+  "Shared-database safety rules".
+
+## Migration operating contract
+
+The migration runner applies each pending file in `migrations/` once, in order,
+one transaction per migration, and records it in its own history table. What it
+does **not** do is as important:
+
+- **It is a single-operator command.** There is no cross-process migration lock,
+  so overlapping runs are not supported — serialize them yourself.
+- **Atomicity is per migration, and qualified.** For transactional DDL and DML —
+  which is all a migration here contains today — a migration's batches and its history row
+  commit or roll back together. A commit whose acknowledgement never arrives is
+  reported as unknown rather than as success or rollback. If two runs do
+  overlap, the history table's primary key stops both from recording the same
+  migration, so the expected cost is one failed run — not a guarantee against
+  every failure mode.
+- **A migration's identity is its file name.** Nothing records a checksum of an
+  applied file's contents, so editing an applied migration goes undetected.
+  Treating applied migrations as immutable is therefore a convention, not
+  something the runner enforces: add a new migration instead.
+- **After an interrupted or competing run, check the status report before
+  deciding what to rerun** — a failure whose commit was never acknowledged is
+  reported as unknown rather than guessed at.
+
+The rules a migration must follow are in the runner's header,
+[lib/data/migrate.mts](../lib/data/migrate.mts), and in the compatibility
+document above.
 
 ## Persona-based development
 
@@ -43,8 +95,9 @@ managing an event they do not host.
 ## Claude Code configuration
 
 [.claude/settings.json](../.claude/settings.json) lists the commands pre-approved
-in this repository — the npm scripts, common read-only git commands, and
-`localhost:3000` curls. Anything outside that list prompts.
+in this repository — the everyday npm scripts (dev, build, lint, typecheck,
+install), common git commands, and `localhost:3000` curls. Anything outside that
+list prompts, and that includes the `check:*` and `db:*` scripts.
 
 ## Branch and worktree workflow
 

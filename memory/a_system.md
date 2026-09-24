@@ -32,19 +32,23 @@ Two constraints shape the design, both stated in `TASKS.md` §1:
 **Page render (the common path).** `app/layout.tsx` sets the document's
 language, direction and fonts — see "Language and direction" below — and wraps
 everything in `ToastProvider` and `AppShell`. `AppShell` is a Server Component
-that reads the session and the user list directly. Pages are Server Components
-too, and read the store directly — no fetch, no API hop. Only leaves that need
-state or handlers become Client Components.
+that asks [lib/session.ts](../lib/session.ts) for the current user
+(`getCurrentUser()`) and the switcher's personas (`listPersonas()`), which read
+`db.users` in turn. Pages are Server Components too, and load what they show
+through the shared server modules — `lib/session`, `lib/events` — which reach
+the persistence boundary in `lib/db`; what lies beneath that is "Data layer"
+below. No fetch, no API hop. Only leaves that need state or handlers become
+Client Components.
 
 ```
-app/layout.tsx → AppShell (server) → page (server) → lib/db
-                                                   → lib/session
+app/layout.tsx → AppShell (server) → lib/session → lib/db
+               → page (server)     → lib/session, lib/events → lib/db
 ```
 
 **Client mutation.** A Client Component calls `fetchJson` from `lib/api.ts`,
 which hits a route handler. The handler establishes identity itself via
-`getCurrentUser()`, enforces the rules, touches the store, and returns a plain
-object. The client then refreshes the server-rendered view.
+`getCurrentUser()`, enforces the rules, writes through `lib/db`, and returns a
+plain object. The client then refreshes the server-rendered view.
 
 ```
 client leaf → fetchJson → route handler → getCurrentUser() → lib/db
@@ -80,13 +84,87 @@ mechanics are in [u_environment.md](u_environment.md). See
 [lib/session.ts](../lib/session.ts); the permission rules that depend on it are in
 [TASKS.md](../TASKS.md) §4.
 
-### Data layer — `lib/db.ts`
+### Data layer — `lib/db.ts` and `lib/data/`
 
-Async in-memory store, **server only** — never imported from a Client Component.
-Its shape matters: every method is async, reads return deep copies, and state
-lives on `globalThis` so it survives hot reload. The header comment in
-[lib/db.ts](../lib/db.ts) explains why each of those choices was made. Fixtures —
-12 events, 5 people, every state covered — are in [lib/seed.ts](../lib/seed.ts).
+Data lives in SQL Server (since M6). **Server only** throughout — nothing here
+is ever imported from a Client Component.
+
+```
+Server Component / Route Handler → lib/session, lib/events → lib/db.ts → lib/data/* → mssql → SQL Server
+```
+
+- **[lib/db.ts](../lib/db.ts) is the persistence boundary**, and the only
+  persistence module product code imports. Pages, route handlers,
+  `lib/events.ts` and `lib/session.ts` talk to `db` and know nothing about the
+  driver, the tables or how an event is spread across them. It holds **no
+  T-SQL**.
+- **Ids and timestamps come from the application or its tooling, never the
+  database**: ids are UUIDs with no database default, and no statement reads a
+  server clock. At runtime `lib/db.ts` generates entity ids and record stamps
+  (`createdAt`, `updatedAt`); other domain timestamps may be set elsewhere in
+  the application — the reject route stamps its own `decidedAt`. Fixture ids
+  and timestamps come from [lib/seed.ts](../lib/seed.ts), and migration-history
+  timestamps come from the migration runner.
+- **It keeps the old store's contract** where that still applies — every method
+  async, a miss is `null` (or `false` for a delete), reads return fresh
+  objects, and in a patch a key present with `undefined` clears the field while
+  an absent key leaves it. The header of [lib/db.ts](../lib/db.ts) states the
+  contract and its one deliberate exception.
+- **Registration writes are narrowed on purpose.** There is no generic
+  registration create, and the type the generic `registrations.update` accepts
+  cannot express setting `going` or moving a row to another event or person — a
+  type-level restriction, not a runtime check. At runtime a place is granted
+  only through `claimSeat` and `approve` — see "Seat-taking and concurrency"
+  below.
+- **[lib/data/](../lib/data/) owns the SQL**: one module per concern (events,
+  registrations, users), `rows.ts` for the row ↔ domain translation, and
+  `seats.ts` for the seat protocol. Its T-SQL is held to the project's SQL
+  Server target by `npm run check:tsql`; the contract is
+  [docs/sql-server-2008r2-compatibility.md](../docs/sql-server-2008r2-compatibility.md).
+- **Among application modules, [lib/data/client.ts](../lib/data/client.ts)
+  alone reads the connection string and owns the pool's lifecycle**, and it
+  carries the `server-only` marker that protects the chain above it. The
+  application's data modules get their connections from it; they import
+  `mssql` only for parameter type constants.
+- **The database administration CLIs** — the migration runner and the
+  seed/reset tool under `lib/data/`, and the read-only target check under
+  `scripts/` — are not part of the application. They read the connection
+  string themselves and run under bare Node with their own short-lived pools.
+  Application code must not depend on them; lint rejects static imports of the
+  two `lib/data/` CLIs from application code.
+
+Fixtures — 12 events, 5 people, every state covered — are defined once in
+[lib/seed.ts](../lib/seed.ts) and loaded into the database by the seed tooling.
+The application reads only their fixed ids and the persona order from that file,
+never the records.
+
+**Read consistency.** An event is assembled from its row plus its co-host and
+invite rows, read by separate statements, and a board is assembled from separate
+event, user and registration reads. Each read sees committed data, but the
+stitched aggregate is **not** a database-wide snapshot, so a concurrent change
+can briefly show a mix of committed moments. The product accepts that for
+rendering. It matters for writes in two different ways:
+
+- **Capacity-sensitive writes** — taking a place, approving one — re-derive
+  their decision inside the seat protocol, under the event-row lock, from state
+  re-read there.
+- **Every other write** — withdrawing, rejecting, editing, publishing,
+  deleting — authorises from the request's own pre-write read
+  (`getEventDetailForViewer`), and guards the transition itself, where there is
+  one, with an expected-status compare-and-set.
+
+The mixed-moment window is narrow today: no current product route writes co-host
+or invite rows on their own — creating an event writes empty lists, and deleting
+one removes them. But `db.events.update` still replaces either list when a patch
+names it, so the window is not closed; do not treat a loaded aggregate as though
+it were a stable snapshot or a lock.
+
+**Errors.** In the application, one driver failure is a domain outcome: a
+duplicate key in the seat claim, which the product already words as "you already
+have a place". Every other driver failure — deadlock victims (1205) included —
+propagates to `withErrorHandling` as a server error. The CLIs report their own
+failures separately. Why a deadlock is deliberately not mapped:
+[lib/data/errors.ts](../lib/data/errors.ts).
 
 ### API layer — `app/api/`
 
@@ -339,6 +417,15 @@ request, so a stale page, a re-enabled button or a hand-written `curl` all get
 the same answer: **the API is authoritative, not the UI**. Nothing in the request
 body influences who acts, what status results, or whether the action is allowed.
 
+That availability check is what the caller's message is based on, and it refuses
+early where it can — but it runs on the snapshot the request loaded. The write
+goes through `db.registrations.claimSeat`, which asks the same rule again inside
+the seat protocol, and **that** answer is the authoritative one: a request that
+loses the race for the last seat is refused with the same words it would have
+got by arriving a moment later. Withdrawing frees a place rather than taking
+one, so it is an expected-status transition that does not take the event-row
+seat lock.
+
 Registering yields `going`, or `pending` where the access mode is `approval` —
 the mode decides, never the caller. A person has at most one registration per
 event, so withdrawing **transitions the row to `cancelled` rather than deleting
@@ -349,7 +436,8 @@ here writes `waitlisted`.
 ```
 RegistrationActions (client) → fetchJson → route handler
       ↓                                        ↓
-  toast + router.refresh()          getCurrentUser() → lib/events → lib/permissions → lib/db
+  toast + router.refresh()          getCurrentUser() → lib/events → lib/permissions
+                                                   → db.registrations.claimSeat (seat protocol)
 ```
 
 [components/events/RegistrationActions.tsx](../components/events/RegistrationActions.tsx)
@@ -360,8 +448,8 @@ clicked from is out of date, and the control stays busy until that refresh has
 landed, so an action the store has already moved past cannot briefly become
 clickable again. No optimistic state: the server-rendered view is the truth.
 
-Why each of these was decided this way, including the accepted capacity race:
-[dec_log.md](dec_log.md).
+Why each of these was decided this way, including how the final-seat race was
+closed: [dec_log.md](dec_log.md).
 
 ### Managing events — creating, editing, publishing, deleting
 
@@ -490,6 +578,25 @@ a rejection, but a host cannot approve past capacity — which is `TASKS.md` §4
 and is why a rejected request on a full event stays un-approvable until a seat
 frees up.
 
+**How the write is made safe.** Approving raises the `going` count, so it is a
+seat claim performed by a host: the route's check words the refusal, and
+`db.registrations.approve` re-reads the row and re-runs the same decision rule
+inside the seat protocol, which is the answer that counts — two hosts cannot
+approve into one seat. Rejecting cannot raise the count, so it is an
+expected-status transition that does not take the event-row seat lock. The two
+are not symmetric when they race:
+
+- **approve first, reject second** — if reject read `pending` before the
+  approval landed, its expected-status write finds `going` and conflicts; if it
+  reads after, it sees `going` and the decision rule refuses. Either way reject
+  cannot overwrite the approval;
+- **reject first, approve second** — approval re-reads the row under the lock,
+  finds it `rejected`, and the shared rule allows approving a rejected request,
+  so it may legitimately move it `rejected → going` if the locked checks pass.
+
+What holds either way: **no decision is written against a status the operation
+did not read and expect.**
+
 **A requester who has lost sight of the event.** Access changes keep every
 registration row (see "Managing events"), so a request can outlive its author's
 ability to see what they asked to join. The queue says so on the row and leaves
@@ -510,12 +617,82 @@ Why each of these was decided this way: [dec_log.md](dec_log.md).
 
 Current position: [s_status.md](s_status.md).
 
+## Seat-taking and concurrency
+
+The capacity rule is a rule about seat-taking: **a seat-taking operation may add
+a `going` registration only while the authoritative `going` count is below the
+event's capacity, or when capacity is unlimited.** It is not a promise that the
+count never exceeds capacity — see the last point below. The rule spans rows and
+tables, so no database constraint can express it. **Capacity is not enforced by
+the database.** It is held by an application protocol, and the distinction is
+what a future change must not blur.
+
+**What the database does guarantee**, by constraint: at most one registration
+per person per event; valid enum values; a capacity that is unlimited or at
+least one; an end after the start; and foreign keys that refuse to orphan a row
+rather than cascading. The schema is [migrations/](../migrations/).
+
+**What the application protocol guarantees.** At application runtime, the only
+way to produce `going` is the seat protocol in
+[lib/data/seats.ts](../lib/data/seats.ts), reached through
+`db.registrations.claimSeat` (registering or requesting a place) and
+`db.registrations.approve` (a host's decision). Lower-level `lib/data/` helpers
+perform the physical write on its behalf. Each runs as one transaction that:
+
+1. locks the event row;
+2. re-reads the authoritative state under that lock — the event, the `going`
+   count, the registration row;
+3. re-runs the same pure rule from [lib/permissions.ts](../lib/permissions.ts)
+   the route already ran, so the business rule is never restated in T-SQL;
+4. writes with the row's expected status as a predicate;
+5. commits, atomically, which releases the lock.
+
+The rest of the rules around it:
+
+- **Writes that cannot raise the count** — withdrawing, rejecting, publishing —
+  do not take the event-row seat lock. They are compare-and-set transitions on
+  the expected status; zero rows written means somebody else moved first, which
+  routes report as a conflict.
+- **Generic writes must not bypass the protocol.** The store offers no generic
+  registration create, and `RegistrationUpdate` — the type
+  `db.registrations.update` accepts — cannot express `going`, `eventId` or
+  `userId`. That is a type-level restriction, not runtime validation: it keeps
+  ordinary callers from being handed a seat-granting or re-parenting write. The
+  wider internal update inside `lib/data/` exists for `seats.ts` alone; a new
+  runtime statement that sets `going` anywhere else breaks the invariant and
+  nothing in the database will catch it. Add it to `seats.ts` instead.
+- **Lock order starts from the event side**: deleting an event takes its row
+  before touching what references it, and no application transaction takes two
+  event rows.
+- **The seed and reset tooling is out of band.** It writes the fixtures —
+  including registrations already `going` — into an empty or just-cleared
+  schema, under its own safety model ([u_environment.md](u_environment.md)).
+  Its write transaction takes a lock on the whole events table before it
+  mutates anything, and seed checks the tables are empty under that lock; the
+  schema check, and reset's before-counts, are read beforehand outside it. It
+  is bootstrap, not a runtime seat claim, so the seat-taking rule does not
+  apply to it.
+- **Capacity lowered by a host is not a seat claim.** M4 lets a host lower
+  capacity below current attendance and evicts nobody, so `goingCount >
+  capacity` stays a reachable state; what the protocol prevents is a seat-taking
+  operation adding to it.
+
+Deeper detail — the lock hints, why no range lock is needed, and how the
+isolation level is left alone — is in the header of
+[lib/data/seats.ts](../lib/data/seats.ts) and in "The seat-claim protocol" in
+[docs/sql-server-2008r2-compatibility.md](../docs/sql-server-2008r2-compatibility.md).
+Why the protocol replaced the race M3 accepted: [dec_log.md](dec_log.md).
+
 ## Source-of-truth locations
 
 | Concern | Lives in |
 | --- | --- |
 | Identity | [lib/session.ts](../lib/session.ts) — server only |
-| Data access | [lib/db.ts](../lib/db.ts) — server only |
+| Persistence boundary, ids and timestamps | [lib/db.ts](../lib/db.ts) — server only |
+| SQL and data access | [lib/data/](../lib/data/) — server only; connection string and pool in [lib/data/client.ts](../lib/data/client.ts) |
+| The seat-claim protocol — the only runtime path that may produce `going` | [lib/data/seats.ts](../lib/data/seats.ts) |
+| Schema | [migrations/](../migrations/) |
+| The SQL Server target, rejected constructs and shared-database rules | [docs/sql-server-2008r2-compatibility.md](../docs/sql-server-2008r2-compatibility.md) — **authoritative** |
 | Visibility, manageability, creation rights, registration availability and request decisions | [lib/permissions.ts](../lib/permissions.ts) — shared by pages and routes |
 | Derived event context | [lib/events.ts](../lib/events.ts) — server only |
 | Fixtures / personas | [lib/seed.ts](../lib/seed.ts) |

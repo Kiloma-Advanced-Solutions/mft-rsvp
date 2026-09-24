@@ -50,7 +50,9 @@ events they are allowed to see — and registers for the ones they want.
 
 ## 3. What is already here
 
-Run `npm run dev` and open <http://localhost:3000> — the start page lists it all,
+Since M6 the app needs a database before it will serve a page: configure,
+migrate and seed it first, as README.md "The database" describes. Then run
+`npm run dev` and open <http://localhost:3000> — the start page lists it all,
 and `/styleguide` renders every component with real data. Read that page before
 you write any CSS.
 
@@ -62,7 +64,7 @@ you write any CSS.
 | `components/events/` | `EventCard`, `EventGrid`, `DateBlock`, `AccessBadge`, `EventStatusBadge`, `RegistrationBadge`, `CapacityMeter`, `EventMetaLine`, `EventMetaDetails`. |
 | `components/layout/` | The app shell, nav and persona switcher. |
 | `lib/types.ts` | The domain model. Read this first. |
-| `lib/db.ts` | Async in-memory store. Swappable for a real database. |
+| `lib/db.ts` | The persistence boundary, server only. Backed by SQL Server since M6. |
 | `lib/seed.ts` | 12 events, 5 people, every state covered. |
 | `lib/session.ts` | `getCurrentUser()` — the trusted identity on the server. |
 | `lib/api.ts` | `withErrorHandling`, `ApiError`, `jsonOk`, `readJson`, `fetchJson`. |
@@ -81,8 +83,9 @@ your visibility rules — be Priya, and the invite-only offsite should vanish.
 | Tom Alvarez | member | Someone with a rejected request |
 | Sara Klein | admin | Managing an event they do not host |
 
-Data lives in memory and resets when the dev server restarts. To reset without
-restarting: `curl -X POST http://localhost:3000/api/dev/reset`.
+Data lives in SQL Server and survives a dev-server restart. Setting it up,
+seeding the fixtures and resetting them are command-line steps, described in
+README.md "The database"; there is no HTTP reset.
 
 ---
 
@@ -242,8 +245,12 @@ preserving the product behaviour and the API contracts that already exist.
 - Define a development, seed and reset workflow that works against a persistent
   database.
 
-**Not yet decided.** The database, the ORM, the schema design, the migration
-strategy and the UUID implementation are all M6 planning decisions.
+**Status: delivered.** The database, the ORM question, the schema design, the
+migration strategy and the UUID implementation were all decided during M6 and
+are implemented. The requirement above is kept as it was set; what was built is
+described in README.md "The database", the SQL contract in
+`docs/sql-server-2008r2-compatibility.md`, and the reasoning in
+`memory/dec_log.md`.
 
 #### M7 — Event cancellation
 

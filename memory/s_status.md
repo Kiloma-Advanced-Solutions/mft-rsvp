@@ -5,18 +5,19 @@ progresses — it is current state, not a changelog.
 
 ## Active milestone
 
-**None in progress.** M1–M5 are complete and merged: all three `must`
-milestones and both `should` milestones are done. Since then one piece of
-non-milestone work has also merged into `yardenah/events-board` — the UI was
-localized to Hebrew and RTL (PR #25). It changed presentation only: no rule,
-route, stored value or API contract moved. What it fixed in place is in
+**None in progress.** M1–M6 are complete and merged into
+`yardenah/events-board`: the original assignment's three `must` and two
+`should` milestones, and M6, the first post-assignment milestone, which moved
+persistence to SQL Server (PR #24). The UI is also localized to Hebrew and RTL
+(PR #25), which changed presentation only; what it fixed in place is in
 [a_system.md](a_system.md).
 
-What remains is the stretch list, which nothing has started. `TASKS.md` §5
-gives it in the order it would be picked up — the calendar view first, then the
-waitlist, managing invitations, search, "my events", optimistic UI and a theme
-toggle. Authoritative requirements for every milestone and stretch goal:
-[TASKS.md](../TASKS.md) §5.
+**Next is M7 — event cancellation — and it has not started.** M8–M10 (removing
+attendees, shareable links, application logging) follow it and are future work.
+The original stretch list — the calendar view first, then the waitlist,
+managing invitations, search, "my events", optimistic UI and a theme toggle —
+is also unstarted. Authoritative requirements for every milestone, extension
+and stretch goal: [TASKS.md](../TASKS.md) §5.
 
 ## Status
 
@@ -36,7 +37,7 @@ the registrations route, which enforces the [TASKS.md](../TASKS.md) §4 rules on
 the server.
 
 Hosts act too. A host can **create** an event, **edit** it in place, **publish**
-a draft and **delete** it (M4) — and now **decide the requests on it** (M5).
+a draft and **delete** it (M4) — and **decide the requests on it** (M5).
 
 The approval queue is a host-only section of `/events/[id]` listing the requests
 still waiting and the ones already turned down, with whatever message the
@@ -45,7 +46,18 @@ capacity meter and "Who is going" re-derive on the spot. How it fits together is
 in [a_system.md](a_system.md); why it behaves as it does is in
 [dec_log.md](dec_log.md).
 
-Nothing is inert any more: every control the product renders now acts.
+**Everything is persistent (M6).** Users, events and registrations live in SQL
+Server behind the `lib/db.ts` contract the product was built on — kept, except
+that registration writes were deliberately narrowed: there is no public
+`registrations.create`, and generic updates take the restricted
+`RegistrationUpdate`. Identifiers are UUIDs, and data survives a dev-server
+restart. The product behaviour of
+M1–M5 did not change. Taking a place and approving one are now safe under
+concurrency, which closed the final-seat race earlier milestones had accepted.
+The shape is in [a_system.md](a_system.md); running it is in
+[u_environment.md](u_environment.md).
+
+Nothing is inert: every control the product renders acts.
 
 ## What is actually implemented
 
@@ -55,19 +67,36 @@ Everything that is not the product was supplied. Do not rebuild it — see
 - Design tokens (light and dark) and the `components/ui/` kit.
 - `components/events/` — cards, badges, date blocks, capacity meter.
 - `components/layout/` — app shell, nav, persona switcher.
-- The in-memory store, seeded with 12 events and 5 people covering every state.
-- `/api/session` (the API house-style example) and `/api/dev/reset`.
+- The fixtures — 12 events and 5 people covering every state.
+- `/api/session` (the API house-style example).
 - `/styleguide` and the start page at `/`.
 
 The product built on top of that: the board and the detail screen, the shared
 permission and event-context layers beneath them, the registration write path,
 the four host write paths added by M4, and the two request-decision routes added
-by M5. The shape of all of it is in [a_system.md](a_system.md).
+by M5. M6 replaced the supplied in-memory store with the SQL Server persistence
+layer, its schema and migration runner, the seed and reset tooling, and the
+static SQL compatibility guard; the supplied HTTP reset endpoint was removed.
+The shape of all of it is in [a_system.md](a_system.md).
 
 ## Deliberately absent
 
 Not missing — decided against, for this milestone or for the exercise. A later
 session should not treat any of these as an oversight to fix.
+
+From M6's scope:
+
+- **No ORM.** The data layer is hand-written statements through the driver —
+  see [dec_log.md](dec_log.md).
+- **No event versioning or ETags**, so content edits stay last-write-wins.
+- **No retry framework and no lock timeout.** With event-first lock ordering no
+  known deadlock cycle currently requires one.
+- **No schema beyond today's domain model** — no cancellation, share-token,
+  logging or waitlist columns. Those belong to the milestones that decide them.
+- **No database-level changes and no non-table objects.** The compatibility
+  contract forbids `ALTER DATABASE` on the shared database and any view,
+  procedure, function or trigger — see
+  [docs/sql-server-2008r2-compatibility.md](../docs/sql-server-2008r2-compatibility.md).
 
 From M5's scope:
 
@@ -91,15 +120,30 @@ them to its invite list; that is invitation management, and it is out of scope.
 
 ## Known limitations
 
-Two simultaneous registrations for the final seat can race, because the supplied
-in-memory store offers no atomic capacity reservation. M3 accepted this rather
-than redesigning the data layer; M4 did not change it; and M5 met the same
-question from the host's side, when it enforced that a host cannot approve past
-capacity, and **deliberately left it unsolved**. It is not a newly discovered
-bug. The reasoning is in [dec_log.md](dec_log.md).
+The capacity invariant is held by an application protocol, not a database
+constraint, and a host may still lower capacity below current attendance —
+M4's rule, kept deliberately — so `goingCount > capacity` remains a reachable
+state. What cannot happen is a seat-taking operation adding to it. Seat claims
+for one event serialize on its row. See [a_system.md](a_system.md)
+"Seat-taking and concurrency".
+
+An event read is stitched from several reads of committed data, not one
+snapshot; accepted for rendering. Only capacity-sensitive writes re-decide under
+a lock — see [a_system.md](a_system.md) "Data layer".
+
+Migrations are single-operator, and applied migrations are immutable by
+convention only — see [u_environment.md](u_environment.md) "Migration operating
+contract".
+
+The SQL is written to the SQL Server 2008 R2 feature floor and statically
+enforced; runtime verification has only been performed against Azure SQL DEV,
+not a real 2008 R2 server. What remains unverified is listed in
+[docs/sql-server-2008r2-compatibility.md](../docs/sql-server-2008r2-compatibility.md)
+"Deployment preflight".
 
 Concurrent edits to the same event are last-write-wins: `EventRecord` carries no
-version, so M4 did not attempt optimistic concurrency. Named, not solved.
+version, so M4 did not attempt optimistic concurrency, and M6 kept that. Named,
+not solved.
 
 A request left pending on an event that has been cancelled or has already
 started can no longer be decided by anyone, which is the accepted cost of
@@ -123,5 +167,5 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-09-22 — Hebrew/RTL localization merged into
-`yardenah/events-board`; no milestone in progress.
+Last updated: 2026-09-23 — M6 (SQL Server persistence) merged into
+`yardenah/events-board`; no milestone in progress, M7 next.
