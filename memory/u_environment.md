@@ -52,7 +52,7 @@ does **not** do is as important:
 - **It is a single-operator command.** There is no cross-process migration lock,
   so overlapping runs are not supported — serialize them yourself.
 - **Atomicity is per migration, and qualified.** For transactional DDL and DML —
-  which is all a migration here contains — a migration's batches and its history row
+  which is all a migration here contains today — a migration's batches and its history row
   commit or roll back together. A commit whose acknowledgement never arrives is
   reported as unknown rather than as success or rollback. If two runs do
   overlap, the history table's primary key stops both from recording the same

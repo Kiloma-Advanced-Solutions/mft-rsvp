@@ -22,7 +22,7 @@ wins. **Supporting** means: useful background, safe to skip.
 | [lib/types.ts](../lib/types.ts) | The domain model, with the meaning of every role, access mode and status in its doc comments. Read this first when touching the domain | **Authoritative** |
 | [lib/session.ts](../lib/session.ts) | Who the current user is. `getCurrentUser()` is the only trusted identity on the server; the persona is a cookie | **Authoritative** |
 | [lib/db.ts](../lib/db.ts) | The persistence boundary over SQL Server, server only: the store contract product code relies on, the application's ownership of ids and timestamps, and why registration writes are narrowed. Its header explains each | **Authoritative** |
-| [lib/data/](../lib/data/) | The SQL itself — one module per table concern, the row ↔ domain translation, the connection pool in `client.ts`, and the migrate and seed/reset CLIs | **Authoritative** |
+| [lib/data/](../lib/data/) | The SQL itself — one module per concern, the row ↔ domain translation, the connection pool in `client.ts`, and the migrate and seed/reset CLIs | **Authoritative** |
 | [lib/data/seats.ts](../lib/data/seats.ts) | The seat-claim protocol: the only application-runtime path that may produce `going`, and why capacity is a transaction protocol rather than a constraint | **Authoritative** |
 | [migrations/](../migrations/) | The schema, and the constraints the database itself enforces | **Authoritative** |
 | [lib/api.ts](../lib/api.ts) | The route-handler and fetch helpers: `withErrorHandling`, `ApiError`, `jsonOk`, `readJson`, `fetchJson` | **Authoritative** |

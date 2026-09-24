@@ -47,8 +47,11 @@ in [a_system.md](a_system.md); why it behaves as it does is in
 [dec_log.md](dec_log.md).
 
 **Everything is persistent (M6).** Users, events and registrations live in SQL
-Server behind the same `lib/db.ts` contract the product was built on, with UUID
-identifiers, and data survives a dev-server restart. The product behaviour of
+Server behind the `lib/db.ts` contract the product was built on — kept, except
+that registration writes were deliberately narrowed: there is no public
+`registrations.create`, and generic updates take the restricted
+`RegistrationUpdate`. Identifiers are UUIDs, and data survives a dev-server
+restart. The product behaviour of
 M1–M5 did not change. Taking a place and approving one are now safe under
 concurrency, which closed the final-seat race earlier milestones had accepted.
 The shape is in [a_system.md](a_system.md); running it is in

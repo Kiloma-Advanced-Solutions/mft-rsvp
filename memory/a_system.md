@@ -100,9 +100,11 @@ Server Component / Route Handler → lib/session, lib/events → lib/db.ts → l
   T-SQL**.
 - **Ids and timestamps come from the application or its tooling, never the
   database**: ids are UUIDs with no database default, and no statement reads a
-  server clock. At runtime `lib/db.ts` is where both are generated; the
-  fixtures' come from [lib/seed.ts](../lib/seed.ts), and the migration
-  history's from the migration runner.
+  server clock. At runtime `lib/db.ts` generates entity ids and record stamps
+  (`createdAt`, `updatedAt`); other domain timestamps may be set elsewhere in
+  the application — the reject route stamps its own `decidedAt`. The fixtures'
+  come from [lib/seed.ts](../lib/seed.ts), and the migration history's from the
+  migration runner.
 - **It keeps the old store's contract** where that still applies — every method
   async, a miss is `null` (or `false` for a delete), reads return fresh
   objects, and in a patch a key present with `undefined` clears the field while
@@ -582,8 +584,10 @@ approve into one seat. Rejecting cannot raise the count, so it is an
 expected-status transition that does not take the event-row seat lock. The two
 are not symmetric when they race:
 
-- **approve first, reject second** — reject expects the status it read
-  (`pending`); the row has moved to `going`, so reject gets a conflict;
+- **approve first, reject second** — if reject read `pending` before the
+  approval landed, its expected-status write finds `going` and conflicts; if it
+  reads after, it sees `going` and the decision rule refuses. Either way reject
+  cannot overwrite the approval;
 - **reject first, approve second** — approval re-reads the row under the lock,
   finds it `rejected`, and the shared rule allows approving a rejected request,
   so it may legitimately move it `rejected → going` if the locked checks pass.
