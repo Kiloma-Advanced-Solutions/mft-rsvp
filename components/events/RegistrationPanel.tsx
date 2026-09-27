@@ -22,6 +22,11 @@ import styles from "./RegistrationPanel.module.css";
  * A Server Component. The one interactive part is `RegistrationActions`, which
  * gets the label chosen here rather than choosing its own, so the wording still
  * comes from `lib/labels.ts` alone.
+ *
+ * A cancelled event keeps the viewer's badge -- cancelling rewrites no
+ * registration -- and the note says the event will not take place. It drops the
+ * capacity meter: places left, or "full", describe an event people can still
+ * join. The headcount stays in the page's attendee section.
  */
 export function RegistrationPanel({
   event,
@@ -29,12 +34,15 @@ export function RegistrationPanel({
   goingCount,
   viewerRegistration,
 }: {
-  event: Pick<EventRecord, "id" | "capacity">;
+  event: Pick<EventRecord, "id" | "capacity" | "status">;
   availability: RegistrationAvailability;
   goingCount: number;
   viewerRegistration: Registration | null;
 }) {
-  const copy = registrationCtaCopy(availability);
+  const copy = registrationCtaCopy(
+    availability,
+    viewerRegistration?.status ?? null,
+  );
 
   return (
     <Card>
@@ -45,7 +53,9 @@ export function RegistrationPanel({
           </div>
         )}
 
-        <CapacityMeter going={goingCount} capacity={event.capacity} />
+        {event.status !== "cancelled" && (
+          <CapacityMeter going={goingCount} capacity={event.capacity} />
+        )}
 
         {copy.action && (
           <RegistrationActions

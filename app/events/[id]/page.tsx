@@ -22,7 +22,10 @@ import {
 import { getEventDetailForViewer } from "@/lib/events";
 import { toFormValues } from "@/lib/eventInput";
 import { CATEGORY_LABELS, DETAIL_LABELS, MANAGE_LABELS } from "@/lib/labels";
-import { getRegistrationAvailability } from "@/lib/permissions";
+import {
+  getCancellationAvailability,
+  getRegistrationAvailability,
+} from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
 import type { EventRecord, User } from "@/lib/types";
 
@@ -241,9 +244,11 @@ function Attendees({
  * where management lives.
  *
  * Edit is a `<Link>` because it navigates rather than acts: it turns on the
- * `?edit=1` mode this same page renders. Publish and delete do act, so they
- * live in a client leaf. Deciding requests is the approval queue's job, and it
- * lives in the main column where there is room for what people wrote.
+ * `?edit=1` mode this same page renders. Publish, cancel and delete do act, so
+ * they live in a client leaf. Whether cancelling is on offer comes from the
+ * same rule the cancel route applies, so the button and the API agree.
+ * Deciding requests is the approval queue's job, and it lives in the main
+ * column where there is room for what people wrote.
  */
 function HostTools({
   event,
@@ -274,6 +279,7 @@ function HostTools({
         <HostEventActions
           eventId={event.id}
           isDraft={event.status === "draft"}
+          canCancel={getCancellationAvailability(event).state === "open"}
           goingCount={goingCount}
           pendingCount={pendingCount}
         />

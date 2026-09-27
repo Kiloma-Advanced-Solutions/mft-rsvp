@@ -4,7 +4,12 @@ import type { ReactNode } from "react";
 import { AvatarStack } from "@/components/ui";
 import { cx } from "@/lib/cx";
 import { isPast } from "@/lib/date";
-import { CATEGORY_LABELS, attendanceLabel, hostedByLabel } from "@/lib/labels";
+import {
+  CATEGORY_LABELS,
+  attendanceLabel,
+  cancelledAttendanceLabel,
+  hostedByLabel,
+} from "@/lib/labels";
 import type { EventRecord, RegistrationStatus, User } from "@/lib/types";
 
 import {
@@ -45,8 +50,11 @@ export function EventCard({
   href?: string;
 }) {
   const going = goingCount ?? attendees.length;
-  const full = event.capacity !== null && going >= event.capacity;
-  const dimmed = event.status === "cancelled" || isPast(event.startsAt);
+  const cancelled = event.status === "cancelled";
+  // A cancelled event is not "full": nobody can join it either way, and the
+  // full styling would suggest it is only a lack of room.
+  const full = !cancelled && event.capacity !== null && going >= event.capacity;
+  const dimmed = cancelled || isPast(event.startsAt);
 
   return (
     <Link
@@ -84,7 +92,9 @@ export function EventCard({
         <span className={styles.attendance}>
           {attendees.length > 0 && <AvatarStack users={attendees} max={4} size="xs" />}
           <span className={cx(styles.attendanceText, full && styles.full)}>
-            {attendanceLabel(going, event.capacity, full)}
+            {cancelled
+              ? cancelledAttendanceLabel(going)
+              : attendanceLabel(going, event.capacity, full)}
           </span>
         </span>
         {hostName && (

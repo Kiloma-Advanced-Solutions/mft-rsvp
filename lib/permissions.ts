@@ -1,17 +1,18 @@
 /**
- * Who may see an event, who may manage it, who may take a place at it, and what
- * a host may decide about somebody else's request.
+ * Who may see an event, who may manage it, who may take a place at it, what
+ * a host may decide about somebody else's request, and whether the event may
+ * be cancelled.
  *
  * The questions are deliberately separate: visibility is about discovery,
  * manageability is about being a host or an admin, availability is about one
- * person's own place, and request decisions are about a row somebody else owns.
- * Keeping them apart is what stops "can see" from quietly becoming "can
- * change".
+ * person's own place, request decisions are about a row somebody else owns,
+ * and cancellation is about the event's own lifecycle. Keeping them apart is
+ * what stops "can see" from quietly becoming "can change".
  *
  * The rules themselves are specified in `TASKS.md` section 4 — those tables are
  * authoritative and are not restated here. This file is their single
- * implementation, so pages and route handlers answer all three questions with
- * the same code rather than re-deriving them.
+ * implementation, so pages and route handlers answer every question with the
+ * same code rather than re-deriving them.
  *
  * Synchronous, and with no store and no session: the caller resolves the viewer
  * through `getCurrentUser()` and passes it in along with any counts, which keeps
@@ -21,6 +22,7 @@
 
 import { isPast } from "./date";
 import type {
+  CancellationAvailability,
   EventRecord,
   Registration,
   RegistrationAvailability,
@@ -57,7 +59,10 @@ export function canViewEvent(event: EventRecord, user: User): boolean {
   return true;
 }
 
-/** May this person edit, delete, publish, or decide requests on this event? */
+/**
+ * May this person edit, delete, publish, cancel, or decide requests on this
+ * event?
+ */
 export function canManageEvent(event: EventRecord, user: User): boolean {
   return user.role === "admin" || isHost(event, user);
 }
@@ -196,6 +201,31 @@ export function getRequestDecisionAvailability(
   }
 
   return full ? { state: "reject_only", reason: "full" } : { state: "open" };
+}
+
+/**
+ * May this event be cancelled right now?
+ *
+ * Like the request decision it takes no user: *whether* the actor may cancel
+ * is `canManageEvent()`, and every host gets the same answer here.
+ *
+ * `TASKS.md` section 4 does not cover cancelling; this is M7's rule. Only a
+ * published event that has not started may be cancelled, and nothing moves an
+ * event back out of `cancelled`. A draft is not exposed to anyone who could be
+ * told it was cancelled, a cancelled event stays cancelled, and one that has
+ * started has nothing left to call off. It reads the event's current
+ * `startsAt`, which a host may edit, so moving a published event's start into
+ * the future makes it cancellable again.
+ */
+export function getCancellationAvailability(
+  event: Pick<EventRecord, "status" | "startsAt">,
+): CancellationAvailability {
+  if (event.status === "draft") return { state: "closed", reason: "draft" };
+  if (event.status === "cancelled") {
+    return { state: "closed", reason: "cancelled" };
+  }
+  if (isPast(event.startsAt)) return { state: "closed", reason: "started" };
+  return { state: "open" };
 }
 
 /**
