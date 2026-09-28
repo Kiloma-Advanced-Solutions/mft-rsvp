@@ -333,8 +333,9 @@ export async function createEvent(record: EventRecord): Promise<void> {
  * in-memory store got that distinction from `structuredClone` keeping
  * undefined-valued properties and the spread overwriting them. No current
  * caller sends an undefined here -- `parseEventForm` always produces all nine
- * content fields, and publish sends only `status` -- but the contract is the
- * contract, and `registrations.ts` depends on the same rule for real.
+ * content fields, and publish and cancel send only `status` -- but the
+ * contract is the contract, and `registrations.ts` depends on the same rule
+ * for real.
  *
  * `location` is replaced whole when present, which is what the shallow spread
  * did: all five columns are written, and a field the new kind does not use
@@ -423,14 +424,15 @@ function assignPatch(request: sql.Request, patch: EventPatch): string[] {
  *
  * All in one transaction, so a caller never sees an event whose co-hosts have
  * been cleared but not rewritten. No current caller patches `coHostIds` or
- * `invitedUserIds` -- `parseEventForm` cannot produce them and publish sends
- * only `status` -- but `EventPatch` allows them, so they are handled rather
- * than quietly ignored.
+ * `invitedUserIds` -- `parseEventForm` cannot produce them, and publish and
+ * cancel send only `status` -- but `EventPatch` allows them, so they are
+ * handled rather than quietly ignored.
  *
- * `expectedStatus` is compare-and-set, and publishing is what wants it: two
- * requests that both read a draft must not both publish it. The second finds no
- * row in `draft` any more, affects nothing, and gets the `null` that route
- * handlers already report as a conflict.
+ * `expectedStatus` is compare-and-set, and the lifecycle transitions are what
+ * want it: two requests that both read a draft must not both publish it, nor
+ * two that both read a published event both cancel it. The second finds no row
+ * in the expected status any more, affects nothing, and gets the `null` that
+ * route handlers already report as a conflict.
  *
  * Ordinary content edits pass no `expectedStatus` and stay last-write-wins,
  * which is what M4 decided and what Slice 8 deliberately does not revisit.

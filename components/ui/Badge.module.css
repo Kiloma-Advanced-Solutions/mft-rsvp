@@ -117,8 +117,14 @@
   background: var(--color-warning);
 }
 
+/*
+  White on the dark theme's brighter danger fill is only ~3.5:1, so the text
+  follows the palette's on-fill contrast colour instead -- white in the light
+  theme, near-black in the dark one -- the same pairing `.solid.primary` uses.
+*/
 .solid.danger {
   background: var(--color-danger);
+  color: var(--color-primary-contrast);
 }
 
 .solid.info {

@@ -8,6 +8,7 @@
 
 import type { BadgeTone } from "@/components/ui";
 import type {
+  CancellationClosedReason,
   EventAccess,
   EventCategory,
   EventLocation,
@@ -141,6 +142,7 @@ export const BOARD_LABELS = {
   title: "לוח האירועים",
   upcoming: "אירועים קרובים",
   past: "אירועים שעברו",
+  cancelled: "אירועים שבוטלו",
   categoryFilter: "קטגוריה",
   accessFilter: "אופן הכניסה",
   allCategories: "כל הקטגוריות",
@@ -195,7 +197,12 @@ export const DETAIL_LABELS = {
   hostToolsDescription: "רק אתם והמארחים האחרים רואים את זה.",
   edit: "עריכת האירוע",
   publish: "פרסום הטיוטה",
+  cancelEvent: "ביטול האירוע",
   delete: "מחיקת האירוע",
+  /** The notice across the top of a cancelled event, for every viewer. */
+  cancelledNoticeTitle: "האירוע הזה בוטל",
+  cancelledNoticeText:
+    "הוא לא יתקיים. הפרטים ורשימת הנרשמים נשארים כאן לעיון.",
   factInvited: "מוזמנים",
 };
 
@@ -220,8 +227,27 @@ const CLOSED_NOTES: Record<RegistrationClosedReason, string> = {
   not_invited: "האירוע בהזמנה בלבד, ואתם לא ברשימת המוזמנים.",
 };
 
+/**
+ * What a cancelled event says to someone whose registration is still on record.
+ *
+ * Cancelling the event rewrites no registration, so a `going` badge stays
+ * truthful -- and on its own it would read as though the event were still on.
+ * This sentence is what says it is not. Anyone else, and anyone who withdrew,
+ * gets the ordinary closed note.
+ */
+const CANCELLED_EVENT_NOTES: Partial<Record<RegistrationStatus, string>> = {
+  going: "האירוע בוטל ולא יתקיים. ההרשמה שלכם נשמרת ברשומות, אבל אין צורך להגיע.",
+  pending: "האירוע בוטל ולא יתקיים. הבקשה שלכם כבר לא תטופל.",
+  rejected: "האירוע בוטל ולא יתקיים.",
+};
+
+/**
+ * `viewerStatus` only changes the wording for a cancelled event -- see
+ * `CANCELLED_EVENT_NOTES`. Everything else is decided by `availability` alone.
+ */
 export function registrationCtaCopy(
   availability: RegistrationAvailability,
+  viewerStatus: RegistrationStatus | null,
 ): RegistrationCtaCopy {
   switch (availability.state) {
     case "open":
@@ -247,7 +273,13 @@ export function registrationCtaCopy(
           };
 
     case "closed":
-      return { action: null, note: CLOSED_NOTES[availability.reason] };
+      return {
+        action: null,
+        note:
+          (availability.reason === "cancelled" && viewerStatus
+            ? CANCELLED_EVENT_NOTES[viewerStatus]
+            : undefined) ?? CLOSED_NOTES[availability.reason],
+      };
   }
 }
 
@@ -480,7 +512,10 @@ export const EVENT_FORM_ERRORS = {
   formRejected: "השרת דחה את השינויים האלה.",
 };
 
-/** What create, edit, publish and delete say once they have been attempted. */
+/**
+ * What create, edit, publish, cancel and delete say once they have been
+ * attempted.
+ */
 export const MANAGE_ACTION_COPY = {
   /* Server refusals. */
   cannotCreate: "אין לכם הרשאה ליצור אירועים.",
@@ -497,9 +532,88 @@ export const MANAGE_ACTION_COPY = {
   saveFailed: "לא הצלחנו לשמור את השינויים",
   published: "האירוע פורסם",
   publishFailed: "לא הצלחנו לפרסם את האירוע",
+  cancelled: "האירוע בוטל",
+  cancelFailed: "לא הצלחנו לבטל את האירוע",
   deleted: "האירוע נמחק",
   deleteFailed: "לא הצלחנו למחוק את האירוע",
 };
+
+/**
+ * Why an event cannot be cancelled, for the cancel route's refusal. The rule
+ * that produced the reason is `getCancellationAvailability()`.
+ */
+const CANCELLATION_CLOSED_NOTES: Record<CancellationClosedReason, string> = {
+  draft: "אפשר לבטל רק אירוע שפורסם.",
+  cancelled: "האירוע הזה כבר בוטל.",
+  started: "האירוע כבר התחיל, ולכן אי אפשר לבטל אותו.",
+};
+
+export function cancellationClosedNote(
+  reason: CancellationClosedReason,
+): string {
+  return CANCELLATION_CLOSED_NOTES[reason];
+}
+
+/**
+ * The cancel confirmation. `ConfirmDialog` renders it.
+ *
+ * The dismiss label is deliberately not "ביטול": next to a confirm button that
+ * reads "ביטול האירוע" the two would say the same word for opposite things.
+ */
+export const CANCEL_DIALOG = {
+  title: "לבטל את האירוע?",
+  confirm: "ביטול האירוע",
+  cancel: "השארת האירוע",
+};
+
+const CANCEL_DIALOG_LEAD =
+  "האירוע יסומן כמבוטל ויישאר גלוי לכל מי שרואה אותו היום.";
+
+/** Cancelling is terminal, so the dialog says so -- and what to do instead. */
+const CANCEL_DIALOG_FINAL =
+  "אי אפשר להחזיר אירוע מבוטל לפעילות — אם הוא רק נדחה, עדיף לערוך את המועד שלו.";
+
+/**
+ * The cancel warning, in two parts so the dialog can put the first one first.
+ *
+ * `registrations` states what is on record right now, counted, because that
+ * is the fact a host most needs before cancelling and it was easy to miss in
+ * the middle of a paragraph. `details` says what happens to it -- nothing:
+ * cancelling removes no registration, the event's status is what closes every
+ * action -- and what happens to everything else.
+ */
+type CancelDialogCopy = {
+  registrations: string;
+  details: string;
+};
+
+export function cancelDialogCopy(
+  goingCount: number,
+  pendingCount: number,
+): CancelDialogCopy {
+  const parts = [
+    goingCount > 0 && confirmedAttendeeCount(goingCount),
+    pendingCount > 0 && requestCount(pendingCount),
+  ].filter((part): part is string => part !== false);
+
+  if (parts.length === 0) {
+    return {
+      registrations: "אין לאירוע נרשמים כרגע.",
+      details: `${CANCEL_DIALOG_LEAD} לא יהיה אפשר עוד להירשם אליו או לבקש בו מקום. ${CANCEL_DIALOG_FINAL}`,
+    };
+  }
+
+  // One registration is a feminine singular ("הרשמה"); anything more is plural.
+  const kept =
+    goingCount + pendingCount === 1
+      ? "ההרשמה לא תימחק ותישאר רשומה כפי שהיא"
+      : "ההרשמות לא יימחקו ויישארו רשומות כפי שהן";
+
+  return {
+    registrations: `באירוע יש כרגע ${joinWithAnd(parts)}.`,
+    details: `${kept}, אבל לא יהיה אפשר עוד להירשם, לבקש מקום, לוותר על מקום או להחליט על בקשות. ${CANCEL_DIALOG_LEAD} ${CANCEL_DIALOG_FINAL}`,
+  };
+}
 
 /** The delete confirmation. `ConfirmDialog` renders it. */
 export const DELETE_DIALOG = {
@@ -567,6 +681,13 @@ function placeCount(n: number): string {
   if (n === 1) return "מקום מאושר אחד";
   if (n === 2) return "שני מקומות מאושרים";
   return `${n} מקומות מאושרים`;
+}
+
+/** "משתתף מאושר אחד", "שני משתתפים מאושרים", "5 משתתפים מאושרים". */
+function confirmedAttendeeCount(n: number): string {
+  if (n === 1) return "משתתף מאושר אחד";
+  if (n === 2) return "שני משתתפים מאושרים";
+  return `${n} משתתפים מאושרים`;
 }
 
 /** "בקשה ממתינה אחת", "שתי בקשות ממתינות", "5 בקשות ממתינות". */
@@ -704,11 +825,21 @@ export function attendanceLabel(
   return `${goingCountLabel(going)} · ${placesLeftLabel(capacity - going)}`;
 }
 
+/**
+ * The attendance line on a cancelled event's card: a headcount and nothing
+ * that invites anyone to register -- no "be the first", no places left.
+ */
+export function cancelledAttendanceLabel(going: number): string {
+  return going === 0 ? CAPACITY_LABELS.noRegistrations : goingCountLabel(going);
+}
+
 /** The same counts, for the meter on the detail page. */
 export const CAPACITY_LABELS = {
   full: "מלא",
   noLimit: "ללא הגבלה",
   beFirst: "היו הראשונים להירשם",
+  /** A cancelled event nobody had registered for. */
+  noRegistrations: "אין נרשמים",
   /** The badge on a published event whose start has gone by. */
   past: "עבר",
   /** The fallback text of an online event's joining link. */

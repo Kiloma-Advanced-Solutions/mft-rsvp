@@ -9,9 +9,9 @@
  * can move an event's lifecycle sideways; and this handler reads **no body**, so
  * it is safe to call with none, exactly like the registration handlers.
  *
- * The one transition M4 allows is `draft -> published`. Cancelling and
- * un-publishing are not in this milestone, so there is no transition table
- * here -- only a precondition.
+ * This route performs `draft -> published` and nothing else, so there is no
+ * transition table here -- only a precondition. Cancelling is its own route,
+ * `POST /api/events/[id]/cancel`, and nothing un-publishes an event.
  *
  * It decides nothing itself: identity from `getCurrentUser()`, visibility from
  * `lib/events.ts`, manageability from `lib/permissions.ts`.

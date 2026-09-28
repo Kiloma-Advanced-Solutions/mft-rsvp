@@ -11,9 +11,9 @@
  * well-formed event", never "may this person write it" -- that question belongs
  * to `lib/permissions.ts` and stays there.
  *
- * It also decides nothing about lifecycle. `status` is not a field here: the
- * only transition M4 allows is publishing, which is its own route, so a status
- * can never arrive through this parser.
+ * It also decides nothing about lifecycle. `status` is not a field here: each
+ * transition -- publishing, cancelling -- is its own route, so a status can
+ * never arrive through this parser.
  */
 
 import { fromDateTimeLocalValue, toDateTimeLocalValue } from "./date";

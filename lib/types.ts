@@ -213,6 +213,22 @@ export type RequestDecisionAvailability =
   | { state: "closed"; reason: RequestDecisionClosedReason };
 
 /**
+ * Whether an event may be cancelled right now, and if not, why.
+ *
+ * Cancelling is `published -> cancelled` and nothing else, and only before the
+ * event starts. Like `RequestDecisionAvailability` it says nothing about who is
+ * asking -- *whether* the actor may cancel at all is `canManageEvent()`.
+ *
+ * Produced by `getCancellationAvailability()` in `lib/permissions.ts`, which
+ * the detail page and the cancel route both call.
+ */
+export type CancellationClosedReason = "draft" | "cancelled" | "started";
+
+export type CancellationAvailability =
+  | { state: "open" }
+  | { state: "closed"; reason: CancellationClosedReason };
+
+/**
  * One request as the host's approval queue needs it: the row, the person behind
  * it, whether they can still see what they asked to join, and what the host may
  * do about it.

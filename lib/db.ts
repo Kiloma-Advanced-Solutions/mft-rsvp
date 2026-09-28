@@ -202,9 +202,9 @@ export const db = {
 
     /**
      * `expectedStatus` makes the write conditional on the row still being in
-     * the status the caller decided against -- publish uses it so two requests
-     * cannot both publish one draft. Omitted, the update is unconditional and
-     * content edits stay last-write-wins.
+     * the status the caller decided against -- publish and cancel use it so two
+     * requests cannot both make the same transition. Omitted, the update is
+     * unconditional and content edits stay last-write-wins.
      */
     async update(
       id: string,

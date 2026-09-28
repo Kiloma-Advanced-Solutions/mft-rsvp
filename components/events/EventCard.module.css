@@ -44,6 +44,14 @@
   opacity: 1;
 }
 
+/*
+  Dimming alone reads the same as a past event. A cancelled one also swaps its
+  accent bar for the danger colour, so the state shows before any text is read.
+*/
+.cancelled::before {
+  background: var(--color-danger);
+}
+
 /* ---- accents ------------------------------------------------------------ */
 
 .violet {

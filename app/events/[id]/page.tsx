@@ -22,7 +22,10 @@ import {
 import { getEventDetailForViewer } from "@/lib/events";
 import { toFormValues } from "@/lib/eventInput";
 import { CATEGORY_LABELS, DETAIL_LABELS, MANAGE_LABELS } from "@/lib/labels";
-import { getRegistrationAvailability } from "@/lib/permissions";
+import {
+  getCancellationAvailability,
+  getRegistrationAvailability,
+} from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
 import type { EventRecord, User } from "@/lib/types";
 
@@ -99,11 +102,34 @@ export default async function EventDetailPage({
         description={editing ? MANAGE_LABELS.editDescription : event.summary}
         actions={
           <div className={styles.headerBadges}>
+            {/* A cancellation leads, as on the board's card. */}
+            {event.status === "cancelled" && (
+              <EventStatusBadge event={event} size="lg" />
+            )}
             <AccessBadge access={event.access} size="lg" />
-            <EventStatusBadge event={event} size="lg" />
+            {event.status !== "cancelled" && (
+              <EventStatusBadge event={event} size="lg" />
+            )}
           </div>
         }
       />
+
+      {/*
+        Above both columns, so it is the first thing under the title on every
+        screen width -- the registration panel's note stacks below the whole
+        main column on a narrow one. It stays in edit mode too: editing a
+        cancelled event never restores it.
+      */}
+      {event.status === "cancelled" && (
+        <div className={styles.cancelledNotice}>
+          <p className={styles.cancelledNoticeTitle}>
+            {DETAIL_LABELS.cancelledNoticeTitle}
+          </p>
+          <p className={styles.cancelledNoticeText}>
+            {DETAIL_LABELS.cancelledNoticeText}
+          </p>
+        </div>
+      )}
 
       {editing ? (
         <Card>
@@ -241,9 +267,11 @@ function Attendees({
  * where management lives.
  *
  * Edit is a `<Link>` because it navigates rather than acts: it turns on the
- * `?edit=1` mode this same page renders. Publish and delete do act, so they
- * live in a client leaf. Deciding requests is the approval queue's job, and it
- * lives in the main column where there is room for what people wrote.
+ * `?edit=1` mode this same page renders. Publish, cancel and delete do act, so
+ * they live in a client leaf. Whether cancelling is on offer comes from the
+ * same rule the cancel route applies, so the button and the API agree.
+ * Deciding requests is the approval queue's job, and it lives in the main
+ * column where there is room for what people wrote.
  */
 function HostTools({
   event,
@@ -274,6 +302,7 @@ function HostTools({
         <HostEventActions
           eventId={event.id}
           isDraft={event.status === "draft"}
+          canCancel={getCancellationAvailability(event).state === "open"}
           goingCount={goingCount}
           pendingCount={pendingCount}
         />

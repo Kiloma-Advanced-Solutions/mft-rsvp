@@ -50,6 +50,21 @@
   font-size: var(--text-xs);
 }
 
+/*
+  A cancelled event's date: still legible, visibly no longer happening. The
+  month drops its accent so the tile stops reading as a live event's.
+*/
+.dateBlockCancelled > span,
+.struck {
+  text-decoration: line-through;
+  text-decoration-color: var(--color-danger);
+}
+
+.dateBlockCancelled .dateBlockMonth,
+.dateBlockCancelled .dateBlockDay {
+  color: var(--color-text-muted);
+}
+
 /* ---- meta lines --------------------------------------------------------- */
 
 .metaList {

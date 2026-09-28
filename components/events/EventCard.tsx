@@ -4,7 +4,12 @@ import type { ReactNode } from "react";
 import { AvatarStack } from "@/components/ui";
 import { cx } from "@/lib/cx";
 import { isPast } from "@/lib/date";
-import { CATEGORY_LABELS, attendanceLabel, hostedByLabel } from "@/lib/labels";
+import {
+  CATEGORY_LABELS,
+  attendanceLabel,
+  cancelledAttendanceLabel,
+  hostedByLabel,
+} from "@/lib/labels";
 import type { EventRecord, RegistrationStatus, User } from "@/lib/types";
 
 import {
@@ -45,16 +50,28 @@ export function EventCard({
   href?: string;
 }) {
   const going = goingCount ?? attendees.length;
-  const full = event.capacity !== null && going >= event.capacity;
-  const dimmed = event.status === "cancelled" || isPast(event.startsAt);
+  const cancelled = event.status === "cancelled";
+  // A cancelled event is not "full": nobody can join it either way, and the
+  // full styling would suggest it is only a lack of room.
+  const full = !cancelled && event.capacity !== null && going >= event.capacity;
+  const dimmed = cancelled || isPast(event.startsAt);
 
   return (
     <Link
       href={href ?? `/events/${event.id}`}
-      className={cx(styles.card, styles[event.accent], dimmed && styles.dimmed)}
+      className={cx(
+        styles.card,
+        styles[event.accent],
+        dimmed && styles.dimmed,
+        cancelled && styles.cancelled,
+      )}
     >
       <div className={styles.head}>
-        <DateBlock iso={event.startsAt} accent={event.accent} />
+        <DateBlock
+          iso={event.startsAt}
+          accent={event.accent}
+          cancelled={cancelled}
+        />
         <div className={styles.headText}>
           <p className={styles.category}>{CATEGORY_LABELS[event.category]}</p>
           {/*
@@ -75,8 +92,14 @@ export function EventCard({
       </div>
 
       <div className={styles.badges}>
+        {/*
+          A cancellation leads the row -- it outranks how people get in. Every
+          other status keeps its place after the access badge. DOM order is
+          reading order, so in RTL "first" is the start (right-hand) edge.
+        */}
+        {cancelled && <EventStatusBadge event={event} />}
         <AccessBadge access={event.access} />
-        <EventStatusBadge event={event} />
+        {!cancelled && <EventStatusBadge event={event} />}
         {viewerStatus && <RegistrationBadge status={viewerStatus} />}
       </div>
 
@@ -84,7 +107,9 @@ export function EventCard({
         <span className={styles.attendance}>
           {attendees.length > 0 && <AvatarStack users={attendees} max={4} size="xs" />}
           <span className={cx(styles.attendanceText, full && styles.full)}>
-            {attendanceLabel(going, event.capacity, full)}
+            {cancelled
+              ? cancelledAttendanceLabel(going)
+              : attendanceLabel(going, event.capacity, full)}
           </span>
         </span>
         {hostName && (
