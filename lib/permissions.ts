@@ -229,7 +229,8 @@ export function getCancellationAvailability(
 }
 
 /**
- * Whether each decision is on offer, read off the availability above.
+ * Whether each decision is on offer, read off the availability that
+ * `getRequestDecisionAvailability()` returns.
  *
  * The queue and the two route handlers all ask through these rather than
  * matching on the state themselves, so the mapping from "what state is this
