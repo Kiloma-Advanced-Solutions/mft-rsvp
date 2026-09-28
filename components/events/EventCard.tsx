@@ -59,10 +59,19 @@ export function EventCard({
   return (
     <Link
       href={href ?? `/events/${event.id}`}
-      className={cx(styles.card, styles[event.accent], dimmed && styles.dimmed)}
+      className={cx(
+        styles.card,
+        styles[event.accent],
+        dimmed && styles.dimmed,
+        cancelled && styles.cancelled,
+      )}
     >
       <div className={styles.head}>
-        <DateBlock iso={event.startsAt} accent={event.accent} />
+        <DateBlock
+          iso={event.startsAt}
+          accent={event.accent}
+          cancelled={cancelled}
+        />
         <div className={styles.headText}>
           <p className={styles.category}>{CATEGORY_LABELS[event.category]}</p>
           {/*
@@ -83,8 +92,14 @@ export function EventCard({
       </div>
 
       <div className={styles.badges}>
+        {/*
+          A cancellation leads the row -- it outranks how people get in. Every
+          other status keeps its place after the access badge. DOM order is
+          reading order, so in RTL "first" is the start (right-hand) edge.
+        */}
+        {cancelled && <EventStatusBadge event={event} />}
         <AccessBadge access={event.access} />
-        <EventStatusBadge event={event} />
+        {!cancelled && <EventStatusBadge event={event} />}
         {viewerStatus && <RegistrationBadge status={viewerStatus} />}
       </div>
 

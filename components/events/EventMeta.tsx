@@ -46,17 +46,25 @@ export function DateBlock({
   iso,
   accent,
   size = "md",
+  cancelled = false,
   className,
 }: {
   iso: string;
   /** Tints the month. Defaults to the brand colour. */
   accent?: EventRecord["accent"];
   size?: "md" | "lg";
+  /** Strikes the date through: the event is not going to happen on it. */
+  cancelled?: boolean;
   className?: string;
 }) {
   return (
     <div
-      className={cx(styles.dateBlock, size === "lg" && styles.dateBlockLg, className)}
+      className={cx(
+        styles.dateBlock,
+        size === "lg" && styles.dateBlockLg,
+        cancelled && styles.dateBlockCancelled,
+        className,
+      )}
       style={accent ? { ["--accent-color" as string]: `var(--accent-${accent})` } : undefined}
     >
       <span className={styles.dateBlockMonth}>{formatMonthShort(iso)}</span>
@@ -94,7 +102,14 @@ export function EventStatusBadge({
 }) {
   if (event.status !== "published") {
     return (
-      <Badge tone={EVENT_STATUS_TONES[event.status]} size={size} dot>
+      <Badge
+        tone={EVENT_STATUS_TONES[event.status]}
+        // Solid for a cancellation: it is the one state that has to be seen
+        // at a glance. A draft is only ever in front of its hosts.
+        variant={event.status === "cancelled" ? "solid" : "soft"}
+        size={size}
+        dot
+      >
         {EVENT_STATUS_LABELS[event.status]}
       </Badge>
     );
@@ -156,12 +171,15 @@ export function EventMetaLine({
   );
 }
 
-/** Expanded when/where/duration block for the detail page. */
+/**
+ * Expanded when/where/duration block for the detail page. A cancelled event's
+ * date is struck through, the same as its date block on the board.
+ */
 export function EventMetaDetails({
   event,
   className,
 }: {
-  event: Pick<EventRecord, "startsAt" | "endsAt" | "location">;
+  event: Pick<EventRecord, "startsAt" | "endsAt" | "location" | "status">;
   className?: string;
 }) {
   return (
@@ -171,7 +189,11 @@ export function EventMetaDetails({
           ◷
         </span>
         <span className={styles.metaText}>
-          {formatDateLong(event.startsAt)}
+          <span
+            className={event.status === "cancelled" ? styles.struck : undefined}
+          >
+            {formatDateLong(event.startsAt)}
+          </span>
           <span className={styles.metaSub}>
             {formatTimeRange(event.startsAt, event.endsAt)} ·{" "}
             {formatDuration(event.startsAt, event.endsAt)} ·{" "}

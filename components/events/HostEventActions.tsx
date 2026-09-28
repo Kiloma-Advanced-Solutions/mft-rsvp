@@ -10,7 +10,7 @@ import {
   DELETE_DIALOG,
   DETAIL_LABELS,
   MANAGE_ACTION_COPY,
-  cancelDialogMessage,
+  cancelDialogCopy,
   deleteDialogMessage,
 } from "@/lib/labels";
 
@@ -61,6 +61,7 @@ export function HostEventActions({
   const toast = useToast();
 
   const busy = publishing || cancelling || deleting || working;
+  const cancelCopy = cancelDialogCopy(goingCount, pendingCount);
 
   async function publish() {
     setPublishing(true);
@@ -163,8 +164,17 @@ export function HostEventActions({
         onCancel={() => setCancelOpen(false)}
         onConfirm={cancel}
         title={CANCEL_DIALOG.title}
-        // Names what stays: cancelling keeps every registration on record.
-        message={cancelDialogMessage(goingCount, pendingCount)}
+        /*
+          The registrations on record come first and in bold, so a host cannot
+          miss who is affected; the rest says that cancelling keeps them all.
+        */
+        message={
+          <>
+            <strong>{cancelCopy.registrations}</strong>
+            <br />
+            {cancelCopy.details}
+          </>
+        }
         confirmLabel={CANCEL_DIALOG.confirm}
         cancelLabel={CANCEL_DIALOG.cancel}
         destructive

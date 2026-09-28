@@ -102,11 +102,34 @@ export default async function EventDetailPage({
         description={editing ? MANAGE_LABELS.editDescription : event.summary}
         actions={
           <div className={styles.headerBadges}>
+            {/* A cancellation leads, as on the board's card. */}
+            {event.status === "cancelled" && (
+              <EventStatusBadge event={event} size="lg" />
+            )}
             <AccessBadge access={event.access} size="lg" />
-            <EventStatusBadge event={event} size="lg" />
+            {event.status !== "cancelled" && (
+              <EventStatusBadge event={event} size="lg" />
+            )}
           </div>
         }
       />
+
+      {/*
+        Above both columns, so it is the first thing under the title on every
+        screen width -- the registration panel's note stacks below the whole
+        main column on a narrow one. It stays in edit mode too: editing a
+        cancelled event never restores it.
+      */}
+      {event.status === "cancelled" && (
+        <div className={styles.cancelledNotice}>
+          <p className={styles.cancelledNoticeTitle}>
+            {DETAIL_LABELS.cancelledNoticeTitle}
+          </p>
+          <p className={styles.cancelledNoticeText}>
+            {DETAIL_LABELS.cancelledNoticeText}
+          </p>
+        </div>
+      )}
 
       {editing ? (
         <Card>

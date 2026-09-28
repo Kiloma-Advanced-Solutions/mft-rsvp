@@ -142,6 +142,7 @@ export const BOARD_LABELS = {
   title: "לוח האירועים",
   upcoming: "אירועים קרובים",
   past: "אירועים שעברו",
+  cancelled: "אירועים שבוטלו",
   categoryFilter: "קטגוריה",
   accessFilter: "אופן הכניסה",
   allCategories: "כל הקטגוריות",
@@ -198,6 +199,10 @@ export const DETAIL_LABELS = {
   publish: "פרסום הטיוטה",
   cancelEvent: "ביטול האירוע",
   delete: "מחיקת האירוע",
+  /** The notice across the top of a cancelled event, for every viewer. */
+  cancelledNoticeTitle: "האירוע הזה בוטל",
+  cancelledNoticeText:
+    "הוא לא יתקיים. הפרטים ורשימת הנרשמים נשארים כאן לעיון.",
   factInvited: "מוזמנים",
 };
 
@@ -569,33 +574,45 @@ const CANCEL_DIALOG_FINAL =
   "אי אפשר להחזיר אירוע מבוטל לפעילות — אם הוא רק נדחה, עדיף לערוך את המועד שלו.";
 
 /**
- * The cancel warning, naming the registrations that stay on record.
+ * The cancel warning, in two parts so the dialog can put the first one first.
  *
- * Nothing is removed -- the event's status is what closes every action -- so
- * where the delete warning says what goes, this one says what stays. The verb
- * agrees in number and gender the same way `deleteDialogMessage` explains.
+ * `registrations` states what is on record right now, counted, because that
+ * is the fact a host most needs before cancelling and it was easy to miss in
+ * the middle of a paragraph. `details` says what happens to it -- nothing:
+ * cancelling removes no registration, the event's status is what closes every
+ * action -- and what happens to everything else.
  */
-export function cancelDialogMessage(
+type CancelDialogCopy = {
+  registrations: string;
+  details: string;
+};
+
+export function cancelDialogCopy(
   goingCount: number,
   pendingCount: number,
-): string {
+): CancelDialogCopy {
   const parts = [
-    goingCount > 0 && placeCount(goingCount),
+    goingCount > 0 && confirmedAttendeeCount(goingCount),
     pendingCount > 0 && requestCount(pendingCount),
   ].filter((part): part is string => part !== false);
 
   if (parts.length === 0) {
-    return `${CANCEL_DIALOG_LEAD} לא יהיה אפשר עוד להירשם אליו או לבקש בו מקום. ${CANCEL_DIALOG_FINAL}`;
+    return {
+      registrations: "אין לאירוע נרשמים כרגע.",
+      details: `${CANCEL_DIALOG_LEAD} לא יהיה אפשר עוד להירשם אליו או לבקש בו מקום. ${CANCEL_DIALOG_FINAL}`,
+    };
   }
 
-  const stays =
-    goingCount + pendingCount > 1
-      ? "יישארו רשומים כפי שהם"
-      : pendingCount === 1
-        ? "תישאר רשומה כפי שהיא"
-        : "יישאר רשום כפי שהוא";
+  // One registration is a feminine singular ("הרשמה"); anything more is plural.
+  const kept =
+    goingCount + pendingCount === 1
+      ? "ההרשמה לא תימחק ותישאר רשומה כפי שהיא"
+      : "ההרשמות לא יימחקו ויישארו רשומות כפי שהן";
 
-  return `${CANCEL_DIALOG_LEAD} ${joinWithAnd(parts)} ${stays}, אבל לא יהיה אפשר עוד להירשם, לבקש מקום, לוותר על מקום או להחליט על בקשות. ${CANCEL_DIALOG_FINAL}`;
+  return {
+    registrations: `באירוע יש כרגע ${joinWithAnd(parts)}.`,
+    details: `${kept}, אבל לא יהיה אפשר עוד להירשם, לבקש מקום, לוותר על מקום או להחליט על בקשות. ${CANCEL_DIALOG_LEAD} ${CANCEL_DIALOG_FINAL}`,
+  };
 }
 
 /** The delete confirmation. `ConfirmDialog` renders it. */
@@ -664,6 +681,13 @@ function placeCount(n: number): string {
   if (n === 1) return "מקום מאושר אחד";
   if (n === 2) return "שני מקומות מאושרים";
   return `${n} מקומות מאושרים`;
+}
+
+/** "משתתף מאושר אחד", "שני משתתפים מאושרים", "5 משתתפים מאושרים". */
+function confirmedAttendeeCount(n: number): string {
+  if (n === 1) return "משתתף מאושר אחד";
+  if (n === 2) return "שני משתתפים מאושרים";
+  return `${n} משתתפים מאושרים`;
 }
 
 /** "בקשה ממתינה אחת", "שתי בקשות ממתינות", "5 בקשות ממתינות". */

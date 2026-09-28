@@ -58,14 +58,22 @@ export default async function BoardPage({ searchParams }: PageProps<"/events">) 
       (access === null || event.access === access),
   );
 
+  // A cancelled event gets its own section rather than sitting among the ones
+  // that are still going to happen or did happen. Grouping only: every
+  // cancelled event the viewer may see is still here, and in one section.
+  const active = matching.filter(({ event }) => event.status !== "cancelled");
+  const cancelled = matching.filter(({ event }) => event.status === "cancelled");
+
   // `isPast` reads the start, which is also what dims a card and what closes
   // registration — one boundary, used consistently.
-  const upcoming = matching
-    .filter(({ event }) => !isPast(event.startsAt))
-    .sort((a, b) => a.event.startsAt.localeCompare(b.event.startsAt));
-  const past = matching
-    .filter(({ event }) => isPast(event.startsAt))
-    .sort((a, b) => b.event.startsAt.localeCompare(a.event.startsAt));
+  const upcoming = upcomingSoonestFirst(active);
+  const past = startedMostRecentFirst(active);
+  // The two orders above, one after the other: a cancellation that was still
+  // to come is the one someone might have been planning around.
+  const cancelledInOrder = [
+    ...upcomingSoonestFirst(cancelled),
+    ...startedMostRecentFirst(cancelled),
+  ];
 
   return (
     <div>
@@ -103,11 +111,30 @@ export default async function BoardPage({ searchParams }: PageProps<"/events">) 
       ) : (
         <>
           <BoardSection title={BOARD_LABELS.upcoming} items={upcoming} />
+          <BoardSection
+            title={BOARD_LABELS.cancelled}
+            items={cancelledInOrder}
+            muted
+          />
           <BoardSection title={BOARD_LABELS.past} items={past} muted />
         </>
       )}
     </div>
   );
+}
+
+/** Events that have not started yet, soonest first. */
+function upcomingSoonestFirst(items: EventWithContext[]): EventWithContext[] {
+  return items
+    .filter(({ event }) => !isPast(event.startsAt))
+    .sort((a, b) => a.event.startsAt.localeCompare(b.event.startsAt));
+}
+
+/** Events that have started, most recent first. */
+function startedMostRecentFirst(items: EventWithContext[]): EventWithContext[] {
+  return items
+    .filter(({ event }) => isPast(event.startsAt))
+    .sort((a, b) => b.event.startsAt.localeCompare(a.event.startsAt));
 }
 
 /**
