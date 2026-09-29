@@ -51,7 +51,10 @@ for the five seeded personas and what each is useful for.
   attend.
   - `draft` — hosts only; nobody can register.
   - `published` — live; visibility follows the access mode.
-  - `cancelled` — still visible to whoever could see it; registration closed.
+  - `cancelled` — called off, but not deleted. Reached only from `published`,
+    and terminal: an event never leaves it. Still visible to whoever could see
+    it; registering, withdrawing and deciding requests are closed; its
+    registrations are kept as they were.
 
 → [lib/types.ts](../lib/types.ts) for `EventRecord`, `EventAccess`, `EventStatus`,
 `EventCategory`, `EventLocation`.
@@ -98,10 +101,11 @@ interacts with each access mode.
 - **visibility** — "may this person see this event at all?" When the answer is no
   the event must be absent from pages *and* from API responses, and a direct URL
   must 404. A 403 would confirm the event exists.
-- **manageability** — "may this person edit, delete, publish, or decide requests
-  on this event?" A separate question with a separate answer: visibility is about
-  discovery, manageability is about being a host or an admin. Keeping them
-  distinct is what stops "can see" from creeping into "can change".
+- **manageability** — "may this person edit, delete, publish, cancel, or decide
+  requests on this event?" A separate question with a separate answer:
+  visibility is about discovery, manageability is about being a host or an
+  admin. Keeping them distinct is what stops "can see" from creeping into "can
+  change".
 - **registration availability** — "may this person take a place at this event
   right now, and if not, why not?" The third question, and again a separate one:
   seeing an event, and even being able to manage it, does not mean being able to
@@ -114,6 +118,11 @@ interacts with each access mode.
   manageability. Approving and rejecting close for different reasons, so the
   answer names them separately: a full event still takes a rejection, and a
   request already turned down may still be approved but not turned down twice.
+- **cancellation availability** — "may this event be cancelled right now?" The
+  fifth question, and about the event's own lifecycle rather than anybody's
+  place in it. Like request decision availability it is answered without
+  reference to who is asking — whether the actor may cancel at all is
+  manageability. Only a published event that has not started yet may be.
 - **`EventWithContext`** — the derived view-model an event screen usually needs:
   the event plus its hosts, the going and pending counts, the viewer's own
   registration, and whether the viewer may manage it. Built by
