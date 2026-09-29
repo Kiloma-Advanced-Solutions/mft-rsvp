@@ -9,8 +9,8 @@ live in [CLAUDE.md](../CLAUDE.md); behavioural rules in [TASKS.md](../TASKS.md) 
 
 An internal events board with two halves:
 
-- **Management** — people allowed to run events create, edit, publish and delete
-  them.
+- **Management** — people allowed to run events create, edit, publish, cancel
+  and delete them.
 - **Discovery** — everyone else browses the events they are allowed to see and
   registers for the ones they want.
 
@@ -149,7 +149,7 @@ rendering. It matters for writes in two different ways:
   their decision inside the seat protocol, under the event-row lock, from state
   re-read there.
 - **Every other write** — withdrawing, rejecting, editing, publishing,
-  deleting — authorises from the request's own pre-write read
+  cancelling, deleting — authorises from the request's own pre-write read
   (`getEventDetailForViewer`), and guards the transition itself, where there is
   one, with an expected-status compare-and-set.
 
@@ -317,18 +317,20 @@ jobs. The split is what keeps authorisation reviewable in one place.
 ### Permission rules — `lib/permissions.ts`
 
 `canViewEvent()`, `canManageEvent()`, `canCreateEvent()`,
-`getRegistrationAvailability()` and `getRequestDecisionAvailability()` are the
-single implementation of five separate questions — may this person see the
-event, may they manage it, may they create one at all, may they take a place at
-it, and what may a host decide about somebody else's request — called from both
+`getRegistrationAvailability()`, `getRequestDecisionAvailability()` and
+`getCancellationAvailability()` are the single implementation of six separate
+questions — may this person see the event, may they manage it, may they create
+one at all, may they take a place at it, what may a host decide about somebody
+else's request, and may the event be cancelled right now — called from both
 pages and route handlers so no two callers can drift apart.
 
-Two of them take something other than (event, viewer). `canCreateEvent()` takes
-only a user: creation is role-based, because there is no event yet to be a host
-of. `getRequestDecisionAvailability()` takes no user at all: *whether* the actor
-may decide is `canManageEvent()`, and every host gets the same answer about a
-given request, so folding the two together would give one rule two reasons to
-say no.
+Three of them take something other than (event, viewer). `canCreateEvent()`
+takes only a user: creation is role-based, because there is no event yet to be
+a host of. `getRequestDecisionAvailability()` and
+`getCancellationAvailability()` take no user at all: *whether* the actor may
+decide or cancel is `canManageEvent()`, and every host gets the same answer
+about a given request or event, so folding the two together would give one rule
+two reasons to say no.
 
 They are **synchronous, with no store and no session**: the caller resolves the
 viewer through `getCurrentUser()` and passes it in along with any counts, which
@@ -366,9 +368,11 @@ page (server) → getCurrentUser() → lib/events → canViewEvent() → lib/db
 ### The board — `/events`
 
 Server-rendered end to end. It asks `lib/events.ts` for what the viewer may see,
-then filters, sorts and groups that already-authorised set. Filters live in the
-URL, so the query string can only narrow what the viewer was already allowed to
-see — never widen it.
+then filters, sorts and groups that already-authorised set. Cancelled events are
+grouped into a section of their own rather than mixed into upcoming or past
+ones; grouping only, so every cancelled event the viewer may see is still there.
+Filters live in the URL, so the query string can only narrow what the viewer was
+already allowed to see — never widen it.
 
 [components/events/BoardFilters.tsx](../components/events/BoardFilters.tsx) is
 the page's only client leaf. It holds no state and makes no decisions; it turns a
@@ -392,9 +396,11 @@ in CSS would still ship it.
 
 There are two host-only surfaces on the page, and they sit apart on purpose. The
 **host tools** card in the aside holds the event's own actions — edit, publish,
-delete. The **approval queue** is a section of the main column, above "Who is
-going", because a request carries a person and a message and needs the width,
-and because the queue is the part of the screen waiting on the host.
+cancel, delete. Cancel is offered only where `getCancellationAvailability()`
+says so, the same rule the cancel route applies. The **approval queue** is a
+section of the main column, above "Who is going", because a request carries a
+person and a message and needs the width, and because the queue is the part of
+the screen waiting on the host.
 
 This one route serves both audiences and both modes: it is the attendee's screen,
 the host's management screen, and — under `?edit=1` — the edit form. "Managing
@@ -451,9 +457,9 @@ clickable again. No optimistic state: the server-rendered view is the truth.
 Why each of these was decided this way, including how the final-seat race was
 closed: [dec_log.md](dec_log.md).
 
-### Managing events — creating, editing, publishing, deleting
+### Managing events — creating, editing, publishing, cancelling, deleting
 
-The host half of the product. Four write paths. The three that address an
+The host half of the product. Five write paths. The four that address an
 existing event are authorised the same way; creating is role-based, because
 there is no event to check yet:
 
@@ -461,6 +467,7 @@ there is no event to check yet:
 POST   /api/events               create, always as a draft
 PATCH  /api/events/[id]          the event's editable content
 POST   /api/events/[id]/publish  draft -> published, no request body
+POST   /api/events/[id]/cancel   published -> cancelled, no request body
 DELETE /api/events/[id]          delete, taking its registrations with it
 ```
 
@@ -505,9 +512,17 @@ Everything else is **absent from the parser**, so `status`, `accent`,
 body; the store owns `id` and the timestamps. The protection is that the field
 does not exist there, not that it is checked.
 
-**Lifecycle.** Publishing is its own bodyless route rather than a `status` field
-on `PATCH`, which is what keeps the content editor free of lifecycle logic.
-`draft -> published` is the only transition the product performs.
+**Lifecycle.** Each transition is its own bodyless route rather than a `status`
+field on `PATCH`, which is what keeps the content editor free of lifecycle logic.
+The product performs two: `draft -> published` and `published -> cancelled`.
+Both are expected-status compare-and-set writes to the event row alone, so of
+two requests that read the same status only one moves it. Cancelling is further
+gated by `getCancellationAvailability()` — published and not yet started — read
+before the write, and `cancelled` is terminal: nothing moves an event out of it.
+A cancelled event can still be edited and deleted, and because `PATCH` cannot
+reach `status`, editing it never changes its status. Cancelling leaves every
+registration row as it was; the event's status is what closes registering,
+withdrawing and deciding, through the shared rules that close on it.
 
 **Accent** is assigned by the server when the event is created and is not
 host-editable. It is a tint on the board card and date block, invisible on the
@@ -649,10 +664,10 @@ perform the physical write on its behalf. Each runs as one transaction that:
 
 The rest of the rules around it:
 
-- **Writes that cannot raise the count** — withdrawing, rejecting, publishing —
-  do not take the event-row seat lock. They are compare-and-set transitions on
-  the expected status; zero rows written means somebody else moved first, which
-  routes report as a conflict.
+- **Writes that cannot raise the count** — withdrawing, rejecting, publishing,
+  cancelling — do not take the event-row seat lock. They are compare-and-set
+  transitions on the expected status; zero rows written means somebody else
+  moved first, which routes report as a conflict.
 - **Generic writes must not bypass the protocol.** The store offers no generic
   registration create, and `RegistrationUpdate` — the type
   `db.registrations.update` accepts — cannot express `going`, `eventId` or
@@ -693,14 +708,14 @@ Why the protocol replaced the race M3 accepted: [dec_log.md](dec_log.md).
 | The seat-claim protocol — the only runtime path that may produce `going` | [lib/data/seats.ts](../lib/data/seats.ts) |
 | Schema | [migrations/](../migrations/) |
 | The SQL Server target, rejected constructs and shared-database rules | [docs/sql-server-2008r2-compatibility.md](../docs/sql-server-2008r2-compatibility.md) — **authoritative** |
-| Visibility, manageability, creation rights, registration availability and request decisions | [lib/permissions.ts](../lib/permissions.ts) — shared by pages and routes |
+| Visibility, manageability, creation rights, registration availability, request decisions and cancellation availability | [lib/permissions.ts](../lib/permissions.ts) — shared by pages and routes |
 | Derived event context | [lib/events.ts](../lib/events.ts) — server only |
 | Fixtures / personas | [lib/seed.ts](../lib/seed.ts) |
 | API helpers | [lib/api.ts](../lib/api.ts) |
 | API house style, worked example | [app/api/session/route.ts](../app/api/session/route.ts) |
 | Registration writes, and the authorised-mutation example | [app/api/events/\[id\]/registrations/route.ts](../app/api/events/[id]/registrations/route.ts) |
 | Approving and rejecting a request | [app/api/events/\[id\]/registrations/\[registrationId\]/approve/route.ts](../app/api/events/[id]/registrations/[registrationId]/approve/route.ts) · [.../reject/route.ts](../app/api/events/[id]/registrations/[registrationId]/reject/route.ts) |
-| Event create / edit / publish / delete | [app/api/events/route.ts](../app/api/events/route.ts) · [app/api/events/\[id\]/route.ts](../app/api/events/[id]/route.ts) · [app/api/events/\[id\]/publish/route.ts](../app/api/events/[id]/publish/route.ts) |
+| Event create / edit / publish / cancel / delete | [app/api/events/route.ts](../app/api/events/route.ts) · [app/api/events/\[id\]/route.ts](../app/api/events/[id]/route.ts) · [app/api/events/\[id\]/publish/route.ts](../app/api/events/[id]/publish/route.ts) · [app/api/events/\[id\]/cancel/route.ts](../app/api/events/[id]/cancel/route.ts) |
 | What a host may set, and the rules it must satisfy | [lib/eventInput.ts](../lib/eventInput.ts) — shared by the form and the routes |
 | The create / edit form | [components/events/EventForm.tsx](../components/events/EventForm.tsx) |
 | Domain model | [lib/types.ts](../lib/types.ts) |

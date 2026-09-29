@@ -790,3 +790,73 @@ writes that never touch the event row, such as withdrawing, are unaffected. Seat
 claims for one event serialize. A host lowering capacity below attendance is
 still allowed and still evicts nobody, so an over-capacity event remains
 possible; what the protocol prevents is a seat-taking write adding to it.
+
+---
+
+## 2026-09-28 — Cancelling is a terminal `published → cancelled` transition, open only before the event starts
+
+Context: M7 asked for cancellation as a lifecycle transition separate from
+deletion, and the 2026-09-01 entry "Content, lifecycle and ownership are
+separate write paths" had already settled that it gets its own route.
+[TASKS.md](../TASKS.md) §4 closes registration on a `cancelled` event but does
+not say when an event may be cancelled, or whether cancelling can be undone.
+
+Decision: hosts and admins — `canManageEvent()` — may cancel a published event
+that has not started yet, and nothing else. Whether the event may be cancelled
+is its own rule, `getCancellationAvailability()` in
+[lib/permissions.ts](../lib/permissions.ts); it takes no user, and the route and
+the detail page both call it. The transition is terminal: there is no restore,
+and nothing moves an event out of `cancelled`. A cancelled event stays editable
+and deletable, and because `PATCH` cannot reach `status`, editing it — its
+`startsAt` included — never restores it.
+
+Rationale: a draft has no audience that could be told it was cancelled, and
+deleting it is the honest action; an event that has started has nothing left to
+call off. Terminal avoids inventing restore semantics before anything needs
+them — what reopens, and against which capacity. Keeping availability apart from
+manageability follows the 2026-09-06 entry on request decisions: whether this
+person may act and whether this event can be acted on are two answers, so a
+refusal has one reason.
+
+Consequences: restoring a cancelled event would be a new transition and route,
+and an entry superseding this one. The compare-and-set on `published` guards the
+transition, so two cancels of one event cannot both succeed; the start-time
+check runs before the write, against the application clock, on what the request
+read. No cancellation-specific locked transaction was added for the narrow case
+where the start passes, or a concurrent edit moves `startsAt`, between that
+check and the write: the result — a cancelled event with a past `startsAt` — is
+already a valid state, because a cancelled event may be edited to any date. It
+is not a defect to fix. Cancelling takes no seat lock; a seat claim that locks
+the row afterwards re-reads `cancelled` and refuses.
+
+---
+
+## 2026-09-28 — Cancelling rewrites no registration; the event's status closes everything
+
+Context: M7 required deciding what happens to existing registrations when an
+event is cancelled. The options were to delete them, to set every one to the
+registration status `cancelled`, or to leave them as they were.
+
+Decision: cancelling writes the event row and nothing else. Every registration
+keeps its status as a factual record of who was going, waiting or turned down.
+The event's `cancelled` status is what closes registering, withdrawing,
+approving and rejecting, through `getRegistrationAvailability()` and
+`getRequestDecisionAvailability()`, which already closed on it — no new rule was
+written. No cancellation metadata was added, and M7 needed no schema change or
+migration.
+
+Rationale: a `cancelled` registration already means that the person withdrew
+([d_glossary.md](d_glossary.md)). Setting every row to it would make "they
+withdrew" and "the event was called off" indistinguishable on the row, and lose
+who had actually been coming. Deleting would lose that record for good, and
+deletion is already the one event action whose purpose is removal — the
+2026-09-01 entry "Host edits never destroy a registration; deleting deliberately
+does". Reusing the existing closures keeps one implementation of each rule, as
+the 2026-08-30 entry on withdrawal intended.
+
+Consequences: a cancelled event keeps its `going` count, which the screens show
+as a fact rather than as availability. Its `going` rows cannot be withdrawn and
+its pending requests cannot be decided — the consequences the 2026-08-30 and
+2026-09-06 entries named, now reachable through the product. Deleting a
+cancelled event still removes its registrations. Recording who cancelled, when
+or why would need a migration and a decision of its own.

@@ -262,7 +262,12 @@ described in README.md "The database", the SQL contract in
 - Registration and request decisions are closed for a cancelled event.
 - The UI says clearly that the event is cancelled.
 
-**Not yet decided.** The transition's shape and its implementation.
+**Status: delivered.** The transition's shape, what happens to existing
+registrations, and the rule for when an event may be cancelled were all decided
+during M7 and are implemented. The requirement above is kept as it was set; the
+rule is `getCancellationAvailability()` in `lib/permissions.ts`, the transition
+is `POST /api/events/[id]/cancel`, and the reasoning is in
+`memory/dec_log.md`.
 
 #### M8 — Remove attendees
 
