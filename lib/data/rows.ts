@@ -139,8 +139,9 @@ function toIso(value: Date): string {
  *
  * Each one is covered by a `CHECK` constraint created in
  * `migrations/0001_create_events_tables.sql` -- `CK_Events_Users_Role`,
- * `CK_Events_Events_Access`, `CK_Events_Registrations_Status` and the rest --
- * so the database cannot hold a value outside the union. Re-checking it in
+ * `CK_Events_Events_Access`, `CK_Events_Registrations_Status` and the rest,
+ * the last redefined by `0002` to admit `removed` -- so the database cannot
+ * hold a value outside the union. Re-checking it in
  * TypeScript would be a second, weaker copy of a rule the schema already
  * guarantees.
  */

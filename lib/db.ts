@@ -31,11 +31,11 @@
  * value `undefined`** clears the field, and a key that is **absent** leaves it
  * alone. See `assignPatch` in `lib/data/registrations.ts`.
  *
- * **The exception, and the reason for it.** `registrations.claimSeat` and
- * `registrations.approve` are not plain persistence: they are the only two
- * writes that may give somebody a confirmed place, because "the `going` count
- * never exceeds capacity" is an invariant no constraint can express and only a
- * transaction can hold. See `lib/data/seats.ts` for the protocol.
+ * **The exception, and the reason for it.** `registrations.claimSeat`,
+ * `registrations.approve` and `registrations.restore` are not plain
+ * persistence: they are the only three writes that may give somebody a
+ * confirmed place, because "the `going` count never exceeds capacity" is an
+ * invariant no constraint can express and only a transaction can hold. See `lib/data/seats.ts` for the protocol.
  *
  * `registrations.create` is gone for the same reason. An unconditional insert
  * took no lock and checked no capacity, so a `going` row written through it
@@ -76,8 +76,10 @@ import {
 import {
   approveRequest,
   claimSeat,
+  restoreAttendee,
   type SeatApproval,
   type SeatClaim,
+  type SeatRestore,
 } from "./data/seats";
 import { getUser, listUsers } from "./data/users";
 import type {
@@ -105,10 +107,10 @@ export type RegistrationPatch = Partial<Omit<Registration, "id" | "createdAt">>;
  * What `registrations.update` accepts -- and the three things it does not.
  *
  * `status: "going"` is absent because raising the `going` count is the one
- * write this store will not perform generically. `claimSeat` and `approve`
- * exist for it and take the event-row lock first; a third way in would put an
- * event over its capacity with nothing to catch it, since no constraint can
- * express that rule (`lib/data/seats.ts` explains why). The file already warned
+ * write this store will not perform generically. `claimSeat`, `approve` and
+ * `restore` exist for it and take the event-row lock first; another way in
+ * would put an event over its capacity with nothing to catch it, since no
+ * constraint can express that rule (`lib/data/seats.ts` explains why). The file already warned
  * about this in prose -- *"a future write path that sets `Status = N'going'`
  * without coming through here silently breaks the invariant"* -- and this is
  * the same warning where the compiler can read it.
@@ -122,9 +124,9 @@ export type RegistrationPatch = Partial<Omit<Registration, "id" | "createdAt">>;
  * stamp is the store's to apply. See `assignPatch` in
  * `lib/data/registrations.ts`.
  *
- * Nothing here is a runtime check: the two real callers write `cancelled` and
- * `rejected` and are unaffected. It is the invariant made structural, so the
- * next caller cannot be the one that breaks it.
+ * Nothing here is a runtime check: the three real callers write `cancelled`,
+ * `rejected` and `removed` and are unaffected. It is the invariant made
+ * structural, so the next caller cannot be the one that breaks it.
  *
  * **`eventId?: never` rather than simply leaving the keys out**, and the
  * difference is the whole value of the type. Omitting them is only enforced
@@ -235,12 +237,12 @@ export const db = {
     /**
      * One registration by its own id, whoever it belongs to.
      *
-     * For the two routes that are handed a `registrationId` in the URL: a host
-     * deciding somebody else's request knows the row's id and not the pair that
-     * identifies it. **Whether that row is one this caller may decide is not
-     * answered here** -- it is a plain lookup, and both routes check
-     * `eventId` against the event they already authorised before doing
-     * anything with what comes back.
+     * For the routes that are handed a `registrationId` in the URL: a host
+     * acting on somebody else's row knows the row's id and not the pair that
+     * identifies it. **Whether that row is one this caller may act on is not
+     * answered here** -- it is a plain lookup, and each of those routes checks
+     * `eventId` against the event it already authorised before doing anything
+     * with what comes back.
      *
      * Looking a row up rather than scanning the event's rows for a matching id
      * is also what makes the id's case the database's business instead of a
@@ -258,14 +260,14 @@ export const db = {
     /**
      * `expectedStatus` makes this a compare-and-set: the row is written only if
      * it is still in the status the caller's decision was based on. Every state
-     * transition passes it -- withdrawing, rejecting, reviving -- so two writers
-     * deciding the same row cannot both win. A `null` return then means the row
-     * moved, which routes report as a conflict.
+     * transition passes it -- withdrawing, rejecting, removing, reviving -- so
+     * two writers deciding the same row cannot both win. A `null` return then
+     * means the row moved, which routes report as a conflict.
      *
      * It cannot grant a place, and it cannot move a row to another event or
      * another person -- `RegistrationUpdate` does not admit any of the three.
-     * Withdrawing and rejecting are what remain, and neither can raise the
-     * `going` count, which is why neither needs the event lock.
+     * Withdrawing, rejecting and removing are what remain, and none can raise
+     * the `going` count, which is why none needs the event lock.
      */
     async update(
       id: string,
@@ -308,7 +310,18 @@ export const db = {
         now: now(),
       });
     },
+
+    /**
+     * The same protocol for a host giving a removed attendee their place back:
+     * `removed` -> `going`. Only the status moves; the request fields stay.
+     */
+    async restore(
+      eventId: string,
+      registrationId: string,
+    ): Promise<SeatRestore> {
+      return restoreAttendee({ eventId, registrationId, now: now() });
+    },
   },
 };
 
-export type { SeatApproval, SeatClaim };
+export type { SeatApproval, SeatClaim, SeatRestore };

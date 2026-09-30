@@ -21,6 +21,8 @@ import { db } from "./db";
 import {
   canManageEvent,
   canViewEvent,
+  getAttendeeRemovalAvailability,
+  getAttendeeRestoreAvailability,
   getRequestDecisionAvailability,
 } from "./permissions";
 import type {
@@ -28,6 +30,7 @@ import type {
   EventRecord,
   EventRequest,
   EventWithContext,
+  ManagedAttendee,
   Registration,
   User,
 } from "./types";
@@ -110,7 +113,63 @@ export async function getEventDetailForViewer(
     requests: context.viewerCanManage
       ? toRequests(event, rows, usersById, context.goingCount)
       : [],
+    // Registration ids and who was removed are host-only for the same reason,
+    // and are not assembled for anyone else either.
+    managedAttendees: context.viewerCanManage
+      ? toManagedAttendees(event, rows, usersById, context.goingCount)
+      : [],
   };
+}
+
+/**
+ * The `going` and `removed` rows a host may take back or give back, in
+ * registration order, each with its availability already worked out -- so the
+ * attendee list, like the queue, derives nothing.
+ *
+ * `attendeeCanView` is informational. Removal leaves the invitation alone, but
+ * an access change afterwards can hide the event from a removed person; the
+ * list says so, and restoring them does not give their access back.
+ *
+ * A row whose person has since disappeared is dropped, the same treatment
+ * `attendees` gives a stale id.
+ */
+function toManagedAttendees(
+  event: EventRecord,
+  rows: Registration[],
+  usersById: Map<string, User>,
+  goingCount: number,
+): ManagedAttendee[] {
+  const managed: ManagedAttendee[] = [];
+
+  for (const registration of rows) {
+    const attendee = usersById.get(registration.userId);
+    if (!attendee) continue;
+
+    if (registration.status === "going") {
+      managed.push({
+        status: "going",
+        registrationId: registration.id,
+        attendee,
+        removal: getAttendeeRemovalAvailability(event, {
+          registration,
+          attendee,
+        }),
+      });
+    } else if (registration.status === "removed") {
+      managed.push({
+        status: "removed",
+        registrationId: registration.id,
+        attendee,
+        attendeeCanView: canViewEvent(event, attendee),
+        restore: getAttendeeRestoreAvailability(event, {
+          goingCount,
+          registration,
+        }),
+      });
+    }
+  }
+
+  return managed;
 }
 
 /**

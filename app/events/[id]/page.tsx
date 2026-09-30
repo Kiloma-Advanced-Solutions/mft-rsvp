@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ApprovalQueue } from "@/components/events/ApprovalQueue";
+import { AttendeeList } from "@/components/events/AttendeeList";
 import { EventForm } from "@/components/events/EventForm";
 import {
   AccessBadge,
@@ -11,7 +12,6 @@ import {
 import { HostEventActions } from "@/components/events/HostEventActions";
 import { RegistrationPanel } from "@/components/events/RegistrationPanel";
 import {
-  Badge,
   Card,
   CardBody,
   CardHeader,
@@ -27,7 +27,7 @@ import {
   getRegistrationAvailability,
 } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
-import type { EventRecord, User } from "@/lib/types";
+import type { EventRecord } from "@/lib/types";
 
 import styles from "./detail.module.css";
 
@@ -69,6 +69,7 @@ export default async function EventDetailPage({
     pendingCount,
     attendees,
     requests,
+    managedAttendees,
     viewerRegistration,
     viewerCanManage,
   } = detail;
@@ -173,7 +174,17 @@ export default async function EventDetailPage({
               <ApprovalQueue event={event} requests={requests} />
             )}
 
-            <Attendees attendees={attendees} goingCount={goingCount} />
+            {/*
+              Hosts get the same list with an action beside each attendee and
+              the people who were removed; everybody else gets `null` here,
+              and the loader left `managedAttendees` empty for them anyway.
+            */}
+            <AttendeeList
+              event={event}
+              attendees={attendees}
+              goingCount={goingCount}
+              managed={viewerCanManage ? managedAttendees : null}
+            />
           </div>
 
           <aside className={styles.aside}>
@@ -227,38 +238,6 @@ function Description({ text }: { text: string }) {
         </p>
       ))}
     </div>
-  );
-}
-
-/**
- * Who is going. `goingCount` rather than `attendees.length` is the headline,
- * because only `going` rows count and a row whose person has left the company
- * still holds a place.
- */
-function Attendees({
-  attendees,
-  goingCount,
-}: {
-  attendees: User[];
-  goingCount: number;
-}) {
-  return (
-    <section>
-      <div className={styles.attendeesHead}>
-        <h2 className={styles.sectionTitle}>{DETAIL_LABELS.attendees}</h2>
-        {goingCount > 0 && <Badge tone="neutral">{goingCount}</Badge>}
-      </div>
-
-      {attendees.length === 0 ? (
-        <p className={styles.muted}>{DETAIL_LABELS.noAttendees}</p>
-      ) : (
-        <div className={styles.people}>
-          {attendees.map((attendee) => (
-            <Person key={attendee.id} user={attendee} size="sm" />
-          ))}
-        </div>
-      )}
-    </section>
   );
 }
 

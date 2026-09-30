@@ -125,6 +125,7 @@ const REGISTRATION_STATUSES: RegistrationStatus[] = [
   "rejected",
   "cancelled",
   "waitlisted",
+  "removed",
 ];
 
 const ACCESS_MODES: EventAccess[] = ["open", "approval", "invite"];
