@@ -614,9 +614,12 @@ const ATTENDEE_RESTORE_CLOSED_NOTES: Record<
   draft: "האירוע עדיין טיוטה, ולכן אין עדיין מה להחזיר.",
   cancelled: "האירוע בוטל, ולכן אי אפשר עוד להחזיר משתתפים.",
   started: "האירוע כבר עבר, ולכן אי אפשר עוד להחזיר משתתפים.",
-  /** The current access mode wins: they can let themselves back in. */
+  /**
+   * The current access mode wins: they can let themselves back in, but only
+   * where ordinary registration would admit them -- a full open event does not.
+   */
   open_access:
-    "האירוע פתוח לכולם, ולכן אפשר להירשם אליו שוב בלי שמארח יחזיר את ההרשמה.",
+    "האירוע פתוח לכולם, ולכן אי אפשר להחזיר אליו משתתפים. אם יש מקום, הם יכולים להירשם שוב בעצמם.",
   not_removed: "ההרשמה הזו לא הוסרה, ולכן אין מה להחזיר.",
   full: "האירוע מלא, והחזרה תחרוג מהקיבולת.",
 };

@@ -15,9 +15,13 @@ import {
 } from "@/lib/labels";
 
 /**
- * The remove or restore button for one attendee. The only client code in the
- * attendee list — the people, the ids of everyone else's rows and why an action
- * is closed all stay on the server.
+ * The remove or restore button for one attendee, and the only client code in
+ * the attendee list. Each rendered button receives just its own row's
+ * registration id, the attendee's name and what it may do; the rules that
+ * decide those stay on the server. It is rendered only in `AttendeeList`'s
+ * manager branch, which is fed by data `lib/events.ts` builds only for a
+ * viewer who may manage the event — so an ordinary viewer never receives a
+ * management registration id.
  *
  * It decides nothing about whether the action is allowed. Whether it is shown,
  * and whether it is enabled, comes from `getAttendeeRemovalAvailability()` and
