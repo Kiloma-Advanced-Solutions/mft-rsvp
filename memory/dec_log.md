@@ -860,3 +860,110 @@ its pending requests cannot be decided — the consequences the 2026-08-30 and
 2026-09-06 entries named, now reachable through the product. Deleting a
 cancelled event still removes its registrations. Recording who cancelled, when
 or why would need a migration and a decision of its own.
+
+---
+
+## 2026-09-30 — Removing is its own `removed` status, and the current access mode decides the way back
+
+Context: M8 asked hosts and admins to be able to take back a confirmed place,
+as a capability separate from rejecting a request, and to decide what state
+results and whether the person may return. The 2026-09-06 entry "A rejected
+request stays approvable, and approval is the only decision that clears the
+queue" had deliberately left this unbuilt, noting that a host who approves
+somebody by mistake had no in-product way back.
+
+Decision: removing moves a `going` registration to a new status, `removed`,
+added to the schema by `migrations/0002_add_removed_registration_status.sql`,
+which re-creates the status `CHECK` under its existing name. A host may restore
+a removed attendee, `removed → going`. While the event's access is `approval`
+or `invite`, a removed person may not register again on their own —
+`getRegistrationAvailability()` answers `removed` — so restoring is the only way
+back. On an `open` event both removing and restoring are closed, and a removed
+person registers again through the ordinary flow under its ordinary closures.
+Both actions close on a draft, a cancelled event and one that has started.
+
+Rationale: `cancelled` already means the person withdrew
+([d_glossary.md](d_glossary.md)), and it lets them register again. `rejected`
+belongs to request decisions and would put the row in the approval queue.
+Deleting the row is ruled out by the 2026-08-30 entry "One registration row per
+person and event, transitioned rather than replaced". A value of its own keeps
+each meaning on the row, and lets self-registration be refused in one place. An
+`open` event admits anyone, so a host has no say over who attends it; letting
+the current mode decide gives each mode exactly one way back.
+
+Consequences: the 2026-09-06 entry stands for the queue — `going` is still
+terminal there — but a confirmed place on an `approval` or `invite` event now
+has an in-product way back, through the attendee list rather than the queue.
+Switching an event to `open` changes what a removed row allows: the person may
+then register again on their own. Migration 0002 is the first schema change
+since M6, and `0001` was not edited.
+
+---
+
+## 2026-09-30 — A manager's place is not removable, and removing never touches an invitation
+
+Context: removing raised two questions the specification does not answer:
+whether a host may remove somebody who may manage the event themselves, and
+what removing does to that person's invitation on an invite-only event.
+
+Decision: `getAttendeeRemovalAvailability()` takes the target as well as the
+row, and refuses when the target may manage the event — the caller, another
+host or an admin alike. The route answers that with a 409, not a 403: the
+caller may remove people, just not this one. Removing and restoring write the
+registration row alone; the invite list is never changed. Restoring therefore
+gives a place, not visibility, and a removed person who has lost sight of the
+event — after an access change — is flagged on their row (`attendeeCanView`)
+and stays restorable. The host's rows are built by
+[lib/events.ts](../lib/events.ts) only for a viewer who may manage the event.
+
+Rationale: somebody who may manage the event steps back out by withdrawing,
+through the same flow as any other participant, rather than through attendee
+removal — and that includes a host removing themselves. An invitation is a
+separate relationship from a registration — the 2026-09-01 entry already keeps
+the two independent across edits — and M8 deliberately left invitations alone,
+revoking none on removal. Flagging rather than resolving a lost-visibility
+row, and building the data only for managers, are the 2026-09-06 entry "The
+queue's data is built only for managers, and a stale requester is flagged rather
+than resolved" applied to the attendee list.
+
+Consequences: a removed attendee on an invite-only event still sees the event,
+and sees that they were removed. Changing who is invited — including fixing a
+restored person who cannot see the event — is left to M9, invitation
+management.
+
+---
+
+## 2026-09-30 — Restoring is a seat claim that resumes the removed cycle; removing is a lock-free compare-and-set
+
+Context: one of the two new transitions lowers the `going` count and the other
+raises it, and the 2026-09-15 entry "Capacity is held by a seat-claim protocol;
+supersedes the accepted final-seat race" requires every write that can raise it
+to go through [lib/data/seats.ts](../lib/data/seats.ts). Separately, a
+registration carries the previous request's `message`, `decidedBy` and
+`decidedAt`, and each transition had to decide what to do with them.
+
+Decision: removing is an expected-status write from `going` with no event-row
+seat lock, like withdrawing and rejecting. Restoring is the third seat claim,
+beside registering and approving: `db.registrations.restore` locks the event
+row, re-counts, re-runs `getAttendeeRestoreAvailability()` and writes only if
+the row is still `removed`. Both change the status and refresh `updatedAt`, and
+leave `message`, `decidedBy` and `decidedAt` as they were, so a restored person
+returns to the cycle they were removed from with its record intact. A removed
+person registering again on an `open` event goes through `claimSeat` instead,
+which treats the row as revived and starts a new cycle.
+Removing asks for confirmation; restoring does not.
+
+Rationale: an operation that can only free a seat cannot overfill an event, so
+it needs no lock; the compare-and-set is what stops it acting on a row that
+moved. Restoring can take the last seat, so it is held to the same protocol and
+re-runs the same rule the route ran. Restoring undoes a removal — the request
+that got the person in was already decided — whereas registering again is the
+person asking afresh, which is what the 2026-08-30 entry means by a new cycle.
+Removing earns a confirmation because undoing it depends on a seat still being
+free when the host changes their mind. Restoring
+has none, consistent with the 2026-09-06 entry's view that a confirmation in
+front of a reversible action is ceremony.
+
+Consequences: three paths now produce `going` — `claimSeat`, `approve` and
+`restore` — and `RegistrationUpdate` still cannot express it. Nothing records
+who removed someone, when or why, beyond the row's `updatedAt`.

@@ -10,7 +10,8 @@ live in [CLAUDE.md](../CLAUDE.md); behavioural rules in [TASKS.md](../TASKS.md) 
 An internal events board with two halves:
 
 - **Management** — people allowed to run events create, edit, publish, cancel
-  and delete them.
+  and delete them, decide the requests on them, and remove and restore their
+  attendees.
 - **Discovery** — everyone else browses the events they are allowed to see and
   registers for the ones they want.
 
@@ -114,8 +115,8 @@ Server Component / Route Handler → lib/session, lib/events → lib/db.ts → l
   registration create, and the type the generic `registrations.update` accepts
   cannot express setting `going` or moving a row to another event or person — a
   type-level restriction, not a runtime check. At runtime a place is granted
-  only through `claimSeat` and `approve` — see "Seat-taking and concurrency"
-  below.
+  only through `claimSeat`, `approve` and `restore` — see "Seat-taking and
+  concurrency" below.
 - **[lib/data/](../lib/data/) owns the SQL**: one module per concern (events,
   registrations, users), `rows.ts` for the row ↔ domain translation, and
   `seats.ts` for the seat protocol. Its T-SQL is held to the project's SQL
@@ -145,13 +146,13 @@ stitched aggregate is **not** a database-wide snapshot, so a concurrent change
 can briefly show a mix of committed moments. The product accepts that for
 rendering. It matters for writes in two different ways:
 
-- **Capacity-sensitive writes** — taking a place, approving one — re-derive
-  their decision inside the seat protocol, under the event-row lock, from state
-  re-read there.
-- **Every other write** — withdrawing, rejecting, editing, publishing,
-  cancelling, deleting — authorises from the request's own pre-write read
-  (`getEventDetailForViewer`), and guards the transition itself, where there is
-  one, with an expected-status compare-and-set.
+- **Capacity-sensitive writes** — taking a place, approving one, restoring a
+  removed attendee — re-derive their decision inside the seat protocol, under
+  the event-row lock, from state re-read there.
+- **Every other write** — withdrawing, rejecting, removing an attendee,
+  editing, publishing, cancelling, deleting — authorises from the request's own
+  pre-write read (`getEventDetailForViewer`), and guards the transition itself,
+  where there is one, with an expected-status compare-and-set.
 
 The mixed-moment window is narrow today: no current product route writes co-host
 or invite rows on their own — creating an event writes empty lists, and deleting
@@ -189,7 +190,8 @@ logic that lives in the route is turning that answer into a status code. See
   barrel: [components/ui/index.ts](../components/ui/index.ts).
 - `events/` — anything that understands the domain: `EventCard`, `EventGrid`,
   `BoardFilters`, `RegistrationPanel`, `RegistrationActions`, `EventForm`,
-  `HostEventActions`, `ApprovalQueue`, `RequestDecisionActions`, and the
+  `HostEventActions`, `ApprovalQueue`, `RequestDecisionActions`,
+  `AttendeeList`, `AttendeeActions`, and the
   `EventMeta` family (`DateBlock`, `AccessBadge`, `EventStatusBadge`,
   `RegistrationBadge`, `EventMetaLine`, `EventMetaDetails`, `CapacityMeter`).
 - `layout/` — the app frame: `AppShell`, `NavLink`, `PersonaSwitcher`.
@@ -317,20 +319,26 @@ jobs. The split is what keeps authorisation reviewable in one place.
 ### Permission rules — `lib/permissions.ts`
 
 `canViewEvent()`, `canManageEvent()`, `canCreateEvent()`,
-`getRegistrationAvailability()`, `getRequestDecisionAvailability()` and
-`getCancellationAvailability()` are the single implementation of six separate
-questions — may this person see the event, may they manage it, may they create
-one at all, may they take a place at it, what may a host decide about somebody
-else's request, and may the event be cancelled right now — called from both
-pages and route handlers so no two callers can drift apart.
+`getRegistrationAvailability()`, `getRequestDecisionAvailability()`,
+`getCancellationAvailability()`, `getAttendeeRemovalAvailability()` and
+`getAttendeeRestoreAvailability()` are the single implementation of eight
+separate questions — may this person see the event, may they manage it, may
+they create one at all, may they take a place at it, what may a host decide
+about somebody else's request, may the event be cancelled right now, may a host
+take this confirmed place back, and may a host give this removed one back —
+called from both pages and route handlers so no two callers can drift apart.
 
-Three of them take something other than (event, viewer). `canCreateEvent()`
+Five of them take something other than (event, viewer). `canCreateEvent()`
 takes only a user: creation is role-based, because there is no event yet to be
-a host of. `getRequestDecisionAvailability()` and
-`getCancellationAvailability()` take no user at all: *whether* the actor may
-decide or cancel is `canManageEvent()`, and every host gets the same answer
-about a given request or event, so folding the two together would give one rule
-two reasons to say no.
+a host of. The other four take no *actor*: *whether* the actor may decide,
+cancel, remove or restore is `canManageEvent()`, and every host gets the same
+answer about a given row or event, so folding the two together would give one
+rule two reasons to say no. `getRequestDecisionAvailability()`,
+`getCancellationAvailability()` and `getAttendeeRestoreAvailability()` take no
+user at all, which is what lets the seat protocol re-run the decision and
+restore rules inside its transaction. `getAttendeeRemovalAvailability()` does
+take a user — the *target*, the person whose place it is — because someone who
+may manage the event is not removable this way.
 
 They are **synchronous, with no store and no session**: the caller resolves the
 viewer through `getCurrentUser()` and passes it in along with any counts, which
@@ -394,18 +402,23 @@ is presentation only and stays a Server Component, and the host-only section is
 gated on manageability and absent from the markup for everyone else — hiding it
 in CSS would still ship it.
 
-There are two host-only surfaces on the page, and they sit apart on purpose. The
-**host tools** card in the aside holds the event's own actions — edit, publish,
-cancel, delete. Cancel is offered only where `getCancellationAvailability()`
-says so, the same rule the cancel route applies. The **approval queue** is a
-section of the main column, above "Who is going", because a request carries a
-person and a message and needs the width, and because the queue is the part of
-the screen waiting on the host.
+There are three host-only surfaces on the page, and they sit apart on purpose.
+The **host tools** card in the aside holds the event's own actions — edit,
+publish, cancel, delete. Cancel is offered only where
+`getCancellationAvailability()` says so, the same rule the cancel route
+applies. The **approval queue** is a section of the main column, above "Who is
+going", because a request carries a person and a message and needs the width,
+and because the queue is the part of the screen waiting on the host. The
+**host's attendee list** is "Who is going" itself, served in a host's version:
+the same section with a remove action beside each confirmed attendee the host
+may currently remove, and the removed people in a group of their own — see
+"Managing attendees" below.
 
 This one route serves both audiences and both modes: it is the attendee's screen,
 the host's management screen, and — under `?edit=1` — the edit form. "Managing
-events" and "Deciding requests" below describe that half. Which controls a given
-viewer gets is manageability; current state is in [s_status.md](s_status.md).
+events", "Deciding requests" and "Managing attendees" below describe that half.
+Which controls a given viewer gets is manageability; current state is in
+[s_status.md](s_status.md).
 
 The registration call to action acts through a client leaf, described next.
 
@@ -577,13 +590,14 @@ them, rather than assembled and then withheld.
 **What is actionable.** The queue holds the two statuses a host can still act
 on: `pending` requests, and `rejected` ones — [TASKS.md](../TASKS.md) §4 keeps a
 turned-down person approvable while forbidding them to ask again. `going`,
-`cancelled` and `waitlisted` rows are not a host's to decide. Approving is
-therefore the only *decision* that takes a row out of the queue: an approved
-person becomes a confirmed attendee and appears under "Who is going" instead.
-Nothing takes a confirmed place back — see "Deliberately absent" in
-[s_status.md](s_status.md). A row can also leave with no host acting at all: a
-pending requester may withdraw, which sets their registration to `cancelled` —
-neither of the two statuses this queue holds.
+`cancelled`, `waitlisted` and `removed` rows are not a host's to decide.
+Approving is therefore the only *decision* that takes a row out of the queue:
+an approved person becomes a confirmed attendee and appears under "Who is
+going" instead. Taking a confirmed place back is not a decision on a request
+but a capability of its own — see "Managing attendees" below. A row can also
+leave with no host acting at all: a pending requester may withdraw, which sets
+their registration to `cancelled` — neither of the two statuses this queue
+holds.
 
 **What closes it.** A draft, a cancelled event or one that has already started
 refuses both decisions, the same closure `getRegistrationAvailability()` applies
@@ -630,6 +644,74 @@ and the attendee list become true again. No optimistic state.
 
 Why each of these was decided this way: [dec_log.md](dec_log.md).
 
+### Managing attendees — removing and restoring
+
+The third part of the host half. Rejecting turns down somebody who asked;
+removing takes back a place somebody already had, so it is its own capability
+with its own rule rather than a third decision on a request.
+
+```
+POST /api/events/[id]/registrations/[registrationId]/remove    going -> removed
+POST /api/events/[id]/registrations/[registrationId]/restore   removed -> going
+```
+
+The same shape as `approve` and `reject` beside them: **no body**, the session
+says who is acting, the URL says which registration, and the route says which
+transition. The order of refusals is theirs too — 404 for a missing or
+invisible event, 403 for a viewer who may not manage it, 404 for a row that is
+not this event's, then 409 when the transition's own rule says no. A target who
+may manage the event is a 409, not a 403: the caller may remove people, just
+not this one.
+
+**The rules.** `getAttendeeRemovalAvailability()` and
+`getAttendeeRestoreAvailability()` close on a draft, a cancelled event and one
+that has already started, like every other availability rule. Removing needs a
+`going` row whose person may not manage the event; it never consults capacity.
+Restoring needs a `removed` row and a seat — capacity closes it, as it closes
+approving.
+
+**The current access mode wins.** Both are closed on an `open` event, where a
+host has no say over who attends. On `approval` and `invite` events a removed
+person may not register again on their own — `getRegistrationAvailability()`
+answers `removed` — so a host's restore is the only way back. Once an event is
+`open`, the same rule lets them through, and they register through the ordinary
+flow under its ordinary closures, including a full event. One way back per
+mode.
+
+**Who sees it.** The host's rows — registration ids, availability, and who was
+removed — are built in [lib/events.ts](../lib/events.ts) as `managedAttendees`
+**only when `viewerCanManage`**, exactly like the queue's; everyone else gets
+an empty array, and the page hands `AttendeeList` `null` and renders the plain
+list. The one client leaf, `AttendeeActions`, receives an id, a name and what
+it may do.
+
+**How the writes are made safe.** Removing lowers the `going` count, so it
+cannot overfill an event: it is an expected-status transition from `going`,
+with no event-row seat lock. Restoring raises the count, so it is the third
+seat claim — `db.registrations.restore` locks the event row, re-counts,
+re-runs `getAttendeeRestoreAvailability()` and writes only if the row is still
+`removed`. Two restores, or a restore and anybody else taking the last seat,
+cannot both succeed.
+
+**The cycle survives.** Both change the status and refresh `updatedAt`, and
+leave the rest of the row alone. `message`, `decidedBy` and `decidedAt` belong
+to the request that got the person in, so a restored person returns to the
+cycle they were removed from. A removed person registering again
+on an `open` event goes through `claimSeat` instead, which — as for any revived
+row — starts a new cycle and clears them.
+
+**Invitations are not touched.** Neither route writes the invite list. On an
+invite-only event a removed person keeps their invitation, can still see the
+event, and sees that they were removed. Restoring grants a place, not
+visibility: if an access change has since hidden the event from a removed
+person, their row says so (`attendeeCanView`) and stays restorable, the same
+way the queue treats a requester who lost sight of the event.
+
+Removing asks first through `ConfirmDialog`, because getting the place back
+depends on a seat still being free; restoring does not.
+
+Why each of these was decided this way: [dec_log.md](dec_log.md).
+
 Current position: [s_status.md](s_status.md).
 
 ## Seat-taking and concurrency
@@ -650,9 +732,11 @@ rather than cascading. The schema is [migrations/](../migrations/).
 **What the application protocol guarantees.** At application runtime, the only
 way to produce `going` is the seat protocol in
 [lib/data/seats.ts](../lib/data/seats.ts), reached through
-`db.registrations.claimSeat` (registering or requesting a place) and
-`db.registrations.approve` (a host's decision). Lower-level `lib/data/` helpers
-perform the physical write on its behalf. Each runs as one transaction that:
+`db.registrations.claimSeat` (registering or requesting a place),
+`db.registrations.approve` (a host's decision) and `db.registrations.restore`
+(a host giving a removed attendee their place back). Lower-level `lib/data/`
+helpers perform the physical write on its behalf. Each runs as one transaction
+that:
 
 1. locks the event row;
 2. re-reads the authoritative state under that lock — the event, the `going`
@@ -664,10 +748,10 @@ perform the physical write on its behalf. Each runs as one transaction that:
 
 The rest of the rules around it:
 
-- **Writes that cannot raise the count** — withdrawing, rejecting, publishing,
-  cancelling — do not take the event-row seat lock. They are compare-and-set
-  transitions on the expected status; zero rows written means somebody else
-  moved first, which routes report as a conflict.
+- **Writes that cannot raise the count** — withdrawing, rejecting, removing an
+  attendee, publishing, cancelling — do not take the event-row seat lock. They
+  are compare-and-set transitions on the expected status; zero rows written
+  means somebody else moved first, which routes report as a conflict.
 - **Generic writes must not bypass the protocol.** The store offers no generic
   registration create, and `RegistrationUpdate` — the type
   `db.registrations.update` accepts — cannot express `going`, `eventId` or
@@ -708,13 +792,14 @@ Why the protocol replaced the race M3 accepted: [dec_log.md](dec_log.md).
 | The seat-claim protocol — the only runtime path that may produce `going` | [lib/data/seats.ts](../lib/data/seats.ts) |
 | Schema | [migrations/](../migrations/) |
 | The SQL Server target, rejected constructs and shared-database rules | [docs/sql-server-2008r2-compatibility.md](../docs/sql-server-2008r2-compatibility.md) — **authoritative** |
-| Visibility, manageability, creation rights, registration availability, request decisions and cancellation availability | [lib/permissions.ts](../lib/permissions.ts) — shared by pages and routes |
+| Visibility, manageability, creation rights, registration availability, request decisions, cancellation availability, and attendee removal and restore availability | [lib/permissions.ts](../lib/permissions.ts) — shared by pages and routes |
 | Derived event context | [lib/events.ts](../lib/events.ts) — server only |
 | Fixtures / personas | [lib/seed.ts](../lib/seed.ts) |
 | API helpers | [lib/api.ts](../lib/api.ts) |
 | API house style, worked example | [app/api/session/route.ts](../app/api/session/route.ts) |
 | Registration writes, and the authorised-mutation example | [app/api/events/\[id\]/registrations/route.ts](../app/api/events/[id]/registrations/route.ts) |
 | Approving and rejecting a request | [app/api/events/\[id\]/registrations/\[registrationId\]/approve/route.ts](../app/api/events/[id]/registrations/[registrationId]/approve/route.ts) · [.../reject/route.ts](../app/api/events/[id]/registrations/[registrationId]/reject/route.ts) |
+| Removing and restoring an attendee | [app/api/events/\[id\]/registrations/\[registrationId\]/remove/route.ts](../app/api/events/[id]/registrations/[registrationId]/remove/route.ts) · [.../restore/route.ts](../app/api/events/[id]/registrations/[registrationId]/restore/route.ts) |
 | Event create / edit / publish / cancel / delete | [app/api/events/route.ts](../app/api/events/route.ts) · [app/api/events/\[id\]/route.ts](../app/api/events/[id]/route.ts) · [app/api/events/\[id\]/publish/route.ts](../app/api/events/[id]/publish/route.ts) · [app/api/events/\[id\]/cancel/route.ts](../app/api/events/[id]/cancel/route.ts) |
 | What a host may set, and the rules it must satisfy | [lib/eventInput.ts](../lib/eventInput.ts) — shared by the form and the routes |
 | The create / edit form | [components/events/EventForm.tsx](../components/events/EventForm.tsx) |
@@ -725,6 +810,7 @@ Why the protocol replaced the race M3 accepted: [dec_log.md](dec_log.md).
 | Language, direction and fonts | [app/layout.tsx](../app/layout.tsx) — `lang`, `dir` and the font variables · font stack in [app/styles/tokens.css](../app/styles/tokens.css) |
 | UI kit barrel | [components/ui/index.ts](../components/ui/index.ts) |
 | The approval queue, and its decision buttons | [components/events/ApprovalQueue.tsx](../components/events/ApprovalQueue.tsx) · [components/events/RequestDecisionActions.tsx](../components/events/RequestDecisionActions.tsx) |
+| "Who is going", its host version, and the remove and restore buttons | [components/events/AttendeeList.tsx](../components/events/AttendeeList.tsx) · [components/events/AttendeeActions.tsx](../components/events/AttendeeActions.tsx) |
 | Event components | [components/events/](../components/events/) |
 | App frame | [components/layout/](../components/layout/) |
 | Live component reference | `/styleguide` in the running app |
