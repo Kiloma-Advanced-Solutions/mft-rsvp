@@ -215,6 +215,7 @@ event you were not invited to fails with a sensible status.
 2. **Waitlist** — `waitlisted` already exists in `RegistrationStatus`. Auto-promote
    when someone withdraws.
 3. **Managing invitations** — hosts add and remove invited people.
+   *Promoted to M9 below.*
 4. **Search** across title, summary and description.
 5. **"My events"** — hosting, going, and awaiting approval.
 6. **Optimistic UI** on the register button.
@@ -280,9 +281,57 @@ is `POST /api/events/[id]/cancel`, and the reasoning is in
 - Capacity and attendee counts update correctly.
 - Authorisation and transition validation are enforced on the server.
 
-**Not yet decided.** The exact transition and the API shape.
+**Status: delivered.** The resulting state, when the person may come back, and
+the API shape were all decided during M8 and are implemented. The requirement
+above is kept as it was set. Removal produces a new `removed` registration
+status, added to the schema by
+`migrations/0002_add_removed_registration_status.sql`, and a host can also
+restore a removed attendee. The rules are `getAttendeeRemovalAvailability()`
+and `getAttendeeRestoreAvailability()` in `lib/permissions.ts`; the transitions
+are `POST /api/events/[id]/registrations/[registrationId]/remove` and
+`.../restore`; the host's controls are on the attendee list of the detail page;
+and the reasoning is in `memory/dec_log.md`.
 
-#### M9 — Shareable event links
+#### M9 — Invitation management
+
+**Goal.** Give hosts and admins a real way to decide who is invited to an
+event, so that an invite-only event can actually admit somebody.
+
+Invite-only access already works: hosts can create and publish an invite-only
+event, and the invite list is already enforced on the server for both
+visibility and registration. What is missing is managing that list. A new
+event starts with an empty one, and nothing in the product writes to it, so a
+new invite-only event stays visible only to its hosts and admins.
+
+- Hosts and admins can see who is invited, invite existing people, and revoke
+  an invitation.
+- An invitation and a registration stay separate. Being invited makes the
+  event visible and lets the person register through the ordinary flow; it
+  does not register them.
+- Define what revoking an invitation does to the person's existing
+  registration, whatever its status.
+- Removing or restoring an attendee (M8) does not change the invite list.
+- Invite-only visibility stays enforced on the server, and managing the list
+  must not weaken the never-leak constraint in section 1.
+
+**Not in scope.** Shareable links, which are M10. Inviting anyone who is not
+already a user — the product has no way to create one. Co-host management.
+
+**Done when:** a host invites an existing member to an invite-only event, that
+member sees it on the board and registers through the ordinary flow, and an
+uninvited member still gets a 404 for it — checked by switching persona.
+
+**Not yet decided.** Who may be invited. Whether the list can be managed while
+access is not `invite`, or while the event is a draft, cancelled or has
+started. What revoking does to an existing registration. Whether invitees can
+see each other. How the size of the list relates to capacity. Whether inviting
+belongs in event creation, on the detail page, or both. Whether to record who
+invited whom and when. Notifications and bulk inviting. And how a change
+to the list stays safe against a concurrent registration: the invite rows are
+read by a separate statement, and the event-row lock the seat protocol takes
+does not cover them.
+
+#### M10 — Shareable event links
 
 **Goal.** Let an organizer publish a link that another person can open to reach
 the event and register.
@@ -298,7 +347,7 @@ the event and register.
 **Not yet decided.** Whether this uses the event id, a token, a slug, a separate
 record, or something else.
 
-#### M10 — Application logging
+#### M11 — Application logging
 
 **Goal.** Add developer-facing logging and observability for meaningful product
 activity.

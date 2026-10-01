@@ -25,8 +25,9 @@ in [a_system.md](a_system.md).
   host.
 - **admin** — may manage every event in the system, hosted or not.
 - **host** — *not a role*. A host is the event's `organizerId`, or anyone in its
-  `coHostIds`. This is the term that decides who may edit, publish, delete and
-  decide requests on a specific event. A host is not automatically an attendee.
+  `coHostIds`. This is the term that decides who may edit, publish, cancel,
+  delete, decide requests on, and remove or restore attendees of a specific
+  event. A host is not automatically an attendee.
 - **invited user** — someone in an event's `invitedUserIds`. Only meaningful when
   the access mode is `invite`.
 - **persona** — the stand-in for authentication. You "sign in" by picking one from
@@ -74,13 +75,22 @@ for the five seeded personas and what each is useful for.
   when its requester withdraws, since that makes the registration `cancelled`.
 - **cancelled registration** — the person withdrew. Note the collision: a
   *cancelled event* (`EventStatus`) and a *cancelled registration*
-  (`RegistrationStatus`) are unrelated things that share a word.
+  (`RegistrationStatus`) are unrelated things that share a word. Not the same
+  as `removed`, which is a host's act rather than the person's own answer.
+- `removed` — a host or admin took back a confirmed place. Not the person's own
+  answer (`cancelled`) and not a decision on a request (`rejected`). While the
+  event's access is `approval` or `invite` the person may not register again on
+  their own; a host may restore them, subject to the event's lifecycle and
+  capacity. Once the event is `open`, ordinary registration is their way back
+  instead, and a host has nothing to restore. Removal does not revoke an
+  invitation.
 - `waitlisted` — exists in the type, but nothing in the app produces it. It is
   there for a stretch goal.
 
 Registration statuses have their own user-facing wording, and it is Hebrew:
-`pending` displays as "ממתין לאישור", `cancelled` as "לא מגיע/ה". The *values*
-are unchanged — what this glossary defines is the identifier, not the label.
+`pending` displays as "ממתין לאישור", `cancelled` as "לא מגיע/ה", `removed` as
+"הוסר/ה". The *values* are unchanged — what this glossary defines is the
+identifier, not the label.
 Import the copy from [lib/labels.ts](../lib/labels.ts) rather than inventing it.
 
 → [lib/types.ts](../lib/types.ts) for `Registration` and `RegistrationStatus`;
@@ -91,7 +101,8 @@ Import the copy from [lib/labels.ts](../lib/labels.ts) rather than inventing it.
 - **capacity** — the maximum number of confirmed attendees. `null` means
   unlimited.
 - **full** — the number of `going` registrations has reached capacity. Only
-  `going` counts; `pending`, `cancelled`, `rejected` and `waitlisted` do not.
+  `going` counts; `pending`, `cancelled`, `rejected`, `waitlisted` and
+  `removed` do not.
 
 → [TASKS.md](../TASKS.md) §4 for when registration is closed and how capacity
 interacts with each access mode.
@@ -101,11 +112,11 @@ interacts with each access mode.
 - **visibility** — "may this person see this event at all?" When the answer is no
   the event must be absent from pages *and* from API responses, and a direct URL
   must 404. A 403 would confirm the event exists.
-- **manageability** — "may this person edit, delete, publish, cancel, or decide
-  requests on this event?" A separate question with a separate answer:
-  visibility is about discovery, manageability is about being a host or an
-  admin. Keeping them distinct is what stops "can see" from creeping into "can
-  change".
+- **manageability** — "may this person edit, delete, publish, cancel, decide
+  requests on, or remove and restore attendees of this event?" A separate
+  question with a separate answer: visibility is about discovery,
+  manageability is about being a host or an admin. Keeping them distinct is
+  what stops "can see" from creeping into "can change".
 - **registration availability** — "may this person take a place at this event
   right now, and if not, why not?" The third question, and again a separate one:
   seeing an event, and even being able to manage it, does not mean being able to
@@ -123,9 +134,24 @@ interacts with each access mode.
   place in it. Like request decision availability it is answered without
   reference to who is asking — whether the actor may cancel at all is
   manageability. Only a published event that has not started yet may be.
+- **attendee removal availability** — "may a host take this confirmed place
+  back right now?" The sixth question. Like request decision availability it is
+  about a row somebody else owns and ignores who is asking — whether the actor
+  may remove anyone is manageability. It does depend on the *target*: a place
+  belonging to someone who may manage the event is not removable this way.
+  Closed on an `open` event, where a host has no say over who attends.
+- **attendee restore availability** — "may a host give this removed attendee
+  their place back right now?" The seventh question, also answered without
+  reference to the actor. Restoring takes a seat, so capacity closes it, and it
+  is closed on an `open` event, where the person may register again on their
+  own.
 - **`EventWithContext`** — the derived view-model an event screen usually needs:
   the event plus its hosts, the going and pending counts, the viewer's own
   registration, and whether the viewer may manage it. Built by
-  [lib/events.ts](../lib/events.ts), after visibility has been applied.
+  [lib/events.ts](../lib/events.ts), after visibility has been applied. The
+  detail screen's version adds the confirmed attendees themselves, the
+  approval queue's rows, and the **managed attendees** — the `going` and
+  `removed` rows with what a host may do about each. The last two are left
+  empty for anyone who may not manage the event.
 
 → [TASKS.md](../TASKS.md) §4 for the authoritative visibility and action tables.
