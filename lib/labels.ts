@@ -8,6 +8,8 @@
 
 import type { BadgeTone } from "@/components/ui";
 import type {
+  AttendeeRemovalClosedReason,
+  AttendeeRestoreClosedReason,
   CancellationClosedReason,
   EventAccess,
   EventCategory,
@@ -85,6 +87,7 @@ export const REGISTRATION_LABELS: Record<RegistrationStatus, string> = {
   rejected: "לא אושר",
   cancelled: "לא מגיע/ה",
   waitlisted: "ברשימת המתנה",
+  removed: "הוסר/ה",
 };
 
 export const REGISTRATION_TONES: Record<RegistrationStatus, BadgeTone> = {
@@ -93,6 +96,7 @@ export const REGISTRATION_TONES: Record<RegistrationStatus, BadgeTone> = {
   rejected: "danger",
   cancelled: "neutral",
   waitlisted: "info",
+  removed: "danger",
 };
 
 /* -------------------------------------------------------------- categories */
@@ -224,6 +228,8 @@ const CLOSED_NOTES: Record<RegistrationClosedReason, string> = {
   full: "האירוע מלא.",
   rejected:
     "הבקשה שלכם לא אושרה. מארח עדיין יכול לאשר אתכם מתוך התור שלו.",
+  removed:
+    "הוסרתם מהאירוע. מארח עדיין יכול להחזיר אתכם לרשימת המשתתפים.",
   not_invited: "האירוע בהזמנה בלבד, ואתם לא ברשימת המוזמנים.",
 };
 
@@ -242,8 +248,18 @@ const CANCELLED_EVENT_NOTES: Partial<Record<RegistrationStatus, string>> = {
 };
 
 /**
+ * What a removed person reads once the event has been opened to everyone. Their
+ * badge still says they were removed, which on its own would contradict the
+ * register button beside it; this says why both are true.
+ */
+const REMOVED_REOPENED_NOTE =
+  "הוסרתם מהאירוע בעבר, אבל עכשיו הוא פתוח ואפשר להירשם שוב. ההרשמה תאושר מיד.";
+
+/**
  * `viewerStatus` only changes the wording for a cancelled event -- see
- * `CANCELLED_EVENT_NOTES`. Everything else is decided by `availability` alone.
+ * `CANCELLED_EVENT_NOTES` -- and for a removed person who may register again
+ * because the event is now open. Everything else is decided by `availability`
+ * alone.
  */
 export function registrationCtaCopy(
   availability: RegistrationAvailability,
@@ -256,7 +272,13 @@ export function registrationCtaCopy(
             action: "בקשת מקום",
             note: "מארח מחליט מי נכנס, ולכן זו בקשה ולא הרשמה.",
           }
-        : { action: "הרשמה", note: "ההרשמה תאושר מיד." };
+        : {
+            action: "הרשמה",
+            note:
+              viewerStatus === "removed"
+                ? REMOVED_REOPENED_NOTE
+                : "ההרשמה תאושר מיד.",
+          };
 
     /*
       English called both of these "Withdraw". Hebrew names what is being
@@ -553,6 +575,146 @@ export function cancellationClosedNote(
 ): string {
   return CANCELLATION_CLOSED_NOTES[reason];
 }
+
+/* ------------------------------------------------------ attendee removal */
+
+/**
+ * Why a host cannot take a confirmed place back, or give a removed one back.
+ * The rules that produced the reasons are `getAttendeeRemovalAvailability()`
+ * and `getAttendeeRestoreAvailability()`; the attendee list and the two routes
+ * both read the wording from here, so a note beside a button and a refusal
+ * from the API say the same thing.
+ *
+ * Worded without the attendee's name or gender, so one sentence serves every
+ * row: "they" rather than a gendered verb, the way `QUEUE_LABELS` does.
+ */
+const ATTENDEE_REMOVAL_CLOSED_NOTES: Record<
+  AttendeeRemovalClosedReason,
+  string
+> = {
+  draft: "האירוע עדיין טיוטה, ולכן אין עדיין משתתפים להסיר.",
+  cancelled: "האירוע בוטל, ולכן אי אפשר עוד להסיר משתתפים.",
+  started: "האירוע כבר עבר, ולכן אי אפשר עוד להסיר משתתפים.",
+  open_access: "האירוע פתוח לכולם, ולכן אי אפשר להסיר ממנו משתתפים.",
+  not_going: "ההרשמה הזו כבר לא מאושרת, ולכן אין מה להסיר.",
+  manager:
+    "אי אפשר להסיר מי שמנהל את האירוע. אם הם לא מגיעים, הם יכולים לבטל את ההשתתפות בעצמם.",
+};
+
+export function attendeeRemovalClosedNote(
+  reason: AttendeeRemovalClosedReason,
+): string {
+  return ATTENDEE_REMOVAL_CLOSED_NOTES[reason];
+}
+
+const ATTENDEE_RESTORE_CLOSED_NOTES: Record<
+  AttendeeRestoreClosedReason,
+  string
+> = {
+  draft: "האירוע עדיין טיוטה, ולכן אין עדיין מה להחזיר.",
+  cancelled: "האירוע בוטל, ולכן אי אפשר עוד להחזיר משתתפים.",
+  started: "האירוע כבר עבר, ולכן אי אפשר עוד להחזיר משתתפים.",
+  /**
+   * The current access mode wins: they can let themselves back in, but only
+   * where ordinary registration would admit them -- a full open event does not.
+   */
+  open_access:
+    "האירוע פתוח לכולם, ולכן אי אפשר להחזיר אליו משתתפים. אם יש מקום, הם יכולים להירשם שוב בעצמם.",
+  not_removed: "ההרשמה הזו לא הוסרה, ולכן אין מה להחזיר.",
+  full: "האירוע מלא, והחזרה תחרוג מהקיבולת.",
+};
+
+export function attendeeRestoreClosedNote(
+  reason: AttendeeRestoreClosedReason,
+): string {
+  return ATTENDEE_RESTORE_CLOSED_NOTES[reason];
+}
+
+/**
+ * The host's side of "who is going": the action beside each attendee, and the
+ * group of people who were removed and may be returned.
+ *
+ * The group heading is a plural past tense like the queue's "לא אושרו", so it
+ * reads as a list of people rather than a status.
+ */
+export const ATTENDEE_LABELS = {
+  remove: "הסרה",
+  restore: "החזרה",
+  removedTitle: "הוסרו מהאירוע",
+  removedDescription: "רק אתם והמארחים האחרים רואים את זה.",
+  /**
+   * The host's empty list when everyone confirmed was removed. "Nobody has
+   * registered yet" would contradict the removed group right below it; only a
+   * host sees that group, so only a host gets this line.
+   */
+  noConfirmedAttendees: "אין כרגע משתתפים מאושרים.",
+  /**
+   * Removal never touches an invitation, but an access change afterwards can
+   * hide the event from somebody who was removed. Returning them gives their
+   * place back and not their access -- the same caveat the queue states.
+   */
+  attendeeCannotView:
+    "הם כבר לא יכולים לראות את האירוע הזה, ולכן גם אם תחזירו אותם, האירוע לא יחזור ללוח שלהם.",
+};
+
+/**
+ * Tells one row's button from the next for a screen reader — a column of
+ * identical "הסרה" labels says nothing about who is removed.
+ */
+export function removeAttendeeLabel(name: string): string {
+  return `הסרת ${name} מהאירוע`;
+}
+
+export function restoreAttendeeLabel(name: string): string {
+  return `החזרת ${name} לרשימת המשתתפים`;
+}
+
+/**
+ * The remove confirmation. `ConfirmDialog` renders it.
+ *
+ * The dismiss label is not "ביטול", for the reason `CANCEL_DIALOG` gives: next
+ * to a destructive confirm it would read as the destructive choice.
+ */
+export const REMOVE_ATTENDEE_DIALOG = {
+  title: "להסיר מהאירוע?",
+  confirm: "הסרה מהאירוע",
+  cancel: "השארה ברשימה",
+};
+
+/**
+ * What removing does, naming the person. Worded around "ההרשמה" so no verb has
+ * to agree with the attendee's gender.
+ *
+ * Returning them depends on there still being a place, which is why the dialog
+ * exists at all -- somebody else may take it in the meantime. On an invite-only
+ * event it also says the invitation stays, because that is the other thing a
+ * host might expect removal to take away.
+ */
+export function removeAttendeeDialogMessage(
+  name: string,
+  inviteOnly: boolean,
+): string {
+  const message = `ההרשמה של ${name} תוסר מרשימת המשתתפים, והמקום שלה יתפנה. תוכלו להחזיר אותה מאוחר יותר, כל עוד יש מקום באירוע.`;
+  return inviteOnly
+    ? `${message} ההזמנה לאירוע נשארת בתוקף, והאירוע ימשיך להופיע אצלם.`
+    : message;
+}
+
+/**
+ * What removing and restoring say once they have been attempted. Same split as
+ * `REQUEST_ACTION_COPY`: the refusals are thrown by the routes, the toast titles
+ * are shown by `AttendeeActions` once the server has answered.
+ */
+export const ATTENDEE_ACTION_COPY = {
+  /** The attendee's registration changed underneath the host's action. */
+  stale: "ההרשמה הזו השתנתה. רעננו את הדף ונסו שוב.",
+
+  /* Toast titles. The server's own message goes underneath as the description. */
+  removed: "ההרשמה הוסרה",
+  restored: "ההרשמה הוחזרה",
+  removeFailed: "לא הצלחנו להסיר את ההרשמה",
+  restoreFailed: "לא הצלחנו להחזיר את ההרשמה",
+};
 
 /**
  * The cancel confirmation. `ConfirmDialog` renders it.

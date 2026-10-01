@@ -72,18 +72,6 @@
   margin-bottom: var(--space-4);
 }
 
-.attendeesHead {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  margin-bottom: var(--space-4);
-}
-
-/* The heading owns the spacing on its own; inside the row it must not. */
-.attendeesHead .sectionTitle {
-  margin-bottom: 0;
-}
-
 .description {
   display: flex;
   flex-direction: column;
@@ -100,11 +88,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-4) var(--space-6);
-}
-
-.muted {
-  font-size: var(--text-sm);
-  color: var(--color-text-subtle);
 }
 
 /* ---- host tools --------------------------------------------------------- */

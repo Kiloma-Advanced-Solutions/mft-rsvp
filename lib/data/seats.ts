@@ -1,5 +1,5 @@
 /**
- * The two writes that can hand out a seat, made safe against each other.
+ * The three writes that can hand out a seat, made safe against each other.
  * SERVER ONLY -- it reaches `client.ts`.
  *
  * Everything else in `lib/data/` is persistence: a statement, its parameters,
@@ -24,11 +24,11 @@
  *   5. commit, which is what releases the lock.
  *
  * Step 3 is deliberate: the capacity rule is not restated here, and it is not
- * restated in T-SQL either. `getRegistrationAvailability` and
- * `getRequestDecisionAvailability` are pure, synchronous and store-free, so the
- * transaction can call exactly what the route called. One implementation of the
- * rules, checked twice -- once for the answer the caller sees, once for the
- * answer that is true.
+ * restated in T-SQL either. `getRegistrationAvailability`,
+ * `getRequestDecisionAvailability` and `getAttendeeRestoreAvailability` are
+ * pure, synchronous and store-free, so the transaction can call exactly what
+ * the route called. One implementation of the rules, checked twice -- once for
+ * the answer the caller sees, once for the answer that is true.
  *
  * WHY THE LOCK IS ENOUGH. An update lock is held until the transaction commits
  * and no second transaction can hold one on the same row, so the count read at
@@ -51,9 +51,9 @@
  * this file is back to being a comment's problem.
  *
  * What is deliberately NOT here, because none of it can raise the count:
- * withdrawing, rejecting, and requesting a place on an approval event. Those
- * are ordinary single-statement writes, made safe by the expected-status
- * predicate in `registrations.ts` alone.
+ * withdrawing, rejecting, a host removing a confirmed attendee, and requesting
+ * a place on an approval event. Those are ordinary single-statement writes,
+ * made safe by the expected-status predicate in `registrations.ts` alone.
  *
  * Written to the SQL Server 2008 R2 feature floor and statically enforced;
  * runtime execution has been verified against Azure SQL DEV only.
@@ -70,11 +70,13 @@ import {
   updateRegistrationOn,
 } from "./registrations";
 import {
+  getAttendeeRestoreAvailability,
   getRegistrationAvailability,
   getRequestDecisionAvailability,
   requestCanBeApproved,
 } from "../permissions";
 import type {
+  AttendeeRestoreAvailability,
   Registration,
   RegistrationAvailability,
   RequestDecisionAvailability,
@@ -102,6 +104,14 @@ export type SeatClaim =
 export type SeatApproval =
   | { outcome: "approved"; registration: Registration }
   | { outcome: "refused"; availability: RequestDecisionAvailability }
+  | { outcome: "not_found" }
+  | { outcome: "stale" }
+  | { outcome: "gone" };
+
+/** The same, for a host giving a removed attendee their place back. */
+export type SeatRestore =
+  | { outcome: "restored"; registration: Registration }
+  | { outcome: "refused"; availability: AttendeeRestoreAvailability }
   | { outcome: "not_found" }
   | { outcome: "stale" }
   | { outcome: "gone" };
@@ -284,4 +294,72 @@ export async function approveRequest({
         : { outcome: "approved", registration: decided };
     },
   );
+}
+
+/**
+ * Give a removed attendee their place back, atomically.
+ *
+ * `removed -> going` raises the count, so it is a seat claim performed by a
+ * host and takes the same mutex as the other two: every write that can add a
+ * `going` row serializes on the event row and re-counts under it. Removing does
+ * not raise the count, and is not here.
+ *
+ * Only the status moves. The person returns to the cycle they were removed
+ * from, so `message`, `decidedBy` and `decidedAt` stay as that cycle's record --
+ * unlike a removed person registering again on an `open` event, which
+ * `claimSeat` treats as a new cycle and clears.
+ */
+export async function restoreAttendee({
+  eventId,
+  registrationId,
+  now,
+}: {
+  eventId: string;
+  registrationId: string;
+  now: string;
+}): Promise<SeatRestore> {
+  const pool = await getPool();
+
+  // No error translation, for the reason `approveRequest` gives: this only ever
+  // updates an existing row.
+  return inTransaction(pool, async (transaction): Promise<SeatRestore> => {
+    const event = await readEventForUpdate(transaction, eventId);
+    if (!event) return { outcome: "gone" };
+
+    const goingCount = await countGoing(transaction, eventId);
+    const registration = await readRegistrationById(
+      transaction,
+      registrationId,
+    );
+
+    // Not this event's row is not this host's to restore -- the same 404 as a
+    // row that does not exist, re-checked here for the same reason as above.
+    if (!registration || registration.eventId !== eventId) {
+      return { outcome: "not_found" };
+    }
+
+    const availability = getAttendeeRestoreAvailability(event, {
+      goingCount,
+      registration,
+    });
+
+    if (availability.state !== "open") {
+      return { outcome: "refused", availability };
+    }
+
+    const restored = await updateRegistrationOn(
+      transaction,
+      registration.id,
+      { status: "going" },
+      now,
+      // The status this was decided against. The person registering again on
+      // an event switched to `open`, or a second restore, moves the row first
+      // and this affects nothing.
+      "removed",
+    );
+
+    return restored === null
+      ? { outcome: "stale" }
+      : { outcome: "restored", registration: restored };
+  });
 }

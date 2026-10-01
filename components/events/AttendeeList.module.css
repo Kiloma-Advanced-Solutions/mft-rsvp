@@ -1,0 +1,75 @@
+/* Matches the detail page's own section heading, so the list reads as one of
+   its sections, as the approval queue does. */
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-4);
+}
+
+.title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+}
+
+.people {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4) var(--space-6);
+}
+
+.muted {
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
+}
+
+/* A person and the one action beside them. Shrink-wrapped rather than
+   stretched, so a Latin name sits next to its avatar in an RTL row. */
+.attendee {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+/* ---- removed ------------------------------------------------------------ */
+
+.groupTitle {
+  margin-top: var(--space-6);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text-muted);
+}
+
+.description {
+  margin-top: var(--space-1);
+  margin-bottom: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: flex-start;
+}
+
+.warning {
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-warning-text);
+}
+
+.note {
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-text-subtle);
+}

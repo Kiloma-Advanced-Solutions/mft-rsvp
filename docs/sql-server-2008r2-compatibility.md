@@ -306,8 +306,9 @@ One product invariant cannot be a constraint:
 
 It spans rows and two tables, so no `CHECK` can express it. It is a transaction
 protocol instead, implemented once in [lib/data/seats.ts](../lib/data/seats.ts).
-Every write that can raise the `going` count — direct registration, and a host's
-approval — does this inside one transaction:
+Every write that can raise the `going` count — direct registration, a host's
+approval, and a host restoring a removed attendee — does this inside one
+transaction:
 
 1. take the event row with `WITH (UPDLOCK, ROWLOCK)`;
 2. read the event, the `going` count and the registration row, all under it;

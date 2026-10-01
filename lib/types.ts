@@ -119,13 +119,19 @@ export type EventRecord = {
  * - `cancelled`  -- the person withdrew.
  * - `waitlisted` -- the event was full when they registered. Stretch goal;
  *                   nothing in the skeleton produces this status yet.
+ * - `removed`    -- a host or admin took back a confirmed place. Not the
+ *                   person's own answer (`cancelled`) and not a decision on a
+ *                   request (`rejected`). Blocks registering again while the
+ *                   event's access is `approval` or `invite`; an `open` event
+ *                   lets them back in on their own.
  */
 export type RegistrationStatus =
   | "going"
   | "pending"
   | "rejected"
   | "cancelled"
-  | "waitlisted";
+  | "waitlisted"
+  | "removed";
 
 export type Registration = {
   id: string;
@@ -173,6 +179,7 @@ export type RegistrationClosedReason =
   | "started"
   | "full"
   | "rejected"
+  | "removed"
   | "not_invited";
 
 export type RegistrationAvailability =
@@ -229,6 +236,56 @@ export type CancellationAvailability =
   | { state: "closed"; reason: CancellationClosedReason };
 
 /**
+ * Whether a host may take back one confirmed place right now, and if not, why.
+ *
+ * About a row somebody else owns, like `RequestDecisionAvailability`, and it
+ * says nothing about who is asking -- *whether* the actor may remove anyone is
+ * `canManageEvent()`. It does name the *target*: someone who may manage the
+ * event themselves is not removable this way, and steps back out by
+ * withdrawing like anyone else.
+ *
+ * Produced by `getAttendeeRemovalAvailability()` in `lib/permissions.ts`.
+ */
+export type AttendeeRemovalClosedReason =
+  | "draft"
+  | "cancelled"
+  | "started"
+  /** An `open` event admits anyone, so a host has no say over who attends. */
+  | "open_access"
+  /** Only a confirmed (`going`) place can be taken back. */
+  | "not_going"
+  /** The attendee may manage the event themselves. */
+  | "manager";
+
+export type AttendeeRemovalAvailability =
+  | { state: "open" }
+  | { state: "closed"; reason: AttendeeRemovalClosedReason };
+
+/**
+ * Whether a host may give a removed attendee their place back right now, and
+ * if not, why.
+ *
+ * Restoring raises the `going` count, so capacity closes it. Like removal it
+ * takes no actor. On an `open` event it is closed: the removed person may
+ * register again on their own, so a host has nothing to restore.
+ *
+ * Produced by `getAttendeeRestoreAvailability()` in `lib/permissions.ts`.
+ */
+export type AttendeeRestoreClosedReason =
+  | "draft"
+  | "cancelled"
+  | "started"
+  /** The removed person may register again themselves. */
+  | "open_access"
+  /** Only a `removed` row can be restored. */
+  | "not_removed"
+  | "full";
+
+export type AttendeeRestoreAvailability =
+  | { state: "open" }
+  | { state: "closed"; reason: AttendeeRestoreClosedReason };
+
+/**
  * One request as the host's approval queue needs it: the row, the person behind
  * it, whether they can still see what they asked to join, and what the host may
  * do about it.
@@ -264,4 +321,37 @@ export type EventDetailContext = EventWithContext & {
    * `viewerCanManage` is what tells the two apart.
    */
   requests: EventRequest[];
+  /**
+   * The `going` and `removed` rows a host may take back or give back, in
+   * registration order, each with what may be done about it.
+   *
+   * **Empty for anyone who may not manage the event**, exactly like `requests`:
+   * registration ids and who was removed are never assembled for a viewer who
+   * has no business seeing them. `attendees` above stays what everyone sees.
+   */
+  managedAttendees: ManagedAttendee[];
 };
+
+/**
+ * One attendee as the host's attendee list needs them: the row's id, the
+ * person, and what the host may do about their place right now.
+ *
+ * A removed attendee also carries whether they can still see the event. Removal
+ * never touches an invitation, but an access change afterwards can hide the
+ * event from them -- the list says so rather than fixing it, the same way the
+ * approval queue treats a request whose author lost sight of the event.
+ */
+export type ManagedAttendee =
+  | {
+      status: "going";
+      registrationId: string;
+      attendee: User;
+      removal: AttendeeRemovalAvailability;
+    }
+  | {
+      status: "removed";
+      registrationId: string;
+      attendee: User;
+      attendeeCanView: boolean;
+      restore: AttendeeRestoreAvailability;
+    };

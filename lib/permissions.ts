@@ -1,13 +1,14 @@
 /**
  * Who may see an event, who may manage it, who may take a place at it, what
- * a host may decide about somebody else's request, and whether the event may
- * be cancelled.
+ * a host may decide about somebody else's request, whether the event may be
+ * cancelled, and whether a host may take a confirmed place back or return it.
  *
  * The questions are deliberately separate: visibility is about discovery,
  * manageability is about being a host or an admin, availability is about one
- * person's own place, request decisions are about a row somebody else owns,
- * and cancellation is about the event's own lifecycle. Keeping them apart is
- * what stops "can see" from quietly becoming "can change".
+ * person's own place, request decisions and attendee removal are about a row
+ * somebody else owns, and cancellation is about the event's own lifecycle.
+ * Keeping them apart is what stops "can see" from quietly becoming "can
+ * change".
  *
  * The rules themselves are specified in `TASKS.md` section 4 — those tables are
  * authoritative and are not restated here. This file is their single
@@ -22,6 +23,8 @@
 
 import { isPast } from "./date";
 import type {
+  AttendeeRemovalAvailability,
+  AttendeeRestoreAvailability,
   CancellationAvailability,
   EventRecord,
   Registration,
@@ -80,9 +83,10 @@ export function canCreateEvent(user: User): boolean {
 
 /**
  * Is this event full? Only `going` counts against capacity, and a `null`
- * capacity is unlimited. Private: both callers — one person's own availability
- * and a host's decision on somebody else's request — are in this file, and
- * `TASKS.md` section 7 does not want unused exports.
+ * capacity is unlimited. Private: every caller — one person's own availability,
+ * a host's decision on somebody else's request, and a host restoring a removed
+ * attendee — is in this file, and `TASKS.md` section 7 does not want unused
+ * exports.
  */
 function isEventFull(
   event: Pick<EventRecord, "capacity">,
@@ -127,6 +131,14 @@ export function getRegistrationAvailability(
   // A rejected request cannot be sent again; only a host can revive it. A
   // withdrawn (`cancelled`) one can, so it falls through.
   if (status === "rejected") return { state: "closed", reason: "rejected" };
+
+  // Someone a host removed may not put themselves back while a host decides
+  // who gets in -- only a host can restore them. The current access mode wins,
+  // though: an `open` event admits anyone, so their row falls through and is
+  // reclaimed like a withdrawn one.
+  if (status === "removed" && event.access !== "open") {
+    return { state: "closed", reason: "removed" };
+  }
 
   // Invite-only admits the invite list plus whoever may manage the event — a
   // host is not on their own invite list, and should still be able to attend.
@@ -185,8 +197,9 @@ export function getRequestDecisionAvailability(
   }
   if (isPast(event.startsAt)) return { state: "closed", reason: "started" };
 
-  // `going`, `cancelled` and `waitlisted` are not a host's to decide. A
-  // withdrawn row in particular is the person's own answer, not a request.
+  // `going`, `cancelled`, `waitlisted` and `removed` are not a host's to
+  // decide. A withdrawn row in particular is the person's own answer, not a
+  // request.
   const { status } = registration;
   if (status !== "pending" && status !== "rejected") {
     return { state: "closed", reason: "not_decidable" };
@@ -225,6 +238,81 @@ export function getCancellationAvailability(
     return { state: "closed", reason: "cancelled" };
   }
   if (isPast(event.startsAt)) return { state: "closed", reason: "started" };
+  return { state: "open" };
+}
+
+/**
+ * May a host take this confirmed place back right now?
+ *
+ * Like the request decision it takes no actor: *whether* the caller may remove
+ * anyone is `canManageEvent()`. It does take the `attendee` the row belongs to,
+ * because who the target is decides it -- someone who may manage the event is
+ * not removable this way, whether that is the caller themselves, another host
+ * or an admin. They step back out through withdrawing, like anyone else.
+ *
+ * Order mirrors the other availability rules: an event-level closure beats the
+ * row's state. An `open` event admits anyone, so a host has no say over who
+ * attends it and nothing to take back. Removing frees a place and never takes
+ * one, so capacity is not consulted.
+ */
+export function getAttendeeRemovalAvailability(
+  event: EventRecord,
+  { registration, attendee }: { registration: Registration; attendee: User },
+): AttendeeRemovalAvailability {
+  if (event.status === "draft") return { state: "closed", reason: "draft" };
+  if (event.status === "cancelled") {
+    return { state: "closed", reason: "cancelled" };
+  }
+  if (isPast(event.startsAt)) return { state: "closed", reason: "started" };
+
+  if (event.access === "open") return { state: "closed", reason: "open_access" };
+
+  if (registration.status !== "going") {
+    return { state: "closed", reason: "not_going" };
+  }
+
+  if (canManageEvent(event, attendee)) {
+    return { state: "closed", reason: "manager" };
+  }
+
+  return { state: "open" };
+}
+
+/**
+ * May a host give this removed attendee their place back right now?
+ *
+ * Takes no user at all, so the seat protocol can re-run it under the event-row
+ * lock exactly as it re-runs `getRequestDecisionAvailability()`. Restoring
+ * raises the `going` count, which is why capacity closes it: the same "cannot
+ * admit past capacity" that closes approving a request.
+ *
+ * The current access mode wins. On an `open` event a removed person may
+ * register again on their own -- `getRegistrationAvailability()` lets them --
+ * so there is nothing for a host to restore, and one way back per mode.
+ */
+export function getAttendeeRestoreAvailability(
+  event: EventRecord,
+  {
+    goingCount,
+    registration,
+  }: { goingCount: number; registration: Registration },
+): AttendeeRestoreAvailability {
+  if (event.status === "draft") return { state: "closed", reason: "draft" };
+  if (event.status === "cancelled") {
+    return { state: "closed", reason: "cancelled" };
+  }
+  if (isPast(event.startsAt)) return { state: "closed", reason: "started" };
+
+  if (event.access === "open") return { state: "closed", reason: "open_access" };
+
+  if (registration.status !== "removed") {
+    return { state: "closed", reason: "not_removed" };
+  }
+
+  if (isEventFull(event, goingCount)) {
+    return { state: "closed", reason: "full" };
+  }
+
   return { state: "open" };
 }
 
