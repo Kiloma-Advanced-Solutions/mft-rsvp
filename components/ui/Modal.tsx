@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef } from "react";
 import type { ReactNode } from "react";
 
 import { cx } from "@/lib/cx";
@@ -16,6 +16,10 @@ import styles from "./Modal.module.css";
  *
  * Keep it controlled: `open` drives it, `onClose` is called for every way out
  * (the close button, Escape, or a click on the backdrop).
+ *
+ * The dialog is named by its title and described by its description, when it
+ * has one: a visible heading alone does not name a `<dialog>`, so without these
+ * a screen reader would announce an unnamed dialog.
  */
 export function Modal({
   open,
@@ -38,6 +42,8 @@ export function Modal({
   dismissible?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
 
   useEffect(() => {
     const dialog = ref.current;
@@ -54,6 +60,8 @@ export function Modal({
     <dialog
       ref={ref}
       className={cx(styles.dialog, size !== "md" && styles[size])}
+      aria-labelledby={titleId}
+      aria-describedby={description ? descriptionId : undefined}
       // Escape fires `cancel`; let the parent decide rather than closing behind its back.
       onCancel={(event) => {
         event.preventDefault();
@@ -68,8 +76,14 @@ export function Modal({
       <div className={styles.panel}>
         <header className={styles.header}>
           <div className={styles.titleGroup}>
-            <h2 className={styles.title}>{title}</h2>
-            {description && <p className={styles.description}>{description}</p>}
+            <h2 id={titleId} className={styles.title}>
+              {title}
+            </h2>
+            {description && (
+              <p id={descriptionId} className={styles.description}>
+                {description}
+              </p>
+            )}
           </div>
           {dismissible && (
             <button
