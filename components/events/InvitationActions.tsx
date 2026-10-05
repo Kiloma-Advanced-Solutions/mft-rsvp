@@ -120,9 +120,29 @@ export function InvitePicker({
     area.style.minHeight = `${Math.min(area.offsetHeight, visible)}px`;
   }, [pickerOpen]);
 
-  // Only ticks the server still offers count. A refresh can take somebody out
-  // of `candidates` -- another host invited them first, say -- and a tick on a
-  // person the list no longer shows is no tick: it is not counted and not sent.
+  // A tick lasts only as long as the server still offers the person. A refresh
+  // can take somebody out of `candidates` -- another host invited them first,
+  // say -- and their tick goes with them, so if they are offered again later (a
+  // revoke on this page) they come back unticked, to be chosen afresh. Done
+  // while rendering, the way React adjusts state to a changed prop, so no
+  // render ever shows the old tick. Keyed on the ids rather than the array, so
+  // only a real change to who is offered prunes anything; the search filter
+  // never reaches it, because it is about `candidates`, not what is visible.
+  const candidateIds = candidates.map((candidate) => candidate.id).join(" ");
+  const [offeredIds, setOfferedIds] = useState(candidateIds);
+  if (offeredIds !== candidateIds) {
+    setOfferedIds(candidateIds);
+    setSelected((current) =>
+      current.filter((id) =>
+        candidates.some((candidate) => candidate.id === id),
+      ),
+    );
+  }
+
+  // Only ticks the server still offers count. Between a refresh and the
+  // pruning above there is no render to see, but this keeps the count and the
+  // requests honest on their own: a tick on a person the list no longer shows
+  // is no tick -- not counted and not sent.
   // In list order, so the requests go out in the order the host sees.
   const chosen = candidates.filter((candidate) =>
     selected.includes(candidate.id),
