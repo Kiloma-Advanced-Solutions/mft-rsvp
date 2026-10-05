@@ -286,6 +286,68 @@ export type AttendeeRestoreAvailability =
   | { state: "closed"; reason: AttendeeRestoreClosedReason };
 
 /**
+ * Whether anybody may be added to an event's invite list right now, and if not,
+ * why.
+ *
+ * About the event alone, like `CancellationAvailability`: who is asking is
+ * `canManageEvent()`, and who would be invited is
+ * `InvitationAvailability`. A draft is open -- it is invisible to invitees
+ * anyway, and it is where a host builds the list before publishing.
+ *
+ * Produced by `getInvitationListAvailability()` in `lib/permissions.ts`.
+ */
+export type InvitationListClosedReason =
+  /**
+   * The event is not invite-only, so its list decides nothing right now. The
+   * rows are kept, dormant, and count again if the event goes back to `invite`.
+   */
+  | "not_invite_access"
+  | "cancelled"
+  | "started";
+
+export type InvitationListAvailability =
+  | { state: "open" }
+  | { state: "closed"; reason: InvitationListClosedReason };
+
+/**
+ * Whether one person may be invited to an event right now, and if not, why.
+ *
+ * Takes no actor, like the attendee rules, but names the *target*: someone who
+ * may manage the event already sees it, so an invitation would mean nothing.
+ * Never consults the person's registration -- an invitation and a registration
+ * are separate things, and inviting writes no registration.
+ *
+ * Produced by `getInvitationAvailability()` in `lib/permissions.ts`.
+ */
+export type InvitationClosedReason =
+  | InvitationListClosedReason
+  /** The person may manage the event, and sees it without an invitation. */
+  | "manager"
+  | "already_invited";
+
+export type InvitationAvailability =
+  | { state: "open" }
+  | { state: "closed"; reason: InvitationClosedReason };
+
+/**
+ * Whether one person's invitation may be revoked right now, and if not, why.
+ *
+ * Deliberately not closed by the event's lifecycle: inviting widens who can see
+ * the event, revoking only narrows it, and a host may still need to take access
+ * to a confidential event back after it was cancelled or has started. Like
+ * inviting, it never touches the person's registration.
+ *
+ * Produced by `getInvitationRevocationAvailability()` in `lib/permissions.ts`.
+ */
+export type InvitationRevocationClosedReason =
+  | "not_invite_access"
+  | "not_invited";
+
+export type InvitationRevocationAvailability =
+  | { state: "open" }
+  | { state: "closed"; reason: InvitationRevocationClosedReason };
+
+/**
  * One request as the host's approval queue needs it: the row, the person behind
  * it, whether they can still see what they asked to join, and what the host may
  * do about it.
@@ -330,22 +392,76 @@ export type EventDetailContext = EventWithContext & {
    * has no business seeing them. `attendees` above stays what everyone sees.
    */
   managedAttendees: ManagedAttendee[];
+  /**
+   * Who is invited, and who could be, as the host's invitation list needs it.
+   *
+   * **`null` for anyone who may not manage the event** -- an invitee
+   * included -- so the list, the candidates and what may be done about them
+   * are never assembled for a viewer who has no business seeing them. Unlike
+   * `requests`, an empty list is meaningful to a host (it is where inviting
+   * starts), so "not yours" is `null` rather than empty.
+   */
+  invitations: EventInvitations | null;
+};
+
+/**
+ * The host's view of an event's invite list.
+ *
+ * Built only for a manager, with every answer already worked out by the rules
+ * in `lib/permissions.ts`, so the screen derives nothing. It is about who may
+ * *see* the event: nothing here is a seat, and capacity plays no part.
+ */
+export type EventInvitations = {
+  /**
+   * Whether the list decides anything right now -- the event is invite-only.
+   * When it is not, the rows are kept exactly as they were, read-only, and
+   * count again if the event goes back to `invite`.
+   */
+  active: boolean;
+  /** Whether anybody may be added right now, and if not, why. */
+  inviting: InvitationListAvailability;
+  /** Everyone on the list, in the user list's order. */
+  invitees: InvitedPerson[];
+  /**
+   * Everyone who may be invited right now, in the same order. Empty whenever
+   * `inviting` is closed, and never anyone already invited or anyone who may
+   * manage the event.
+   */
+  candidates: User[];
+};
+
+/**
+ * One person on the invite list: who they are, where they stand at the event,
+ * and whether their invitation may be revoked.
+ *
+ * `registrationStatus` is the person's own registration, read and never
+ * written -- an invitation does not imply one, so `null` means they have not
+ * registered at all.
+ */
+export type InvitedPerson = {
+  invitee: User;
+  registrationStatus: RegistrationStatus | null;
+  revocation: InvitationRevocationAvailability;
 };
 
 /**
  * One attendee as the host's attendee list needs them: the row's id, the
  * person, and what the host may do about their place right now.
  *
- * A removed attendee also carries whether they can still see the event. Removal
- * never touches an invitation, but an access change afterwards can hide the
- * event from them -- the list says so rather than fixing it, the same way the
- * approval queue treats a request whose author lost sight of the event.
+ * Every row also carries whether the person can still see the event. An
+ * invitation and a registration are separate, so either can change without the
+ * other: revoking an invitation leaves a confirmed place standing, and an
+ * access change can hide the event from somebody who was removed. The list says
+ * so rather than fixing it, the same way the approval queue treats a request
+ * whose author lost sight of the event.
  */
 export type ManagedAttendee =
   | {
       status: "going";
       registrationId: string;
       attendee: User;
+      /** Still holds a place, but may no longer be able to see the event. */
+      attendeeCanView: boolean;
       removal: AttendeeRemovalAvailability;
     }
   | {

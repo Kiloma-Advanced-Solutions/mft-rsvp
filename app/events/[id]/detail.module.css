@@ -97,28 +97,3 @@
   flex-wrap: wrap;
   gap: var(--space-2);
 }
-
-.facts {
-  display: grid;
-  gap: var(--space-2);
-  margin-top: var(--space-5);
-  padding-top: var(--space-4);
-  border-top: 1px solid var(--color-border);
-}
-
-.fact {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-4);
-  font-size: var(--text-sm);
-}
-
-.factLabel {
-  color: var(--color-text-subtle);
-}
-
-.factValue {
-  font-weight: var(--weight-medium);
-  color: var(--color-text);
-}

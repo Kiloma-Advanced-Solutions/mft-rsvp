@@ -23,10 +23,14 @@ import {
   canViewEvent,
   getAttendeeRemovalAvailability,
   getAttendeeRestoreAvailability,
+  getInvitationAvailability,
+  getInvitationListAvailability,
+  getInvitationRevocationAvailability,
   getRequestDecisionAvailability,
 } from "./permissions";
 import type {
   EventDetailContext,
+  EventInvitations,
   EventRecord,
   EventRequest,
   EventWithContext,
@@ -118,6 +122,54 @@ export async function getEventDetailForViewer(
     managedAttendees: context.viewerCanManage
       ? toManagedAttendees(event, rows, usersById, context.goingCount)
       : [],
+    // Who is invited and who could be is host-only too -- an invitee does not
+    // get to see who else was asked -- so it is `null` for everyone else.
+    invitations: context.viewerCanManage
+      ? toInvitations(event, rows, users)
+      : null,
+  };
+}
+
+/**
+ * The host's invite list: who is on it, where each of them stands, and who may
+ * be added -- every answer from the rules in `lib/permissions.ts`, so the
+ * screen derives nothing.
+ *
+ * Built from what the detail loader already holds: the event carries its
+ * invite list, and the users and this event's registrations are already read.
+ * Both lists follow `users`, which the store returns in name order, so the
+ * order is the same on every render. An invited id with no user behind it is
+ * dropped, the same treatment a stale host or attendee id gets.
+ *
+ * Capacity is not consulted anywhere here. An invitation lets somebody see the
+ * event; only registering takes a seat, and the seat protocol decides that.
+ */
+function toInvitations(
+  event: EventRecord,
+  rows: Registration[],
+  users: User[],
+): EventInvitations {
+  const invited = new Set(event.invitedUserIds);
+  const statusByUser = new Map(rows.map((row) => [row.userId, row.status]));
+
+  return {
+    active: event.access === "invite",
+    inviting: getInvitationListAvailability(event),
+    invitees: users
+      .filter((user) => invited.has(user.id))
+      .map((invitee) => ({
+        invitee,
+        registrationStatus: statusByUser.get(invitee.id) ?? null,
+        revocation: getInvitationRevocationAvailability(event, {
+          inviteeId: invitee.id,
+        }),
+      })),
+    // The per-person rule asks the list-level one first, so this is empty
+    // whenever nobody may be invited, without restating why here.
+    candidates: users.filter(
+      (invitee) =>
+        getInvitationAvailability(event, { invitee }).state === "open",
+    ),
   };
 }
 
@@ -126,9 +178,11 @@ export async function getEventDetailForViewer(
  * registration order, each with its availability already worked out -- so the
  * attendee list, like the queue, derives nothing.
  *
- * `attendeeCanView` is informational. Removal leaves the invitation alone, but
- * an access change afterwards can hide the event from a removed person; the
- * list says so, and restoring them does not give their access back.
+ * `attendeeCanView` is informational, and comes from `canViewEvent()` like every
+ * other visibility answer. Removal leaves the invitation alone and revoking an
+ * invitation leaves the registration alone, so a confirmed attendee can lose
+ * sight of the event and a removed one can too; the list says so, and neither
+ * removing nor restoring gives access back.
  *
  * A row whose person has since disappeared is dropped, the same treatment
  * `attendees` gives a stale id.
@@ -150,6 +204,7 @@ function toManagedAttendees(
         status: "going",
         registrationId: registration.id,
         attendee,
+        attendeeCanView: canViewEvent(event, attendee),
         removal: getAttendeeRemovalAvailability(event, {
           registration,
           attendee,

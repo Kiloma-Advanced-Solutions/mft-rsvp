@@ -95,18 +95,7 @@ function ManagedPeople({
       ) : (
         <div className={styles.people}>
           {going.map((row) => (
-            <div key={row.registrationId} className={styles.attendee}>
-              <Person user={row.attendee} size="sm" />
-              {row.removal.state === "open" && (
-                <AttendeeActions
-                  eventId={event.id}
-                  registrationId={row.registrationId}
-                  attendeeName={row.attendee.name}
-                  action="remove"
-                  inviteOnly={event.access === "invite"}
-                />
-              )}
-            </div>
+            <GoingRow key={row.registrationId} event={event} row={row} />
           ))}
         </div>
       )}
@@ -130,6 +119,50 @@ function ManagedPeople({
         </>
       )}
     </>
+  );
+}
+
+/**
+ * One confirmed attendee: the chip a member sees, a remove button wherever the
+ * rule allows it, and -- when the person can no longer see the event -- a
+ * warning that they still hold a place. An invitation and a registration are
+ * separate, so revoking one leaves the other standing; this says so instead of
+ * resolving it, and removing them stays the host's own decision.
+ *
+ * Whether they can see it is `attendeeCanView`, worked out on the server by
+ * `canViewEvent()`. It also decides what the remove dialog may promise: "the
+ * invitation stays and the event keeps appearing for them" is only true while
+ * they can still see it.
+ */
+function GoingRow({
+  event,
+  row,
+}: {
+  event: Pick<EventRecord, "id" | "access">;
+  row: Extract<ManagedAttendee, { status: "going" }>;
+}) {
+  const attendee = (
+    <div className={styles.attendee}>
+      <Person user={row.attendee} size="sm" />
+      {row.removal.state === "open" && (
+        <AttendeeActions
+          eventId={event.id}
+          registrationId={row.registrationId}
+          attendeeName={row.attendee.name}
+          action="remove"
+          inviteOnly={event.access === "invite" && row.attendeeCanView}
+        />
+      )}
+    </div>
+  );
+
+  if (row.attendeeCanView) return attendee;
+
+  return (
+    <div className={styles.flagged}>
+      {attendee}
+      <p className={styles.warning}>{ATTENDEE_LABELS.goingCannotView}</p>
+    </div>
   );
 }
 

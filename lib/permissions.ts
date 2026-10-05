@@ -1,12 +1,14 @@
 /**
  * Who may see an event, who may manage it, who may take a place at it, what
  * a host may decide about somebody else's request, whether the event may be
- * cancelled, and whether a host may take a confirmed place back or return it.
+ * cancelled, whether a host may take a confirmed place back or return it, and
+ * whether a host may invite somebody or revoke their invitation.
  *
  * The questions are deliberately separate: visibility is about discovery,
  * manageability is about being a host or an admin, availability is about one
  * person's own place, request decisions and attendee removal are about a row
- * somebody else owns, and cancellation is about the event's own lifecycle.
+ * somebody else owns, cancellation is about the event's own lifecycle, and
+ * invitations are about who may see the event -- never about anybody's place.
  * Keeping them apart is what stops "can see" from quietly becoming "can
  * change".
  *
@@ -27,6 +29,9 @@ import type {
   AttendeeRestoreAvailability,
   CancellationAvailability,
   EventRecord,
+  InvitationAvailability,
+  InvitationListAvailability,
+  InvitationRevocationAvailability,
   Registration,
   RegistrationAvailability,
   RequestDecisionAvailability,
@@ -311,6 +316,92 @@ export function getAttendeeRestoreAvailability(
 
   if (isEventFull(event, goingCount)) {
     return { state: "closed", reason: "full" };
+  }
+
+  return { state: "open" };
+}
+
+/**
+ * May anybody be added to this event's invite list right now?
+ *
+ * About the event alone, like `getCancellationAvailability()`: *whether* the
+ * actor may manage invitations is `canManageEvent()`, and *who* may be invited
+ * is `getInvitationAvailability()`, which asks this first.
+ *
+ * The access mode comes first. A list on an event that is not invite-only
+ * decides nothing, so it is kept untouched but closed to changes. A draft is
+ * open: nobody but its hosts can see it yet, so inviting widens nothing until
+ * it is published, and it is where a host builds the list. A cancelled event
+ * and one that has started close it, because inviting someone to either only
+ * shows them something they can no longer join.
+ */
+export function getInvitationListAvailability(
+  event: Pick<EventRecord, "access" | "status" | "startsAt">,
+): InvitationListAvailability {
+  if (event.access !== "invite") {
+    return { state: "closed", reason: "not_invite_access" };
+  }
+  if (event.status === "cancelled") {
+    return { state: "closed", reason: "cancelled" };
+  }
+  if (isPast(event.startsAt)) return { state: "closed", reason: "started" };
+  return { state: "open" };
+}
+
+/**
+ * May this person be invited to this event right now?
+ *
+ * Takes no actor, like the attendee rules, but takes the `invitee`, because
+ * who they are decides it: someone who may manage the event already sees it,
+ * so they are not a valid target, and someone already on the list cannot be
+ * added twice. The list-level closure is asked first, so every target gets the
+ * same answer while the list is closed.
+ *
+ * It never reads the person's registration. Being invited makes the event
+ * visible and lets them register through the ordinary flow; it neither depends
+ * on nor changes where they stand.
+ */
+export function getInvitationAvailability(
+  event: EventRecord,
+  { invitee }: { invitee: User },
+): InvitationAvailability {
+  const list = getInvitationListAvailability(event);
+  if (list.state === "closed") return list;
+
+  if (canManageEvent(event, invitee)) {
+    return { state: "closed", reason: "manager" };
+  }
+
+  if (event.invitedUserIds.includes(invitee.id)) {
+    return { state: "closed", reason: "already_invited" };
+  }
+
+  return { state: "open" };
+}
+
+/**
+ * May this person's invitation be revoked right now?
+ *
+ * Only while the event is invite-only: a dormant list is read-only, kept
+ * exactly as it was in case the event goes back to `invite`. Deliberately *not*
+ * closed by a cancellation or a start time that has passed. Inviting widens who
+ * can see the event and closes with registration; revoking only narrows it, and
+ * a host may still need to take access to a confidential event back afterwards.
+ *
+ * Takes the target's id rather than the person: nothing about who they are
+ * decides it, only whether they are on the list. Like inviting, it never reads
+ * or changes their registration.
+ */
+export function getInvitationRevocationAvailability(
+  event: Pick<EventRecord, "access" | "invitedUserIds">,
+  { inviteeId }: { inviteeId: string },
+): InvitationRevocationAvailability {
+  if (event.access !== "invite") {
+    return { state: "closed", reason: "not_invite_access" };
+  }
+
+  if (!event.invitedUserIds.includes(inviteeId)) {
+    return { state: "closed", reason: "not_invited" };
   }
 
   return { state: "open" };

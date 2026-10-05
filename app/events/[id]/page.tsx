@@ -10,6 +10,7 @@ import {
   EventStatusBadge,
 } from "@/components/events/EventMeta";
 import { HostEventActions } from "@/components/events/HostEventActions";
+import { InvitationList } from "@/components/events/InvitationList";
 import { RegistrationPanel } from "@/components/events/RegistrationPanel";
 import {
   Card,
@@ -70,6 +71,7 @@ export default async function EventDetailPage({
     attendees,
     requests,
     managedAttendees,
+    invitations,
     viewerRegistration,
     viewerCanManage,
   } = detail;
@@ -185,6 +187,19 @@ export default async function EventDetailPage({
               goingCount={goingCount}
               managed={viewerCanManage ? managedAttendees : null}
             />
+
+            {/*
+              Who may see the event, below who is coming to it: the queue is
+              the urgent part, the attendees are the event, and this list is
+              how a host shapes who gets in. Absent from the markup for anyone
+              who may not manage the event -- the loader left `invitations`
+              `null` for them, an invitee included, so there is nothing to
+              hide. The component itself renders nothing for an event that is
+              not invite-only and has no invitations left from when it was.
+            */}
+            {viewerCanManage && invitations && (
+              <InvitationList eventId={event.id} invitations={invitations} />
+            )}
           </div>
 
           <aside className={styles.aside}>
@@ -250,7 +265,9 @@ function Description({ text }: { text: string }) {
  * they live in a client leaf. Whether cancelling is on offer comes from the
  * same rule the cancel route applies, so the button and the API agree.
  * Deciding requests is the approval queue's job, and it lives in the main
- * column where there is room for what people wrote.
+ * column where there is room for what people wrote; managing who is invited is
+ * the invitation list's, in the main column for the same reason, and it carries
+ * its own count.
  */
 function HostTools({
   event,
@@ -285,32 +302,7 @@ function HostTools({
           goingCount={goingCount}
           pendingCount={pendingCount}
         />
-
-        {/*
-          Only facts a non-host never sees, and only ones that are not already
-          on the page. The status, the access mode and the capacity are here for
-          everybody; the number awaiting approval left when the queue gained its
-          own heading and count in the main column, because repeating it here
-          would be two of the same number side by side.
-        */}
-        {event.access === "invite" && (
-          <dl className={styles.facts}>
-            <Fact
-              label={DETAIL_LABELS.factInvited}
-              value={String(event.invitedUserIds.length)}
-            />
-          </dl>
-        )}
       </CardBody>
     </Card>
-  );
-}
-
-function Fact({ label, value }: { label: string; value: string }) {
-  return (
-    <div className={styles.fact}>
-      <dt className={styles.factLabel}>{label}</dt>
-      <dd className={styles.factValue}>{value}</dd>
-    </div>
   );
 }

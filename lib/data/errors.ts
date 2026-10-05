@@ -60,12 +60,12 @@ function errorNumber(error: unknown): number | undefined {
 /**
  * Somebody else inserted the same key first.
  *
- * Deliberately says only *that* a unique key was violated, not which one. The
- * one caller is the seat claim, and the only unique constraint any statement it
- * runs can violate is `UQ_Events_Registrations_Event_User` -- so at that call
- * site the answer is unambiguous. Anywhere else it would not be, and this
- * should not be used to decide a message without checking what the caller can
- * actually collide with.
+ * Deliberately says only *that* a unique key was violated, not which one. There
+ * are two callers, and each can collide with exactly one key: the seat claim
+ * with `UQ_Events_Registrations_Event_User`, and inviting someone with
+ * `PK_Events_EventInvites` -- so at each call site the answer is unambiguous.
+ * Anywhere else it would not be, and this should not be used to decide a
+ * message without checking what the caller can actually collide with.
  */
 export function isDuplicateKey(error: unknown): boolean {
   const number = errorNumber(error);
