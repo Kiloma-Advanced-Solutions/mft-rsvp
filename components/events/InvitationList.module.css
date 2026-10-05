@@ -1,0 +1,111 @@
+/* Matches the detail page's own section heading, so the list reads as one of
+   its sections, as the approval queue and the attendee list do. */
+.head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.title {
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-tight);
+}
+
+.description {
+  margin-top: var(--space-1);
+  margin-bottom: var(--space-4);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-text-subtle);
+}
+
+.rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+/* ---- one invitee -------------------------------------------------------- */
+
+/* The person at the start, the status and the action at the end; on a narrow
+   screen the end wraps under the person rather than squeezing the name. */
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+}
+
+.rowEnd {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+}
+
+/* ---- adding people ------------------------------------------------------ */
+
+.adding {
+  margin-top: var(--space-4);
+}
+
+/* The page's part of the picker: a label, the button that opens the dialog,
+   then the count and the send button. Its height does not depend on how many
+   people could be invited -- they are listed in the dialog. */
+.picker {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-2);
+}
+
+/* The same weight and size as a `Field` label. */
+.pickerLabel {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+/* How many are ticked, and the one button that sends them. */
+.pickerFooter {
+  align-self: stretch;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-top: var(--space-1);
+}
+
+/* ---- the picker dialog -------------------------------------------------- */
+
+/* The search stays in view while the list scrolls under it inside the
+   dialog's own scrolling body. */
+.filter {
+  position: sticky;
+  top: 0;
+  padding-bottom: var(--space-3);
+  background: var(--color-surface);
+}
+
+/* One person per row, so a long list reads top to bottom. */
+.candidateList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* The dialog footer ends with "סיום"; the count takes the other end. */
+.dialogCount {
+  margin-inline-end: auto;
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
+}
+
+.note {
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-text-subtle);
+}

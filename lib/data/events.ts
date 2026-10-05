@@ -9,13 +9,15 @@
  *
  * Writes that touch more than one table run in a transaction, so an event never
  * exists without its co-hosts, and deleting one never leaves a registration
- * behind.
+ * behind. Inviting and revoking change one person's invite row at a time, under
+ * the event-row lock.
  */
 
 import sql from "mssql";
 import type { Transaction } from "mssql";
 
 import { getPool, inTransaction, type Runner } from "./client";
+import { isDuplicateKey } from "./errors";
 import {
   groupByEvent,
   isUuid,
@@ -23,7 +25,17 @@ import {
   type EventRow,
   type MembershipRow,
 } from "./rows";
-import type { EventRecord, EventStatus } from "../types";
+import {
+  getInvitationAvailability,
+  getInvitationRevocationAvailability,
+} from "../permissions";
+import type {
+  EventRecord,
+  EventStatus,
+  InvitationAvailability,
+  InvitationRevocationAvailability,
+  User,
+} from "../types";
 import type { EventPatch } from "../db";
 
 /**
@@ -149,6 +161,12 @@ DELETE FROM dbo.Events_EventInvites
 WHERE  EventId = @id;
 `;
 
+/** One person's invitation, by the table's own key. */
+const DELETE_INVITE = `
+DELETE FROM dbo.Events_EventInvites
+WHERE  EventId = @eventId AND UserId = @userId;
+`;
+
 const DELETE_REGISTRATIONS_FOR_EVENT = `
 DELETE FROM dbo.Events_Registrations
 WHERE  EventId = @id;
@@ -241,9 +259,11 @@ export async function getEvent(id: string): Promise<EventRecord | null> {
  * gone, which inside a transaction means it was deleted by whoever held the
  * lock before us -- a real answer, not an error.
  *
- * Exported for `lib/data/seats.ts` alone. Nothing else should be locking event
- * rows, and a second caller is a sign the protocol is being reinvented
- * somewhere it should not be.
+ * Exported for `lib/data/seats.ts` alone. Outside this file nothing else
+ * should be locking event rows, and a second caller is a sign the protocol is
+ * being reinvented somewhere it should not be. Inside it, `removeEvent` and the
+ * two invitation writes take the same lock through the private statements,
+ * for lock order rather than for capacity.
  */
 export async function readEventForUpdate(
   transaction: Transaction,
@@ -563,4 +583,151 @@ export async function removeEvent(id: string): Promise<boolean> {
     // `false`, the same as the in-memory store's "no such index".
     return result.rowsAffected[0] > 0;
   });
+}
+
+/* -------------------------------------------------------------- invitations */
+
+/**
+ * What happened to an attempt to invite one person.
+ *
+ * Shaped like `SeatClaim` in `lib/data/seats.ts`, for the same reason: a
+ * refusal carries the availability the rule produced under the lock, so the
+ * route words it with the same helper it uses for a refusal it caught itself.
+ */
+export type InvitationWrite =
+  | { outcome: "invited" }
+  | { outcome: "refused"; availability: InvitationAvailability }
+  | { outcome: "gone" };
+
+/** The same, for revoking one person's invitation. */
+export type InvitationRevocation =
+  | { outcome: "revoked" }
+  | { outcome: "refused"; availability: InvitationRevocationAvailability }
+  | { outcome: "gone" };
+
+/**
+ * Invite one person, atomically.
+ *
+ * One row, never the list: the whole-list replacement in `updateEvent` would
+ * let two hosts overwrite each other's changes, so invitations do not go
+ * through it.
+ *
+ * **The event row is locked first**, with the seat claim's own statement, and
+ * the event -- its invite list included -- is read under that lock. That is
+ * what makes the rule's answer the true one: every other writer of this event
+ * row waits behind it, so the access mode, status, start time and list it sees
+ * cannot change before the insert. It is the same event-first order every
+ * transaction in this application follows, and it takes one event row.
+ *
+ * It is not a seat claim. It writes no registration and reads no count, so
+ * capacity is not its concern; it shares the lock with the seat protocol only so
+ * a claim never reads a list that is changing underneath it.
+ */
+export async function inviteToEvent({
+  eventId,
+  invitee,
+}: {
+  eventId: string;
+  invitee: User;
+}): Promise<InvitationWrite> {
+  if (!isUuid(eventId)) return { outcome: "gone" };
+
+  const pool = await getPool();
+
+  try {
+    return await inTransaction(
+      pool,
+      async (transaction): Promise<InvitationWrite> => {
+        const event = await readEvent(
+          transaction,
+          eventId,
+          SELECT_EVENT_FOR_UPDATE,
+        );
+        if (!event) return { outcome: "gone" };
+
+        // The same rule the route ran, on facts that cannot now move.
+        const availability = getInvitationAvailability(event, { invitee });
+        if (availability.state !== "open") {
+          return { outcome: "refused", availability };
+        }
+
+        await transaction
+          .request()
+          .input("eventId", sql.UniqueIdentifier, eventId)
+          .input("userId", sql.UniqueIdentifier, invitee.id)
+          .query(INSERT_INVITE);
+
+        return { outcome: "invited" };
+      },
+    );
+  } catch (error) {
+    // `PK_Events_EventInvites` -- the only unique key this insert can violate --
+    // refusing a second row for this person. Under the lock it should be
+    // unreachable, but the key is the real guarantee and this keeps it from
+    // surfacing as a 500. Anything else is a failure, not an outcome.
+    if (isDuplicateKey(error)) {
+      return {
+        outcome: "refused",
+        availability: { state: "closed", reason: "already_invited" },
+      };
+    }
+    throw error;
+  }
+}
+
+/**
+ * Revoke one person's invitation, atomically.
+ *
+ * The same shape as inviting: the event row first, the rule re-run against
+ * what was read under it, then one row. Only the invitation goes -- whatever
+ * registration the person holds stays exactly as it is, and a `going` place
+ * keeps counting against capacity.
+ */
+export async function revokeInvitation({
+  eventId,
+  invitee,
+}: {
+  eventId: string;
+  invitee: User;
+}): Promise<InvitationRevocation> {
+  if (!isUuid(eventId)) return { outcome: "gone" };
+
+  const pool = await getPool();
+
+  return inTransaction(
+    pool,
+    async (transaction): Promise<InvitationRevocation> => {
+      const event = await readEvent(
+        transaction,
+        eventId,
+        SELECT_EVENT_FOR_UPDATE,
+      );
+      if (!event) return { outcome: "gone" };
+
+      const availability = getInvitationRevocationAvailability(event, {
+        inviteeId: invitee.id,
+      });
+      if (availability.state !== "open") {
+        return { outcome: "refused", availability };
+      }
+
+      const result = await transaction
+        .request()
+        .input("eventId", sql.UniqueIdentifier, eventId)
+        .input("userId", sql.UniqueIdentifier, invitee.id)
+        .query(DELETE_INVITE);
+
+      // The rule just read this row under the lock, so nothing should have
+      // removed it since. If something did, the person is not invited, which
+      // is the answer -- not a success that deleted nothing.
+      if (result.rowsAffected[0] === 0) {
+        return {
+          outcome: "refused",
+          availability: { state: "closed", reason: "not_invited" },
+        };
+      }
+
+      return { outcome: "revoked" };
+    },
+  );
 }

@@ -15,6 +15,8 @@ import type {
   EventCategory,
   EventLocation,
   EventStatus,
+  InvitationClosedReason,
+  InvitationRevocationClosedReason,
   RegistrationAvailability,
   RegistrationClosedReason,
   RegistrationStatus,
@@ -207,7 +209,6 @@ export const DETAIL_LABELS = {
   cancelledNoticeTitle: "האירוע הזה בוטל",
   cancelledNoticeText:
     "הוא לא יתקיים. הפרטים ורשימת הנרשמים נשארים כאן לעיון.",
-  factInvited: "מוזמנים",
 };
 
 /**
@@ -631,6 +632,46 @@ export function attendeeRestoreClosedNote(
 }
 
 /**
+ * Why somebody cannot be invited right now. The list-level reasons are a subset
+ * of these, so the same sentence serves a refusal about one person and the note
+ * a host reads in place of the picker when nobody can be invited.
+ *
+ * Worded without the invitee's name or gender, like the attendee notes above.
+ */
+const INVITATION_CLOSED_NOTES: Record<InvitationClosedReason, string> = {
+  not_invite_access:
+    "האירוע לא בהזמנה בלבד כרגע, ולכן רשימת המוזמנים לא פעילה ואי אפשר לשנות אותה.",
+  cancelled: "האירוע בוטל, ולכן אי אפשר עוד להזמין אליו.",
+  started: "האירוע כבר עבר, ולכן אי אפשר עוד להזמין אליו.",
+  manager: "מי שמנהל את האירוע כבר רואה אותו, ולא צריך הזמנה.",
+  already_invited: "הם כבר ברשימת המוזמנים.",
+};
+
+export function invitationClosedNote(reason: InvitationClosedReason): string {
+  return INVITATION_CLOSED_NOTES[reason];
+}
+
+/**
+ * Why an invitation cannot be revoked right now. There is no lifecycle reason
+ * here on purpose: revoking stays open on a cancelled event and on one that
+ * has started.
+ */
+const INVITATION_REVOCATION_CLOSED_NOTES: Record<
+  InvitationRevocationClosedReason,
+  string
+> = {
+  not_invite_access:
+    "האירוע לא בהזמנה בלבד כרגע, ולכן רשימת המוזמנים לא פעילה ואי אפשר לשנות אותה.",
+  not_invited: "הם לא ברשימת המוזמנים, ולכן אין הזמנה לבטל.",
+};
+
+export function invitationRevocationClosedNote(
+  reason: InvitationRevocationClosedReason,
+): string {
+  return INVITATION_REVOCATION_CLOSED_NOTES[reason];
+}
+
+/**
  * The host's side of "who is going": the action beside each attendee, and the
  * group of people who were removed and may be returned.
  *
@@ -655,6 +696,16 @@ export const ATTENDEE_LABELS = {
    */
   attendeeCannotView:
     "הם כבר לא יכולים לראות את האירוע הזה, ולכן גם אם תחזירו אותם, האירוע לא יחזור ללוח שלהם.",
+  /**
+   * A confirmed attendee who can no longer see the event -- their invitation
+   * was revoked, or the event became invite-only without them. It names the
+   * cause ("not on the invite list") rather than the act, so it is true either
+   * way, and it promises neither a live seat nor that access can be given back,
+   * so it stays true once the event has started or been cancelled. It only
+   * surfaces the mismatch, without deciding anything for the host.
+   */
+  goingCannotView:
+    "רשומים לאירוע אבל לא ברשימת המוזמנים, ולכן כבר לא יכולים לראות אותו. ההרשמה שלהם לא השתנתה.",
 };
 
 /**
@@ -688,7 +739,8 @@ export const REMOVE_ATTENDEE_DIALOG = {
  * Returning them depends on there still being a place, which is why the dialog
  * exists at all -- somebody else may take it in the meantime. On an invite-only
  * event it also says the invitation stays, because that is the other thing a
- * host might expect removal to take away.
+ * host might expect removal to take away -- but only when the person can still
+ * see the event: after a revoked invitation there is none left to keep.
  */
 export function removeAttendeeDialogMessage(
   name: string,
@@ -715,6 +767,163 @@ export const ATTENDEE_ACTION_COPY = {
   removeFailed: "לא הצלחנו להסיר את ההרשמה",
   restoreFailed: "לא הצלחנו להחזיר את ההרשמה",
 };
+
+/**
+ * The host's invitation list. An invitation decides who may *see* an
+ * invite-only event; it is not a place, so nothing here talks about seats.
+ *
+ * "לא נרשם/ה" uses the slash form the registration statuses use, so it reads
+ * as one more value of the same badge.
+ */
+export const INVITATION_LABELS = {
+  title: "מוזמנים",
+  /**
+   * An active list, in every state it is shown in -- draft, published, started
+   * and cancelled. It says who the event is restricted to rather than who sees
+   * it or may register right now, which differs between those states; whether
+   * registering or inviting is open is said elsewhere on the page.
+   */
+  description:
+    "הגישה לאירוע שמורה למי שברשימה, למארחים ולמנהלי המערכת. את הרשימה רואים רק אתם והמארחים האחרים.",
+  /**
+   * A dormant list: the event is not invite-only, so the rows decide nothing,
+   * but they are kept as they were and count again if it becomes invite-only.
+   */
+  dormantDescription:
+    "האירוע לא בהזמנה בלבד כרגע, ולכן הרשימה הזו לא פעילה ולא משפיעה על מי שרואה אותו. היא נשמרת כמו שהיא, ותחזור לתוקף אם האירוע יחזור להיות בהזמנה בלבד.",
+  emptyTitle: "עוד לא הוזמנו אנשים",
+  emptyDescription:
+    "כל עוד הרשימה ריקה, רק המארחים ומנהלי המערכת רואים את האירוע.",
+  notRegistered: "לא נרשם/ה",
+  pickerLabel: "את מי להזמין?",
+  /** Opens the dialog the candidates are picked in; the page stays short. */
+  choosePeople: "בחירת אנשים",
+  pickerTitle: "בחירת אנשים להזמנה",
+  pickerDescription: "אפשר לבחור אדם אחד או כמה אנשים.",
+  filterLabel: "חיפוש",
+  filterPlaceholder: "שם או תפקיד",
+  /** The filter hides everyone. Ticks on hidden people still count. */
+  noMatches: "אף אחד לא מתאים לחיפוש.",
+  done: "סיום",
+  /** The button while nobody is selected -- disabled, so it never counts zero. */
+  invite: "הזמנה",
+  revoke: "ביטול הזמנה",
+  /** Inviting is open, but everyone who could be invited already is. */
+  noCandidates: "אין כרגע אנשים נוספים שאפשר להזמין.",
+};
+
+/** Tells one row's button from the next for a screen reader. */
+export function revokeInvitationLabel(name: string): string {
+  return `ביטול ההזמנה של ${name}`;
+}
+
+/**
+ * The revoke confirmation. The dismiss label is not "ביטול", for the reason
+ * `CANCEL_DIALOG` gives -- here the confirm button itself says "ביטול".
+ */
+export const REVOKE_INVITATION_DIALOG = {
+  title: "לבטל את ההזמנה?",
+  confirm: "ביטול ההזמנה",
+  cancel: "השארת ההזמנה",
+};
+
+/**
+ * What revoking does, naming the person. It says what it does *not* do as
+ * plainly as what it does: the registration stays, and a confirmed place stays
+ * taken. It deliberately says nothing about removing them from the attendee
+ * list -- that is a separate action with its own rule, closed on a cancelled
+ * event and one that has started, where revoking stays open; the attendee list
+ * offers it exactly where it is allowed. When the list is closed to new
+ * invitations (the event has started or was cancelled) it also says the
+ * invitation cannot be given back.
+ */
+export function revokeInvitationDialogMessage(
+  name: string,
+  reinviteClosed: boolean,
+): string {
+  const message = `ההזמנה של ${name} תבוטל, והאירוע ייעלם מהלוח שלהם. ההרשמה שלהם לא משתנה: אם יש להם מקום, הוא נשמר.`;
+  return reinviteClosed
+    ? `${message} אי אפשר יהיה להזמין אותם שוב, כי ההזמנות לאירוע הזה כבר סגורות.`
+    : message;
+}
+
+/** What revoking says once it has been attempted. */
+export const INVITATION_ACTION_COPY = {
+  /* Toast titles. The server's own message goes underneath as the description. */
+  revoked: "ההזמנה בוטלה",
+  revokeFailed: "לא הצלחנו לבטל את ההזמנה",
+};
+
+/** "אדם אחד", "שני אנשים", "5 אנשים". */
+function personCount(n: number): string {
+  if (n === 1) return "אדם אחד";
+  if (n === 2) return "שני אנשים";
+  return `${n} אנשים`;
+}
+
+/** "הזמנה אחת", "שתי הזמנות", "5 הזמנות". */
+function invitationCount(n: number): string {
+  if (n === 1) return "הזמנה אחת";
+  if (n === 2) return "שתי הזמנות";
+  return `${n} הזמנות`;
+}
+
+/**
+ * How many people are ticked in the invitation picker. The verb agrees with
+ * the noun, not with anybody's gender, so "נבחר" for one and "נבחרו" for more.
+ */
+export function selectedCountLabel(n: number): string {
+  if (n === 0) return "עוד לא נבחר אף אחד";
+  return n === 1 ? `נבחר ${personCount(n)}` : `נבחרו ${personCount(n)}`;
+}
+
+/** The picker's button with a selection: "הזמנת שני אנשים". */
+export function inviteSelectedLabel(n: number): string {
+  return `הזמנת ${personCount(n)}`;
+}
+
+/**
+ * The summary toast after a batch of invitations, one per batch rather than one
+ * per person. Each title counts invitations, a feminine noun, so the verb
+ * agrees with that and never with a person.
+ */
+export function invitationsAddedLabel(n: number): string {
+  return n === 1 ? `נוספה ${invitationCount(n)}` : `נוספו ${invitationCount(n)}`;
+}
+
+/**
+ * Some went through and some did not: "הזמנות שנוספו: 1 מתוך 5". The verb
+ * agrees with "הזמנות" and the numbers stand on their own, so nothing has to
+ * agree with a count -- the reason `eventCountLabel()` has no verb either.
+ */
+export function invitationsPartlyAddedLabel(added: number, tried: number): string {
+  return `הזמנות שנוספו: ${added} מתוך ${tried}`;
+}
+
+/** None went through: one invitation or several. */
+export function invitationsFailedLabel(tried: number): string {
+  return tried === 1
+    ? "לא הצלחנו להוסיף את ההזמנה"
+    : "לא הצלחנו להוסיף את ההזמנות";
+}
+
+/**
+ * The toast's description for whoever was not invited: each refusal the server
+ * sent, once, after the names it applies to -- "Daniel Ross, Tom Alvarez: הם
+ * כבר ברשימת המוזמנים." The wording is the server's, so a refusal reads the same
+ * here as anywhere else; it is grouped for reading, never inspected.
+ */
+export function invitationFailuresLabel(
+  failures: { name: string; message: string }[],
+): string {
+  const byMessage = new Map<string, string[]>();
+  for (const { name, message } of failures) {
+    byMessage.set(message, [...(byMessage.get(message) ?? []), name]);
+  }
+  return [...byMessage]
+    .map(([message, names]) => `${names.join(", ")}: ${message}`)
+    .join(" ");
+}
 
 /**
  * The cancel confirmation. `ConfirmDialog` renders it.

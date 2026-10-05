@@ -1,4 +1,8 @@
+/* `margin: auto` is what centres a modal dialog in the viewport -- the browser's
+   own style for it, which the global reset's `margin: 0` would otherwise undo,
+   leaving the dialog in the top inline-start corner. */
 .dialog {
+  margin: auto;
   width: min(560px, calc(100vw - 2 * var(--space-4)));
   max-height: min(85vh, 760px);
   padding: 0;

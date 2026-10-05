@@ -6,9 +6,10 @@
  *
  * `PATCH` is strictly a content editor. It cannot change `status`, `accent`,
  * `organizerId`, `coHostIds` or `invitedUserIds`, because `parseEventBody` does
- * not read those fields -- publishing is `POST /api/events/[id]/publish`, and
- * the rest are not editable in this milestone at all. The protection is that
- * the field is absent, not that it is checked.
+ * not read those fields -- publishing is `POST /api/events/[id]/publish`, who is
+ * invited changes one person at a time through
+ * `/api/events/[id]/invitations/[userId]`, and the rest are not editable at
+ * all. The protection is that the field is absent, not that it is checked.
  *
  * Neither handler decides who may act. Identity comes from `getCurrentUser()`,
  * visibility from `lib/events.ts` and manageability from `lib/permissions.ts` --

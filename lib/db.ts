@@ -62,9 +62,13 @@
 import {
   createEvent,
   getEvent,
+  inviteToEvent,
   listEvents,
   removeEvent,
+  revokeInvitation,
   updateEvent,
+  type InvitationRevocation,
+  type InvitationWrite,
 } from "./data/events";
 import {
   findRegistration,
@@ -223,6 +227,31 @@ export const db = {
     async remove(id: string): Promise<boolean> {
       return removeEvent(id);
     },
+
+    /**
+     * Put one person on the event's invite list.
+     *
+     * One row, never the whole list, and under the event-row lock with the
+     * invitation rule re-run against what the lock protects -- see
+     * `inviteToEvent` in `lib/data/events.ts`. It writes no registration: being
+     * invited lets the person see the event and register through the ordinary
+     * flow, nothing more. No id or timestamp is generated, because an
+     * invitation row has neither.
+     */
+    async invite(eventId: string, invitee: User): Promise<InvitationWrite> {
+      return inviteToEvent({ eventId, invitee });
+    },
+
+    /**
+     * Take one person off the event's invite list, the same way. Whatever
+     * registration they hold is left exactly as it is.
+     */
+    async revokeInvitation(
+      eventId: string,
+      invitee: User,
+    ): Promise<InvitationRevocation> {
+      return revokeInvitation({ eventId, invitee });
+    },
   },
 
   registrations: {
@@ -324,4 +353,10 @@ export const db = {
   },
 };
 
-export type { SeatApproval, SeatClaim, SeatRestore };
+export type {
+  InvitationRevocation,
+  InvitationWrite,
+  SeatApproval,
+  SeatClaim,
+  SeatRestore,
+};
