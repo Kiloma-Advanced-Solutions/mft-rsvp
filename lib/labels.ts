@@ -828,11 +828,12 @@ export const REVOKE_INVITATION_DIALOG = {
 };
 
 /**
- * What revoking does, naming the person. "לא יוכלו לראות" rather than "the
- * event disappears from their board", because a draft can be invited to and was
- * never on anybody's board. It says what it does *not* do as plainly as what it
- * does: the registration stays, and a confirmed place stays taken. It
- * deliberately says nothing about removing them from the attendee
+ * What revoking does, naming the person once and then never needing a pronoun
+ * for them, so nothing has to agree with their gender. "הגישה לאירוע תוסר"
+ * rather than "the event disappears from their board", because a draft can be
+ * invited to and was never on anybody's board. It says what it does *not* do as
+ * plainly as what it does: the registration stays, and a reserved place stays
+ * taken. It deliberately says nothing about removing them from the attendee
  * list -- that is a separate action with its own rule, closed on a cancelled
  * event and one that has started, where revoking stays open; the attendee list
  * offers it exactly where it is allowed. When the list is closed to new
@@ -843,9 +844,9 @@ export function revokeInvitationDialogMessage(
   name: string,
   reinviteClosed: boolean,
 ): string {
-  const message = `ההזמנה של ${name} תבוטל, והם לא יוכלו לראות את האירוע. ההרשמה שלהם לא משתנה: אם יש להם מקום, הוא נשמר.`;
+  const message = `ההזמנה של ${name} תבוטל והגישה לאירוע תוסר. הביטול לא ישפיע על ההרשמה, ואם כבר שמור מקום באירוע, הוא יישמר.`;
   return reinviteClosed
-    ? `${message} אי אפשר יהיה להזמין אותם שוב, כי ההזמנות לאירוע הזה כבר סגורות.`
+    ? `${message} אי אפשר יהיה להזמין שוב, כי ההזמנות לאירוע הזה כבר סגורות.`
     : message;
 }
 
