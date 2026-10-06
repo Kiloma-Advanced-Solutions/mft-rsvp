@@ -16,10 +16,11 @@ fixed in place is in [a_system.md](a_system.md).
 
 **Next is M10 — shareable event links — and it has not started.** Its product
 decisions are still open and are listed in [TASKS.md](../TASKS.md) §5. M11
-(application logging) follows it and is future work. The rest of the original
-stretch list — the calendar view first, then the waitlist, search, "my events",
-optimistic UI and a theme toggle — is also unstarted. Authoritative
-requirements for every milestone, extension and stretch goal:
+(system redesign, against an external Style Guide that has not been supplied
+yet) and M12 (application logging) follow it and are future work. The rest of
+the original stretch list — the calendar view first, then the waitlist, search,
+"my events", optimistic UI and a theme toggle — is also unstarted.
+Authoritative requirements for every milestone, extension and stretch goal:
 [TASKS.md](../TASKS.md) §5.
 
 ## Status
@@ -272,6 +273,6 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-10-05 — M9 (invitation management) merged into
-`yardenah/events-board`; no milestone in progress, M10 (shareable event links)
-next.
+Last updated: 2026-10-06 — roadmap updated: M11 is now the system redesign and
+application logging moved to M12; no milestone in progress, M10 (shareable event
+links) next.
