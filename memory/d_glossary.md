@@ -26,10 +26,20 @@ in [a_system.md](a_system.md).
 - **admin** — may manage every event in the system, hosted or not.
 - **host** — *not a role*. A host is the event's `organizerId`, or anyone in its
   `coHostIds`. This is the term that decides who may edit, publish, cancel,
-  delete, decide requests on, and remove or restore attendees of a specific
-  event. A host is not automatically an attendee.
-- **invited user** — someone in an event's `invitedUserIds`. Only meaningful when
-  the access mode is `invite`.
+  delete, decide requests on, remove or restore attendees of, and manage the
+  invitations to a specific event. A host is not automatically an attendee.
+- **invite list** / **invited user** — the people, beyond its hosts and admins,
+  who may see an invite-only event; an invited user is someone on it (an event's
+  `invitedUserIds`). Being invited is **not a registration and not a seat**: it
+  makes the event visible and lets the person register through the ordinary
+  flow, and nothing more. Somebody who may manage the event cannot be invited
+  — they see it without an invitation. Only meaningful while the access mode is `invite`;
+  on any other access the list is **dormant** — kept exactly as it was,
+  read-only, and counting again if the event goes back to `invite`.
+- **revoking an invitation** — taking a person off the invite list. It takes
+  away their sight of the event and nothing else: whatever registration they
+  hold keeps its status, and a `going` place keeps its seat. Not the same as
+  removing an attendee, which takes back the place and leaves the invitation.
 - **persona** — the stand-in for authentication. You "sign in" by picking one from
   the switcher, which sets a cookie; switching persona is how visibility rules get
   verified.
@@ -113,7 +123,8 @@ interacts with each access mode.
   the event must be absent from pages *and* from API responses, and a direct URL
   must 404. A 403 would confirm the event exists.
 - **manageability** — "may this person edit, delete, publish, cancel, decide
-  requests on, or remove and restore attendees of this event?" A separate
+  requests on, remove and restore attendees of, or manage the invitations to
+  this event?" A separate
   question with a separate answer: visibility is about discovery,
   manageability is about being a host or an admin. Keeping them distinct is
   what stops "can see" from creeping into "can change".
@@ -145,13 +156,26 @@ interacts with each access mode.
   reference to the actor. Restoring takes a seat, so capacity closes it, and it
   is closed on an `open` event, where the person may register again on their
   own.
+- **invitation availability** — "may anybody be added to this event's invite
+  list right now, and may this person be?" The eighth question, asked at two
+  levels: the list's, about the event alone — only while access is `invite`,
+  including on a draft, and not once the event is cancelled or has started —
+  and then the person's, which depends on the *target*, since someone who may
+  manage the event or is already invited is not a valid invitee. Never about a
+  place: capacity plays no part, and the person's registration is not read.
+- **invitation revocation availability** — "may this person's invitation be
+  revoked right now?" The ninth question. Only while access is `invite` and the
+  person is on the list; deliberately *not* closed by a cancellation or a start
+  time that has passed, because revoking only narrows who can see the event.
 - **`EventWithContext`** — the derived view-model an event screen usually needs:
   the event plus its hosts, the going and pending counts, the viewer's own
   registration, and whether the viewer may manage it. Built by
   [lib/events.ts](../lib/events.ts), after visibility has been applied. The
   detail screen's version adds the confirmed attendees themselves, the
-  approval queue's rows, and the **managed attendees** — the `going` and
-  `removed` rows with what a host may do about each. The last two are left
-  empty for anyone who may not manage the event.
+  approval queue's rows, the **managed attendees** — the `going` and
+  `removed` rows with what a host may do about each — and the host's view of
+  the **invite list**, with the **candidates** who may be added. The queue and
+  the managed attendees are left empty for anyone who may not manage the event;
+  the invite list is left `null` for them, an invitee included.
 
 → [TASKS.md](../TASKS.md) §4 for the authoritative visibility and action tables.

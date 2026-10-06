@@ -5,27 +5,27 @@ progresses — it is current state, not a changelog.
 
 ## Active milestone
 
-**None in progress.** M1–M8 are complete and merged into
+**None in progress.** M1–M9 are complete and merged into
 `yardenah/events-board`: the original assignment's three `must` and two
 `should` milestones; M6, the first post-assignment milestone, which moved
-persistence to SQL Server (PR #24); M7, event cancellation (PR #28); and M8,
-removing and restoring attendees (PR #30). The UI is also localized to Hebrew
-and RTL (PR #25), which changed presentation only; what it fixed in place is in
-[a_system.md](a_system.md).
+persistence to SQL Server (PR #24); M7, event cancellation (PR #28); M8,
+removing and restoring attendees (PR #30); and M9, invitation management
+(PR #32), the third item on the original stretch list, promoted. The UI is also
+localized to Hebrew and RTL (PR #25), which changed presentation only; what it
+fixed in place is in [a_system.md](a_system.md).
 
-**Next is M9 — invitation management — and it has not started.** It was the
-third item on the original stretch list, promoted ahead of the remaining
-extensions; its product decisions are still open and are listed in
-[TASKS.md](../TASKS.md) §5. M10 and M11 (shareable links, application logging)
-follow it and are future work. The rest of the original stretch list — the
-calendar view first, then the waitlist, search, "my events", optimistic UI and
-a theme toggle — is also unstarted. Authoritative requirements for every
-milestone, extension and stretch goal: [TASKS.md](../TASKS.md) §5.
+**Next is M10 — shareable event links — and it has not started.** Its product
+decisions are still open and are listed in [TASKS.md](../TASKS.md) §5. M11
+(application logging) follows it and is future work. The rest of the original
+stretch list — the calendar view first, then the waitlist, search, "my events",
+optimistic UI and a theme toggle — is also unstarted. Authoritative
+requirements for every milestone, extension and stretch goal:
+[TASKS.md](../TASKS.md) §5.
 
 ## Status
 
 Both screens are server-rendered end to end, and the controls on them act — for
-attendees since M3, and for hosts since M4, M5, M7 and M8.
+attendees since M3, and for hosts since M4, M5, M7, M8 and M9.
 
 `/events` resolves the viewer, loads only the events that viewer may see, and
 then filters, sorts and groups them; the category and access filters live in the
@@ -41,9 +41,10 @@ the server.
 
 Hosts act too. A host can **create** an event, **edit** it in place, **publish**
 a draft and **delete** it (M4), **decide the requests on it** (M5),
-**cancel** a published event that has not started yet (M7), and **remove** a
+**cancel** a published event that has not started yet (M7), **remove** a
 confirmed attendee or **restore** a removed one on an `approval` or `invite`
-event (M8).
+event (M8), and **invite** existing people to an invite-only event or
+**revoke** their invitations (M9).
 
 A cancelled event stays on the board, in a section of its own, and its detail
 page stays readable to whoever could see it before; registering, withdrawing
@@ -66,6 +67,16 @@ but if the event is switched to `open`, ordinary registration is their way
 back. Like the queue,
 that host view is built only for people who may manage the event; everyone
 else gets the plain attendee list.
+
+Below "Who is going", a host of an invite-only event sees its **invitation
+list**: who is invited and where each of them stands, a revoke action beside
+each, and — while inviting is open — a picker for inviting one or several
+people at once. Inviting does not register anybody — an invitee sees the event
+and registers through the ordinary flow — and revoking leaves the person's
+registration as it is. On an event that is no longer invite-only, a list left
+over from when it was is shown read-only, and counts again if the event goes
+back to `invite`. Like the queue, the list is built only for people who may
+manage the event; an invitee sees nothing of it.
 
 **Everything is persistent (M6).** Users, events and registrations live in SQL
 Server behind the `lib/db.ts` contract the product was built on — kept, except
@@ -103,12 +114,34 @@ the board and the detail screen, with no schema change.
 M8 added the remove and restore routes, their two shared rules, and the host's
 attendee list with its one client leaf, plus migration `0002` — the first schema
 change since M6 — which admits the `removed` registration status.
+M9 added the invitation route, its three shared rules, the host's invitation
+list with its one client leaf, and a warning on a confirmed attendee who can no
+longer see the event, with no schema change.
 The shape of all of it is in [a_system.md](a_system.md).
 
 ## Deliberately absent
 
 Not missing — decided against, for this milestone or for the exercise. A later
 session should not treat any of these as an oversight to fix.
+
+From M9's scope — why each was decided is in [dec_log.md](dec_log.md):
+
+- **No registration changes.** Inviting registers nobody, and revoking never
+  cancels or removes a registration, a `going` place included.
+- **No inviting someone who may manage the event**, and nobody who is not
+  already a user — the product has no way to create one.
+- **No changing a dormant list.** While the event is not invite-only, its list
+  is read-only: nothing can be added or revoked until access is `invite` again.
+- **No inviting to a cancelled event or one that has started.** Revoking stays
+  open there, so an invitation revoked then cannot be given back.
+- **No inviting during event creation.** The list is managed on the detail page
+  only.
+- **No atomic bulk invite.** Inviting several people is one request per person,
+  best effort; some may succeed while others are refused.
+- **No invitation metadata and no notifications.** Nothing records who invited
+  whom or when, and nobody is told they were invited.
+- **No visibility of the list for invitees.** They cannot see who else is
+  invited.
 
 From M8's scope — why each was decided is in [dec_log.md](dec_log.md):
 
@@ -159,12 +192,11 @@ From earlier milestones, and still true: co-host management, and transferring
 an event to another organizer.
 
 Every remaining stretch goal is unstarted, including the **waitlist** with its
-auto-promotion. **Managing invitations** is no longer a stretch goal: it is M9,
-and until it lands nothing in the product writes an invite list — only the
-fixtures do. Note that approving somebody who can no longer see an invite-only
-event does *not* add them to its invite list, and neither removing nor
-restoring an attendee changes it; that is invitation management, and nothing
-does it on anyone's behalf.
+auto-promotion. **Managing invitations** was promoted to M9 and is delivered.
+Note that approving somebody who can no longer see an invite-only event does
+*not* add them to its invite list, and neither removing nor restoring an
+attendee changes it; only a host's invitation does, and nothing invites anyone
+on their behalf.
 
 ## Known limitations
 
@@ -176,8 +208,9 @@ for one event serialize on its row. See [a_system.md](a_system.md)
 "Seat-taking and concurrency".
 
 An event read is stitched from several reads of committed data, not one
-snapshot; accepted for rendering. Only capacity-sensitive writes re-decide under
-a lock — see [a_system.md](a_system.md) "Data layer".
+snapshot; accepted for rendering. Only capacity-sensitive writes and invitation
+writes re-decide under the event-row lock — see [a_system.md](a_system.md)
+"Data layer".
 
 Migrations are single-operator, and applied migrations are immutable by
 convention only — see [u_environment.md](u_environment.md) "Migration operating
@@ -203,10 +236,22 @@ same holds for a `removed` row on such an event: removing and restoring close
 with registration, so it stays removed.
 
 Restoring gives a removed attendee their place back, not their access. If an
-access change has since hidden the event from them, the host's list warns about
-it on their `removed` row; once restored, they are `going` to an event they
-cannot see, and their `going` row carries no such warning. The fix is an
-invitation, which M9 has yet to provide.
+access change or a revoked invitation has since hidden the event from them, the
+host's list warns about it on their row, `removed` or, once restored, `going`.
+The fix is to invite them — possible only while inviting is open, so not once
+the event has started or been cancelled.
+
+Revoking an invitation leaves a `going` registration standing. The person keeps
+their seat and it counts against capacity, but they can no longer see the
+event, so they cannot withdraw on their own — the registrations route answers
+with a 404. Until the event starts, a host can still free the seat: by removing
+them, or by giving their sight of the event back — re-inviting them, or moving
+the event off `invite` — after which they can withdraw. Once the event has
+started or been cancelled, withdrawing, removing and inviting are all closed
+while revoking stays open, so nothing short of deleting the event frees that
+seat. The host's list flags the row; nothing resolves it. This is the accepted
+cost of keeping invitation and registration independent — see
+[dec_log.md](dec_log.md).
 
 ## Blockers
 
@@ -226,6 +271,6 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-10-01 — M8 (removing and restoring attendees) merged into
-`yardenah/events-board`; no milestone in progress, M9 (invitation management)
+Last updated: 2026-10-05 — M9 (invitation management) merged into
+`yardenah/events-board`; no milestone in progress, M10 (shareable event links)
 next.
