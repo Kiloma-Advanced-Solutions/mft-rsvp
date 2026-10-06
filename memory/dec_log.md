@@ -1002,9 +1002,10 @@ applied to the attendee list's `going` rows.
 Consequences: the trade-off is a person who holds a place at an event they
 cannot see. They keep their seat and it counts; they cannot withdraw on their
 own, because the registrations route answers an event they may not see with a
-404. Until the event starts, a host can still free the seat — by removing them,
-or by giving their sight of the event back (re-inviting them, or moving the
-event off `invite`) so they can withdraw. Once the event has started or been
+404. While the event has neither started nor been cancelled, a host can still
+free the seat — by removing them, or by giving their sight of the event back
+(re-inviting them, or moving the event off `invite`) so they can withdraw.
+Once the event has started or been
 cancelled, withdrawing, removing and inviting are all closed while revoking
 stays open, so nothing short of deleting the event frees the place. Accepted
 and named, not solved. The fix the earlier

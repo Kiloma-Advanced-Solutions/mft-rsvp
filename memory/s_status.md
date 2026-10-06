@@ -244,9 +244,10 @@ the event has started or been cancelled.
 Revoking an invitation leaves a `going` registration standing. The person keeps
 their seat and it counts against capacity, but they can no longer see the
 event, so they cannot withdraw on their own — the registrations route answers
-with a 404. Until the event starts, a host can still free the seat: by removing
-them, or by giving their sight of the event back — re-inviting them, or moving
-the event off `invite` — after which they can withdraw. Once the event has
+with a 404. While the event has neither started nor been cancelled, a host can
+still free the seat: by removing them, or by giving their sight of the event
+back — re-inviting them, or moving the event off `invite` — after which they
+can withdraw. Once the event has
 started or been cancelled, withdrawing, removing and inviting are all closed
 while revoking stays open, so nothing short of deleting the event frees that
 seat. The host's list flags the row; nothing resolves it. This is the accepted
