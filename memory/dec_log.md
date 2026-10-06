@@ -967,3 +967,147 @@ front of a reversible action is ceremony.
 Consequences: three paths now produce `going` — `claimSeat`, `approve` and
 `restore` — and `RegistrationUpdate` still cannot express it. Nothing records
 who removed someone, when or why, beyond the row's `updatedAt`.
+
+---
+
+## 2026-10-05 — An invitation grants visibility only; revoking leaves the registration as it is
+
+Context: M9 asked hosts and admins to invite people and revoke invitations, and
+to decide what revoking does to an existing registration, whatever its status.
+Three earlier entries had already pointed here: the 2026-09-01 entry "Host edits
+never destroy a registration; deleting deliberately does" and the 2026-09-06
+entry "The queue's data is built only for managers, and a stale requester is
+flagged rather than resolved" named re-inviting as the fix for a person who
+lost sight of an event, and the 2026-09-30 entry "A manager's place is not
+removable, and removing never touches an invitation" left changing who is
+invited to M9.
+
+Decision: inviting writes the invite row and nothing else — no registration is
+created, and the person registers through the ordinary flow like anyone else
+who can see the event. Revoking deletes the invite row and nothing else: the
+person's registration keeps whatever status it had, and a `going` place keeps
+counting against capacity. Capacity plays no part in either action. A confirmed
+attendee who can no longer see the event is flagged on the host's attendee list
+(`attendeeCanView`, now carried by `going` rows as well as `removed` ones); the
+mismatch is shown, not resolved.
+
+Rationale: an invitation answers "may this person see the event", a
+registration answers "where does this person stand at it", and the 2026-09-01
+entry already keeps the two independent across edits. Cancelling or removing
+somebody's place as a side effect of revoking would turn revoking into a second,
+unsignalled removal, when removal is its own capability with its own rule and
+its own confirmation. Flagging rather than resolving is the 2026-09-06 stance,
+applied to the attendee list's `going` rows.
+
+Consequences: the trade-off is a person who holds a place at an event they
+cannot see. They keep their seat and it counts; they cannot withdraw on their
+own, because the registrations route answers an event they may not see with a
+404. While the event has neither started nor been cancelled, a host can still
+free the seat — by removing them, or by giving their sight of the event back
+(re-inviting them, or moving the event off `invite`) so they can withdraw.
+Once the event has started or been
+cancelled, withdrawing, removing and inviting are all closed while revoking
+stays open, so nothing short of deleting the event frees the place. Accepted
+and named, not solved. The fix the earlier
+entries predicted now exists: inviting a removed or restored person who lost
+sight of the event gives their access back, while inviting is open.
+
+---
+
+## 2026-10-05 — Who may be invited, and when the invite list may change
+
+Context: the specification left open who may be invited, and whether the list
+may be managed while access is not `invite`, or while the event is a draft,
+cancelled or has started.
+
+Decision: any existing user who may not manage the event may be invited;
+someone who may — a host, a co-host or an admin — is refused as a target, and
+someone already on the list cannot be added twice. The list changes only while
+the event's access is `invite`. On any other access it is **dormant**: its rows
+are kept exactly as they were, read-only — neither inviting nor revoking is
+open — and they count again if the event goes back to `invite`. Inviting is
+open on a draft and closes once the event is cancelled or has started.
+Revoking ignores the lifecycle: it stays open on a cancelled event and on one
+that has started. The rules are `getInvitationListAvailability()`,
+`getInvitationAvailability()` and `getInvitationRevocationAvailability()` in
+[lib/permissions.ts](../lib/permissions.ts).
+
+Rationale: a manager already sees the event, and the 2026-08-26 entry "Invite-only
+registration admits invited users or managers" already lets them register
+without being on the list, so inviting them would mean nothing. A list on an
+event that is not invite-only decides nothing; keeping it untouched is what lets
+switching back to `invite` restore the access it described, which the 2026-09-01
+entry's "switching away from `invite` keeps `invitedUserIds`" anticipated. A
+draft is invisible to invitees anyway, so building its list there widens nothing
+until it is published. Inviting someone to a cancelled or started event only
+shows them something they can no longer join; revoking only narrows who can see
+the event, and a host may still need to take access to a confidential event back
+afterwards.
+
+Consequences: a dormant list cannot be pruned until the event is invite-only
+again. An invitation revoked after the event started or was cancelled cannot be
+given back, and the revoke confirmation says so in that case. Inviting happens
+on the detail page only, never as part of creating an event.
+
+---
+
+## 2026-10-05 — Invitations are written one person at a time under the event-row lock; inviting several is a sequence of those writes
+
+Context: an event's invite list was only ever written whole — on create, on
+delete, and through `db.events.update`, which replaces the list when a patch
+names it. M9 also had to keep a change to the list safe against a concurrent
+registration: the seat protocol locks the event row, but the invite rows are
+read by a separate statement that the lock does not itself cover.
+
+Decision: each change is one `(event, person)` row, addressed by that pair —
+`POST` and `DELETE` on `/api/events/[id]/invitations/[userId]`, with no body and
+`[userId]` as the target, never the actor. `db.events.invite` and
+`db.events.revokeInvitation` lock the event row with the seat claim's own
+statement, read the event and its invite list under that lock, re-run the same
+rule the route ran, and write one row. They are not seat claims: they write no
+registration and read no count. A duplicate key on the invite row is answered
+as "already invited", and a revoke that deletes nothing as "not invited". The
+whole-list replacement in `db.events.update` is not used. Inviting several
+people at once is a picker in the UI that sends one such request per person,
+in sequence, best effort: a refusal for one does not stop or undo the others,
+and one summary reports how many went through.
+
+Rationale: replacing the whole list would let two hosts overwrite each other's
+changes. Sharing the event-row lock is what closes the concurrency question: a
+seat claim holds that lock while it reads the invite list, and every invitation
+write must take the same lock first, so the list a claim decides on cannot
+change before it commits. Per-person requests keep one authorisation path and
+one rule check for every person, whether one is invited or ten; sequential
+rather than parallel, because the requests would queue on the same row lock
+anyway.
+
+Consequences: inviting several people costs one round trip each and is not
+atomic — a partial success is a normal outcome, reported as one. Invitation
+writes serialize with seat claims on the same event. An invitation row carries
+no id and no timestamp, so nothing records who invited whom or when, and
+nothing notifies the person. No schema change was needed.
+
+---
+
+## 2026-10-05 — The invite list is built only for managers, an invitee included
+
+Context: the list says who else was asked to a confidential event, and the
+specification left open whether invitees can see each other.
+
+Decision: [lib/events.ts](../lib/events.ts) builds the detail screen's
+`invitations` only when the viewer may manage the event, and leaves it `null`
+for everyone else, an invitee included. The people who may be added are worked
+out there too, by the same rule the route runs, so the screen derives nothing
+and offers nobody the server would refuse — though the route re-checks
+regardless.
+
+Rationale: this is the 2026-09-06 entry "The queue's data is built only for
+managers, and a stale requester is flagged rather than resolved" applied to the
+invite list: data that is never assembled cannot leak through a caller that
+forgets to gate it. It is `null` rather than the queue's empty array because an
+empty list means something to a host — it is where inviting starts — so "not
+yours" and "nobody yet" must be told apart.
+
+Consequences: invitees cannot see who else is invited. What an ordinary viewer
+of an invite-only event sees is unchanged — the event and who is going, nothing
+about the list.

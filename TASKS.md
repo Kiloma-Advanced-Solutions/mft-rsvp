@@ -321,15 +321,18 @@ already a user — the product has no way to create one. Co-host management.
 member sees it on the board and registers through the ordinary flow, and an
 uninvited member still gets a 404 for it — checked by switching persona.
 
-**Not yet decided.** Who may be invited. Whether the list can be managed while
-access is not `invite`, or while the event is a draft, cancelled or has
-started. What revoking does to an existing registration. Whether invitees can
-see each other. How the size of the list relates to capacity. Whether inviting
-belongs in event creation, on the detail page, or both. Whether to record who
-invited whom and when. Notifications and bulk inviting. And how a change
-to the list stays safe against a concurrent registration: the invite rows are
-read by a separate statement, and the event-row lock the seat protocol takes
-does not cover them.
+**Status: delivered.** Who may be invited, when the list may change, what
+revoking does to a registration, and how a change to the list stays safe
+against a concurrent registration were all decided during M9 and are
+implemented. The requirement above is kept as it was set. Inviting writes no
+registration and revoking leaves whatever registration the person holds as it
+is; the list is managed only while the event's access is `invite`, and is kept
+unchanged otherwise. The rules are `getInvitationListAvailability()`,
+`getInvitationAvailability()` and `getInvitationRevocationAvailability()` in
+`lib/permissions.ts`; the changes are `POST` and `DELETE`
+`/api/events/[id]/invitations/[userId]`, one person at a time; the host's
+invitation list is on the detail page; there was no schema change; and the
+reasoning is in `memory/dec_log.md`.
 
 #### M10 — Shareable event links
 
