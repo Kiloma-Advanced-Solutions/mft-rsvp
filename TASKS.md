@@ -350,7 +350,33 @@ the event and register.
 **Not yet decided.** Whether this uses the event id, a token, a slug, a separate
 record, or something else.
 
-#### M11 — Application logging
+#### M11 — System redesign
+
+**Goal.** Redesign the application's user interface to follow an external Style
+Guide, which will be supplied separately.
+
+The Style Guide has not been provided yet. Until it has been received and
+inspected, this milestone records only what is already known; its detailed
+scope, and what counts as done, are set in M11's own planning step.
+
+- The redesign follows the external Style Guide — a separate document from the
+  in-app `/styleguide` page, which renders the existing component kit.
+- Preserve the existing behaviour: the rules in section 4, visibility and the
+  never-leak constraint in section 1, registration, capacity and lifecycle
+  behaviour, and every capability delivered in M1–M9. M11 changes how the
+  application looks, not what the rules are — unless the Style Guide or an
+  explicitly approved redesign decision requires otherwise.
+
+**Not yet decided — pending the Style Guide.**
+
+- The detailed scope: which screens, components and states change.
+- How the Style Guide relates to the current styling conventions in
+  `CLAUDE.md`, the tokens in `app/styles/tokens.css`, the `components/ui/` kit
+  and the `/styleguide` page — kept, extended or replaced.
+- How it applies to the Hebrew, right-to-left interface and to both themes.
+- The definition of done for this milestone.
+
+#### M12 — Application logging
 
 **Goal.** Add developer-facing logging and observability for meaningful product
 activity.
