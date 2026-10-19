@@ -100,6 +100,9 @@
 
 /* Sharing sits between Edit and the publish/cancel/delete group. */
 .shareTool {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
   margin-top: var(--space-3);
 }
 

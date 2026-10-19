@@ -707,6 +707,62 @@ export const SHARE_LABELS = {
   unavailable: "שיתוף האירוע לא זמין כרגע: כתובת האתר לא הוגדרה בשרת.",
 };
 
+/**
+ * The host's "send by email" control: pick people who can already see the
+ * event and email them its link. Kept apart from `INVITATION_LABELS` on
+ * purpose -- this adds nobody to anything, and the hint says so.
+ */
+export const SHARE_EMAIL_LABELS = {
+  pickerLabel: "שליחת הקישור במייל",
+  hint: "המייל כולל את הקישור לאירוע. הוא לא מזמין, לא רושם ולא נותן גישה.",
+  choosePeople: "בחירת נמענים",
+  pickerTitle: "בחירת נמענים",
+  pickerDescription: "מופיעים כאן רק מי שכבר יכולים לראות את האירוע.",
+  filterLabel: "חיפוש",
+  filterPlaceholder: "שם או תפקיד",
+  noMatches: "אף אחד לא מתאים לחיפוש.",
+  done: "סיום",
+  /** The button while nobody is selected -- disabled, so it never counts zero. */
+  send: "שליחה במייל",
+  /** Sharing is open, but nobody besides the host can see the event. */
+  noRecipients: "אין כרגע אנשים נוספים שיכולים לראות את האירוע.",
+};
+
+/** "שליחה לאדם אחד", "שליחה לשני אנשים", "שליחה ל־5 אנשים" -- a maqaf only before digits. */
+export function sendShareEmailsLabel(n: number): string {
+  return `שליחה ל${n > 2 ? "־" : ""}${personCount(n)}`;
+}
+
+/** One summary toast for a batch: every send succeeded. */
+export function shareEmailsSentLabel(n: number): string {
+  return n === 1 ? "המייל נשלח" : `נשלחו ${n} מיילים`;
+}
+
+/** Some succeeded and some did not -- never reported as a plain success. */
+export function shareEmailsPartlySentLabel(sent: number, tried: number): string {
+  return `מיילים שנשלחו: ${sent} מתוך ${tried}`;
+}
+
+export function shareEmailsFailedLabel(tried: number): string {
+  return tried === 1 ? "המייל לא נשלח" : "המיילים לא נשלחו";
+}
+
+/**
+ * What the share-email route answers when it will not or could not send. Short
+ * and safe: nothing here repeats the mail service's own response, its address
+ * or the sender configuration, which stay in the server log.
+ */
+export const SHARE_EMAIL_ACTION_COPY = {
+  self: "אי אפשר לשלוח את המייל לעצמכם.",
+  /** Agrees with the noun "האדם", not with anybody's gender. */
+  recipientCannotView:
+    "האדם הזה לא יכול לראות את האירוע, ולכן אי אפשר לשלוח אליו את הקישור. באירוע בהזמנה בלבד צריך להזמין אותו קודם.",
+  invalidRecipientEmail: "כתובת המייל של הנמען לא תקינה.",
+  notConfigured: "שליחת מיילים לא מוגדרת בשרת הזה.",
+  deliveryFailed: "שירות הדואר לא זמין כרגע. אפשר לנסות שוב מאוחר יותר.",
+  renderFailed: "לא הצלחנו להכין את המייל.",
+};
+
 /* ------------------------------------------------------------------- email */
 
 /**

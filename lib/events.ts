@@ -27,6 +27,7 @@ import {
   getInvitationListAvailability,
   getInvitationRevocationAvailability,
   getRequestDecisionAvailability,
+  getSharingAvailability,
 } from "./permissions";
 import type {
   EventDetailContext,
@@ -127,7 +128,35 @@ export async function getEventDetailForViewer(
     invitations: context.viewerCanManage
       ? toInvitations(event, rows, users)
       : null,
+    // Who the event may be emailed to is a slice of the user list, so it is
+    // host-only as well, and `null` for everyone else.
+    shareRecipients: context.viewerCanManage
+      ? toShareRecipients(event, users, viewer)
+      : null,
   };
+}
+
+/**
+ * Who a host may email this event to: everybody who can already see it,
+ * except the host themselves -- `canViewEvent()` for each person, the same
+ * answer the event page gives them. On an invite-only event that is the invite
+ * list plus the hosts and admins; nobody else is offered, because the email
+ * grants nothing and would only lead them to a 404.
+ *
+ * Empty whenever sharing is closed, so a draft, a cancelled event or one that
+ * has started offers nobody. The share-email route asks every one of these
+ * questions again before it sends; this list is what the picker shows, not
+ * what makes a send allowed.
+ */
+function toShareRecipients(
+  event: EventRecord,
+  users: User[],
+  viewer: User,
+): User[] {
+  if (getSharingAvailability(event).state === "closed") return [];
+  return users.filter(
+    (user) => user.id !== viewer.id && canViewEvent(event, user),
+  );
 }
 
 /**

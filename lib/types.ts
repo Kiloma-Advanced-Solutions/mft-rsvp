@@ -421,6 +421,15 @@ export type EventDetailContext = EventWithContext & {
    * starts), so "not yours" is `null` rather than empty.
    */
   invitations: EventInvitations | null;
+  /**
+   * Who a host may email this event to: everyone who can already see it, less
+   * the host. Empty while sharing is closed (`getSharingAvailability()`).
+   *
+   * **`null` for anyone who may not manage the event**, like `invitations`, so
+   * nobody else is handed a list of the people who can see it. Sending an
+   * email grants nothing, so it never adds anybody who cannot.
+   */
+  shareRecipients: User[] | null;
 };
 
 /**

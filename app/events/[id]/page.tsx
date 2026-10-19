@@ -12,7 +12,10 @@ import {
 import { HostEventActions } from "@/components/events/HostEventActions";
 import { InvitationList } from "@/components/events/InvitationList";
 import { RegistrationPanel } from "@/components/events/RegistrationPanel";
-import { ShareEventActions } from "@/components/events/ShareEventActions";
+import {
+  ShareEmailPicker,
+  ShareEventActions,
+} from "@/components/events/ShareEventActions";
 import {
   Card,
   CardBody,
@@ -37,7 +40,7 @@ import {
 } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
 import { buildEventShareUrl } from "@/lib/shareLinks";
-import type { EventRecord } from "@/lib/types";
+import type { EventRecord, User } from "@/lib/types";
 
 import styles from "./detail.module.css";
 
@@ -81,6 +84,7 @@ export default async function EventDetailPage({
     requests,
     managedAttendees,
     invitations,
+    shareRecipients,
     viewerRegistration,
     viewerCanManage,
   } = detail;
@@ -229,6 +233,8 @@ export default async function EventDetailPage({
                 event={event}
                 pendingCount={pendingCount}
                 goingCount={goingCount}
+                // Built only for a manager, so never `null` here.
+                shareRecipients={shareRecipients ?? []}
               />
             )}
           </aside>
@@ -283,10 +289,12 @@ function HostTools({
   event,
   pendingCount,
   goingCount,
+  shareRecipients,
 }: {
   event: EventRecord;
   pendingCount: number;
   goingCount: number;
+  shareRecipients: User[];
 }) {
   return (
     <Card padding="none">
@@ -305,7 +313,7 @@ function HostTools({
           </Link>
         </div>
 
-        <ShareTool event={event} />
+        <ShareTool event={event} recipients={shareRecipients} />
 
         <HostEventActions
           eventId={event.id}
@@ -329,8 +337,19 @@ function HostTools({
  * client leaf is handed a finished string. A base URL that is not configured
  * costs the host this one tool, not the page, and nothing falls back to the
  * request's own host.
+ *
+ * Emailing the link sits under copying it, in the same open state: both need
+ * the same link. The picker gets ids, names and job titles only -- never an
+ * email address, which the route reads on the server. It is shown whether or
+ * not this server can send mail; a send that cannot go says so when tried.
  */
-function ShareTool({ event }: { event: EventRecord }) {
+function ShareTool({
+  event,
+  recipients,
+}: {
+  event: EventRecord;
+  recipients: User[];
+}) {
   const sharing = getSharingAvailability(event);
   const eventUrl =
     sharing.state === "open" ? buildEventShareUrl(event.id) : null;
@@ -342,7 +361,17 @@ function ShareTool({ event }: { event: EventRecord }) {
       ) : eventUrl === null ? (
         <p className={styles.hostNote}>{SHARE_LABELS.unavailable}</p>
       ) : (
-        <ShareEventActions eventUrl={eventUrl} />
+        <>
+          <ShareEventActions eventUrl={eventUrl} />
+          <ShareEmailPicker
+            eventId={event.id}
+            recipients={recipients.map(({ id, name, title }) => ({
+              id,
+              name,
+              title,
+            }))}
+          />
+        </>
       )}
     </div>
   );

@@ -16,3 +16,43 @@
   color: var(--color-text-subtle);
 }
 
+/* ---- send by email: the same shape as the invitation picker ----------- */
+
+/* The same weight and size as a `Field` label. */
+.pickerLabel {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--color-text);
+}
+
+/* How many are ticked, and the one button that sends them. */
+.pickerFooter {
+  align-self: stretch;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+/* Stays put while the list under it scrolls. */
+.filter {
+  position: sticky;
+  top: 0;
+  padding-bottom: var(--space-3);
+  background: var(--color-surface);
+}
+
+/* One person per row, so a long list reads top to bottom. */
+.recipientList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* The dialog footer ends with "סיום"; the count takes the other end. */
+.dialogCount {
+  margin-inline-end: auto;
+  font-size: var(--text-sm);
+  color: var(--color-text-subtle);
+}
