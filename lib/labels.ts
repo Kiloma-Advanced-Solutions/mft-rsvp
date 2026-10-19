@@ -22,6 +22,7 @@ import type {
   RegistrationStatus,
   RequestDecisionAvailability,
   RequestDecisionClosedReason,
+  SharingClosedReason,
   UserRole,
 } from "./types";
 
@@ -669,6 +670,24 @@ export function invitationRevocationClosedNote(
   reason: InvitationRevocationClosedReason,
 ): string {
   return INVITATION_REVOCATION_CLOSED_NOTES[reason];
+}
+
+/* ----------------------------------------------------------------- sharing */
+
+/**
+ * Why an event cannot be shared right now. The rule that produced the reason
+ * is `getSharingAvailability()`; the host's sharing controls and the email
+ * route both read the wording from here, so a note beside a button and a
+ * refusal from the API say the same thing.
+ */
+const SHARING_CLOSED_NOTES: Record<SharingClosedReason, string> = {
+  draft: "אפשר לשתף רק אירוע שפורסם.",
+  cancelled: "האירוע בוטל, ולכן אי אפשר לשתף אותו.",
+  started: "האירוע כבר התחיל, ולכן אי אפשר לשתף אותו.",
+};
+
+export function sharingClosedNote(reason: SharingClosedReason): string {
+  return SHARING_CLOSED_NOTES[reason];
 }
 
 /**
