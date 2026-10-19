@@ -691,6 +691,23 @@ export function sharingClosedNote(reason: SharingClosedReason): string {
 }
 
 /**
+ * The host's Copy Link control. The hint says what the link is *not*: it is
+ * the event's own address and admits nobody, so a host sharing an invite-only
+ * event knows the recipient still has to be on the list.
+ */
+export const SHARE_LABELS = {
+  copyLink: "העתקת הקישור לאירוע",
+  hint: "הקישור פותח את האירוע רק למי שכבר רשאי לראות אותו.",
+  copied: "הקישור הועתק",
+  copyFailed: "לא הצלחנו להעתיק את הקישור",
+  copyFailedHint: "אפשר להעתיק אותו ידנית מהשדה שמתחת לכפתור.",
+  /** The read-only field shown when the clipboard refuses. */
+  linkField: "הקישור לאירוע",
+  /** `EVENTS_APP_BASE_URL` is missing or invalid on the server. */
+  unavailable: "שיתוף האירוע לא זמין כרגע: כתובת האתר לא הוגדרה בשרת.",
+};
+
+/**
  * The host's side of "who is going": the action beside each attendee, and the
  * group of people who were removed and may be returned.
  *

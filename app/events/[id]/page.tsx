@@ -12,6 +12,7 @@ import {
 import { HostEventActions } from "@/components/events/HostEventActions";
 import { InvitationList } from "@/components/events/InvitationList";
 import { RegistrationPanel } from "@/components/events/RegistrationPanel";
+import { ShareEventActions } from "@/components/events/ShareEventActions";
 import {
   Card,
   CardBody,
@@ -22,12 +23,20 @@ import {
 } from "@/components/ui";
 import { getEventDetailForViewer } from "@/lib/events";
 import { toFormValues } from "@/lib/eventInput";
-import { CATEGORY_LABELS, DETAIL_LABELS, MANAGE_LABELS } from "@/lib/labels";
+import {
+  CATEGORY_LABELS,
+  DETAIL_LABELS,
+  MANAGE_LABELS,
+  SHARE_LABELS,
+  sharingClosedNote,
+} from "@/lib/labels";
 import {
   getCancellationAvailability,
   getRegistrationAvailability,
+  getSharingAvailability,
 } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
+import { buildEventShareUrl } from "@/lib/shareLinks";
 import type { EventRecord } from "@/lib/types";
 
 import styles from "./detail.module.css";
@@ -263,7 +272,8 @@ function Description({ text }: { text: string }) {
  * Edit is a `<Link>` because it navigates rather than acts: it turns on the
  * `?edit=1` mode this same page renders. Publish, cancel and delete do act, so
  * they live in a client leaf. Whether cancelling is on offer comes from the
- * same rule the cancel route applies, so the button and the API agree.
+ * same rule the cancel route applies, so the button and the API agree. Sharing
+ * sits between Edit and those actions, in `ShareTool` below.
  * Deciding requests is the approval queue's job, and it lives in the main
  * column where there is room for what people wrote; managing who is invited is
  * the invitation list's, in the main column for the same reason, and it carries
@@ -295,6 +305,8 @@ function HostTools({
           </Link>
         </div>
 
+        <ShareTool event={event} />
+
         <HostEventActions
           eventId={event.id}
           isDraft={event.status === "draft"}
@@ -304,5 +316,34 @@ function HostTools({
         />
       </CardBody>
     </Card>
+  );
+}
+
+/**
+ * Sharing, inside the host tools: the copy action while there is something
+ * worth sharing, and otherwise a sentence saying why not -- the way the
+ * invitation list explains a closed picker rather than leaving a gap.
+ *
+ * Every decision is made here, on the server: whether sharing is open comes
+ * from `getSharingAvailability()`, the URL from `buildEventShareUrl()`, and the
+ * client leaf is handed a finished string. A base URL that is not configured
+ * costs the host this one tool, not the page, and nothing falls back to the
+ * request's own host.
+ */
+function ShareTool({ event }: { event: EventRecord }) {
+  const sharing = getSharingAvailability(event);
+  const eventUrl =
+    sharing.state === "open" ? buildEventShareUrl(event.id) : null;
+
+  return (
+    <div className={styles.shareTool}>
+      {sharing.state === "closed" ? (
+        <p className={styles.hostNote}>{sharingClosedNote(sharing.reason)}</p>
+      ) : eventUrl === null ? (
+        <p className={styles.hostNote}>{SHARE_LABELS.unavailable}</p>
+      ) : (
+        <ShareEventActions eventUrl={eventUrl} />
+      )}
+    </div>
   );
 }
