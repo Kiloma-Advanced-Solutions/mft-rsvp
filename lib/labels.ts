@@ -707,6 +707,20 @@ export const SHARE_LABELS = {
   unavailable: "שיתוף האירוע לא זמין כרגע: כתובת האתר לא הוגדרה בשרת.",
 };
 
+/* ------------------------------------------------------------------- email */
+
+/**
+ * The words the shared email shell renders around every message, in
+ * `emails/BaseEmail/BaseEmail.tsx`. The footer is the organization's standard
+ * line, kept as the reference implementation has it; the alt texts are what a
+ * client shows while it is blocking images.
+ */
+export const EMAIL_LABELS = {
+  autoSentFooter: "הודעה זו נשלחה אוטומטית, אין להשיב למייל זה.",
+  organizationLogoAlt: "לוגו הארגון",
+  appLogoAlt: "לוגו המערכת",
+};
+
 /**
  * The host's side of "who is going": the action beside each attendee, and the
  * group of people who were removed and may be returned.

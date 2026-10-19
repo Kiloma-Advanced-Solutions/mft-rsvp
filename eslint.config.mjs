@@ -76,6 +76,22 @@ const eslintConfig = defineConfig([
       ],
     },
   },
+
+  /**
+   * Email templates are email HTML, not pages.
+   *
+   * `no-img-element` steers pages towards `next/image`, which renders lazy,
+   * optimised markup served by this application -- none of which survives into
+   * a message read in Outlook. An email image is a plain `<img>` whose `src` is
+   * a `data:` URI from `emails/images/`, which is the organization's
+   * convention. Scoped to `emails/` so the rule still holds for the app.
+   */
+  {
+    files: ["emails/**/*.{ts,tsx}"],
+    rules: {
+      "@next/next/no-img-element": "off",
+    },
+  },
 ]);
 
 export default eslintConfig;
