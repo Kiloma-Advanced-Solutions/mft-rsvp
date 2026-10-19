@@ -813,8 +813,13 @@ export function eventShareAccessNote(access: EventAccess): string {
   return EVENT_SHARE_ACCESS_NOTES[access];
 }
 
+/**
+ * The subject is a mail header, and a title is host-authored text the event
+ * API stores as given -- so any run of whitespace, a line break included, is
+ * folded to one space. A newline in a header could start another one.
+ */
 export function eventShareEmailSubject(eventTitle: string): string {
-  return `אירוע בלוח האירועים: ${eventTitle}`;
+  return `אירוע בלוח האירועים: ${eventTitle.replace(/\s+/g, " ").trim()}`;
 }
 
 export function eventShareEmailGreeting(recipientName: string): string {
