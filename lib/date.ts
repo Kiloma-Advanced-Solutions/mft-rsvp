@@ -132,6 +132,68 @@ function monthCount(n: number): string {
   return `${n} חודשים`;
 }
 
+/* ------------------------------------------------------------------ email */
+
+/*
+  Email is read later, somewhere else, so it cannot borrow the formatters above:
+  they use the process's own time zone, which is fine for a page rendered and
+  read on the same machine and wrong for a message rendered on a server in UTC.
+  These name their zone, so an email says the same time wherever it was
+  rendered. They are the only ones that do -- the screens are unchanged.
+
+  Daylight saving is the zone database's job: `Intl` applies whichever offset
+  Jerusalem had on the event's date, so there is no offset to keep in step.
+*/
+const EMAIL_TIME_ZONE = "Asia/Jerusalem";
+
+const emailDate = new Intl.DateTimeFormat(LOCALE, {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+  timeZone: EMAIL_TIME_ZONE,
+});
+const emailTime = new Intl.DateTimeFormat(LOCALE, {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: EMAIL_TIME_ZONE,
+});
+/** "2026-10-18" -- only compared, never shown. */
+const emailDayKey = new Intl.DateTimeFormat("en-CA", {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+  timeZone: EMAIL_TIME_ZONE,
+});
+
+/** "יום ראשון, 18 באוקטובר 2026", in Jerusalem time. */
+export function formatEmailDate(iso: string): string {
+  return emailDate.format(new Date(iso));
+}
+
+/**
+ * "09:30 עד 17:00", in Jerusalem time. An event that ends on a later day names
+ * that day: "22:00 עד יום ראשון, 19 באוקטובר 2026, 02:00".
+ *
+ * Joined by a word rather than a dash, which is what lets it drop the bidi
+ * isolates `formatTimeRange` relies on: a dash between two numbers is neutral,
+ * so a right-to-left paragraph reorders the range end-first, while a Hebrew
+ * word pins the order in either direction. The isolates themselves are not an
+ * option in mail -- Outlook 2016 cannot be counted on to honour them, and in
+ * the plain-text part they are invisible characters in a copied time.
+ */
+export function formatEmailTimeRange(startIso: string, endIso: string): string {
+  const start = new Date(startIso);
+  const end = new Date(endIso);
+  const startTime = emailTime.format(start);
+  const endTime = emailTime.format(end);
+
+  if (emailDayKey.format(start) === emailDayKey.format(end)) {
+    return `${startTime} עד ${endTime}`;
+  }
+  return `${startTime} עד ${emailDate.format(end)}, ${endTime}`;
+}
+
 
 export function isPast(iso: string): boolean {
   return new Date(iso).getTime() < Date.now();

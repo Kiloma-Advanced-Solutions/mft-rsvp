@@ -722,6 +722,54 @@ export const EMAIL_LABELS = {
 };
 
 /**
+ * The email a host sends to share an event, in HTML and in plain text.
+ *
+ * It is a message carrying the event's own link, not an invitation: it adds
+ * nobody to the invite list, registers nobody and grants no access -- the
+ * route only sends it to someone who can already see the event. So the copy
+ * says "shared", never "invited", and the subject names the event rather than
+ * an invitation. The sharer's verb takes the `/ה` form, the way the rest of
+ * the product writes a verb whose subject's gender it does not know.
+ */
+export const EVENT_SHARE_EMAIL_LABELS = {
+  date: "תאריך",
+  time: "שעה",
+  location: "מיקום",
+  openEvent: "לצפייה באירוע",
+  linkFallback: "אם הכפתור לא נפתח, אפשר להעתיק את הקישור הזה לדפדפן:",
+  /** The plain-text part's stand-in for the button. */
+  linkLine: "קישור לאירוע:",
+};
+
+/**
+ * What registering will do, said to somebody who has not done it yet. Not
+ * `ACCESS_DESCRIPTIONS`, which speaks to the host ("you decide who gets in").
+ * Nothing here promises a place: the event may be full by the time the link is
+ * opened, and the page says so then.
+ */
+const EVENT_SHARE_ACCESS_NOTES: Record<EventAccess, string> = {
+  open: "בהרשמה לאירוע הזה המקום שלך מאושר מיד.",
+  approval: "באירוע הזה ההרשמה היא בקשה, והמארחים מחליטים עליה.",
+  invite: "האירוע הזה מיועד למוזמנים בלבד.",
+};
+
+export function eventShareAccessNote(access: EventAccess): string {
+  return EVENT_SHARE_ACCESS_NOTES[access];
+}
+
+export function eventShareEmailSubject(eventTitle: string): string {
+  return `אירוע בלוח האירועים: ${eventTitle}`;
+}
+
+export function eventShareEmailGreeting(recipientName: string): string {
+  return `שלום ${recipientName},`;
+}
+
+export function eventShareEmailIntro(senderName: string): string {
+  return `${senderName} שיתף/ה איתך אירוע מלוח האירועים.`;
+}
+
+/**
  * The host's side of "who is going": the action beside each attendee, and the
  * group of people who were removed and may be returned.
  *

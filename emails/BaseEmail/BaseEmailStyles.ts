@@ -10,12 +10,16 @@
  * `components/`.
  *
  * `colors` is the reference palette exactly as supplied. The style map keeps
- * the reference's shell (header, accent bar, card, footer) and its generic
- * content blocks (greeting, body text, info box, alert box, details table,
- * divider). The reference's section, permission and credentials styles are
- * left out: they belong to the source product's permission summary, not to
- * the shell. So are `footerText` and `footerBrand`, which no part of the
- * reference used.
+ * the reference's shell (header, accent bar, card, footer) and the content
+ * blocks an email here actually uses (greeting, body text, details table), and
+ * adds the call to action and the visible link the event-share email needs,
+ * built from the same palette.
+ *
+ * Left out of the reference: the section, permission and credentials styles,
+ * which belong to the source product's permission summary; `footerText` and
+ * `footerBrand`, which nothing in the reference used; and the info box, alert
+ * box and divider, which nothing here uses yet -- they are a copy away in the
+ * reference when an email needs one.
  */
 
 import type { CSSProperties } from "react";
@@ -121,48 +125,19 @@ export const styles: StyleMap = {
     fontSize: "18px",
     color: colors.textMid,
   },
-
-  // ── Info box ──
-  infoBox: {
-    width: "100%",
-    backgroundColor: colors.accentLight,
-    borderCollapse: "collapse",
-  },
-  infoBoxInner: {
-    padding: "16px 20px",
-    textAlign: "right",
-  },
-  infoLabel: {
-    fontSize: "11px",
-    fontWeight: "700",
-    color: colors.accent,
-    textTransform: "uppercase",
-    letterSpacing: "1.5px",
-    margin: "0 0 4px 0",
-  },
-  infoValue: {
-    fontSize: "17px",
-    fontWeight: "700",
-    color: colors.primary,
-    margin: "0",
-  },
-
-  // ── Alert box (urgent) ──
-  alertBox: {
-    width: "100%",
-    backgroundColor: colors.dangerLight,
-    borderCollapse: "collapse",
-  },
-  alertBoxInner: {
-    padding: "14px 20px",
-    textAlign: "center",
-  },
-  alertText: {
-    fontSize: "14px",
-    color: colors.danger,
-    fontWeight: "600",
-    margin: "0",
+  /** `bodyText` as a paragraph with an explicit margin, which clients vary on. */
+  paragraph: {
+    fontSize: "18px",
+    color: colors.textMid,
     lineHeight: "1.5",
+    margin: "0 0 16px 0",
+  },
+  /** A quieter line under a heading -- an event's one-sentence summary. */
+  summaryText: {
+    fontSize: "16px",
+    color: colors.textLight,
+    lineHeight: "1.5",
+    margin: "0 0 20px 0",
   },
 
   // ── Details table ──
@@ -192,11 +167,45 @@ export const styles: StyleMap = {
     textAlign: "right",
   },
 
-  // ── Divider ──
-  hr: {
-    borderColor: colors.border,
-    borderTop: `1px solid ${colors.border}`,
-    padding: "5px 0",
+  // ── Call to action ──
+  // A link inside a coloured table cell: the cell's padding and inline
+  // background are what Outlook draws as the button -- the same way the
+  // reference colours its header and accent bar -- so no VML, no `bgcolor`
+  // attribute and no `display: inline-block` are needed. Only the link text is clickable in Outlook; elsewhere the
+  // padding is too, because the link fills the cell.
+  ctaTable: {
+    borderCollapse: "collapse",
+  },
+  ctaCell: {
+    backgroundColor: colors.primary,
+    padding: "12px 28px",
+    textAlign: "center",
+  },
+  ctaLink: {
+    fontSize: "16px",
+    fontWeight: "700",
+    color: "#FFFFFF",
+    textDecoration: "none",
+    display: "block",
+  },
+
+  // ── Visible link, for when the button does not open ──
+  linkFallback: {
+    fontSize: "13px",
+    color: colors.textLight,
+    margin: "0 0 4px 0",
+  },
+  /** Left-to-right: a URL is Latin, and right-to-left would reorder its slashes. */
+  urlText: {
+    fontSize: "13px",
+    direction: "ltr",
+    textAlign: "right",
+    margin: "0",
+    wordBreak: "break-all",
+  },
+  urlLink: {
+    color: colors.primary,
+    textDecoration: "underline",
   },
 
   // ── Footer ──

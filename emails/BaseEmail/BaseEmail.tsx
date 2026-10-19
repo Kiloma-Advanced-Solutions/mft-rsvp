@@ -33,7 +33,7 @@ import { EMAIL_LABELS } from "@/lib/labels";
 import { tohenWhiteLogo } from "../images/tohenWhite";
 import { colors, styles } from "./BaseEmailStyles";
 
-export { colors, styles };
+export { styles };
 
 interface BaseEmailProps {
   preview?: string;
@@ -237,56 +237,9 @@ export function BaseEmail({
 }
 
 // ─── Reusable sub-components ──────────────────────────────────────────────────
-
-interface InfoBoxProps {
-  label: string;
-  value: string;
-}
-
-export function InfoBox({ label, value }: InfoBoxProps) {
-  return (
-    <table
-      width="100%"
-      cellPadding={0}
-      cellSpacing={0}
-      border={0}
-      style={styles.infoBox}
-    >
-      <tbody>
-        <tr>
-          <td style={styles.infoBoxInner}>
-            <p style={styles.infoLabel}>{label}</p>
-            <p style={styles.infoValue}>{value}</p>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  );
-}
-
-interface AlertBoxProps {
-  children: ReactNode;
-}
-
-export function AlertBox({ children }: AlertBoxProps) {
-  return (
-    <table
-      width="100%"
-      cellPadding={0}
-      cellSpacing={0}
-      border={0}
-      style={styles.alertBox}
-    >
-      <tbody>
-        <tr>
-          <td style={styles.alertBoxInner}>
-            <p style={styles.alertText}>{children}</p>
-          </td>
-        </tr>
-      </tbody>
-    </table>
-  );
-}
+// The reference's `InfoBox`, `AlertBox` and `Divider` are not carried over yet:
+// no email here uses them. Bring one across from the reference with its styles
+// when one does.
 
 interface DetailRowProps {
   label: string;
@@ -320,18 +273,6 @@ export function Spacer({ height = 16 }: SpacerProps) {
           >
             &nbsp;
           </td>
-        </tr>
-      </tbody>
-    </table>
-  );
-}
-
-export function Divider() {
-  return (
-    <table width="100%" cellPadding={0} cellSpacing={0} border={0}>
-      <tbody>
-        <tr>
-          <td style={styles.hr} />
         </tr>
       </tbody>
     </table>
