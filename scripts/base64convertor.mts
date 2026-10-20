@@ -43,6 +43,27 @@ const MEDIA_TYPES: Record<string, string> = {
 const IDENTIFIER = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 const SAFE_FILE_NAME = /^[A-Za-z0-9_-]+$/;
 
+/**
+ * Names that pass `IDENTIFIER` but cannot be the binding in
+ * `export const <name> = ...` -- checked against this repository's TypeScript
+ * and compiler options. TypeScript's contextual keywords (`type`, `as`,
+ * `async`, `module`, `namespace`, ...) are ordinary names there and stay
+ * allowed.
+ */
+const RESERVED_BINDING_NAMES = new Set([
+  // ECMAScript reserved words
+  "break", "case", "catch", "class", "const", "continue", "debugger", "default",
+  "delete", "do", "else", "enum", "export", "extends", "false", "finally", "for",
+  "function", "if", "import", "in", "instanceof", "new", "null", "return",
+  "super", "switch", "this", "throw", "true", "try", "typeof", "var", "void",
+  "while", "with",
+  // reserved in strict mode, which every module is
+  "implements", "interface", "let", "package", "private", "protected", "public",
+  "static", "yield",
+  // reserved at the top level of a module, or not bindable in strict mode
+  "await", "eval", "arguments",
+]);
+
 function fail(message: string, code: 1 | 2 = 1): never {
   console.error(`base64convertor: ${message}`);
   process.exit(code);
@@ -72,6 +93,12 @@ if (!SAFE_FILE_NAME.test(name)) {
 const exportName = exportArg ?? name;
 if (!IDENTIFIER.test(exportName)) {
   fail(`"${exportName}" is not a valid export name -- pass one as the second argument.`);
+}
+if (RESERVED_BINDING_NAMES.has(exportName)) {
+  fail(
+    `"${exportName}" is a reserved word and cannot be an export name -- pass ` +
+      `another as the second argument, e.g. ${exportName}Logo.`,
+  );
 }
 
 const outputPath = join(OUTPUT_DIR, `${name}.ts`);
