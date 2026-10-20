@@ -39,7 +39,7 @@ import { ApiError, jsonOk, withErrorHandling } from "@/lib/api";
 import { db } from "@/lib/db";
 import { EMAIL_API_FETCH_TIMEOUT_MS } from "@/lib/emails/recipientEmail";
 import type { SendEventShareEmailResult } from "@/lib/emails/types";
-import { getEventDetailForViewer } from "@/lib/events";
+import { getEventForViewer } from "@/lib/events";
 import {
   MANAGE_ACTION_COPY,
   SHARE_EMAIL_ACTION_COPY,
@@ -64,9 +64,10 @@ export const POST = withErrorHandling(
       context.params,
     ]);
 
-    const detail = await getEventDetailForViewer(id, viewer);
-    if (!detail) throw ApiError.notFound();
-    const { event } = detail;
+    // The event alone: nothing below needs the detail screen's users,
+    // registrations or derived lists, and this runs once per recipient.
+    const event = await getEventForViewer(id, viewer);
+    if (!event) throw ApiError.notFound();
 
     if (!canManageEvent(event, viewer)) {
       throw ApiError.forbidden(MANAGE_ACTION_COPY.cannotManage);
