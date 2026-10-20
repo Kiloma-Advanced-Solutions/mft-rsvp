@@ -22,6 +22,7 @@ import type {
   RegistrationStatus,
   RequestDecisionAvailability,
   RequestDecisionClosedReason,
+  SharingClosedReason,
   UserRole,
 } from "./types";
 
@@ -669,6 +670,164 @@ export function invitationRevocationClosedNote(
   reason: InvitationRevocationClosedReason,
 ): string {
   return INVITATION_REVOCATION_CLOSED_NOTES[reason];
+}
+
+/* ----------------------------------------------------------------- sharing */
+
+/**
+ * Why an event cannot be shared right now. The rule that produced the reason
+ * is `getSharingAvailability()`; the host's sharing controls and the email
+ * route both read the wording from here, so a note beside a button and a
+ * refusal from the API say the same thing.
+ */
+const SHARING_CLOSED_NOTES: Record<SharingClosedReason, string> = {
+  draft: "אפשר לשתף רק אירוע שפורסם.",
+  cancelled: "האירוע בוטל, ולכן אי אפשר לשתף אותו.",
+  started: "האירוע כבר התחיל, ולכן אי אפשר לשתף אותו.",
+};
+
+export function sharingClosedNote(reason: SharingClosedReason): string {
+  return SHARING_CLOSED_NOTES[reason];
+}
+
+/**
+ * The host's Copy Link control. The hint says what the link is *not*: it is
+ * the event's own address and admits nobody, so a host sharing an invite-only
+ * event knows the recipient still has to be on the list.
+ */
+export const SHARE_LABELS = {
+  copyLink: "העתקת הקישור לאירוע",
+  hint: "הקישור פותח את האירוע רק למי שכבר רשאי לראות אותו.",
+  copied: "הקישור הועתק",
+  copyFailed: "לא הצלחנו להעתיק את הקישור",
+  copyFailedHint: "אפשר להעתיק אותו ידנית מהשדה שמתחת לכפתור.",
+  /** The read-only field shown when the clipboard refuses. */
+  linkField: "הקישור לאירוע",
+  /** `EVENTS_APP_BASE_URL` is missing or invalid on the server. */
+  unavailable: "שיתוף האירוע לא זמין כרגע: כתובת האתר לא הוגדרה בשרת.",
+};
+
+/**
+ * The host's "send by email" control: pick people who can already see the
+ * event and email them its link. Kept apart from `INVITATION_LABELS` on
+ * purpose -- this adds nobody to anything, and the hint says so.
+ */
+export const SHARE_EMAIL_LABELS = {
+  pickerLabel: "שליחת הקישור במייל",
+  hint: "המייל כולל את הקישור לאירוע. הוא לא מזמין, לא רושם ולא נותן גישה.",
+  choosePeople: "בחירת נמענים",
+  pickerTitle: "בחירת נמענים",
+  pickerDescription: "מופיעים כאן רק מי שכבר יכולים לראות את האירוע.",
+  filterLabel: "חיפוש",
+  filterPlaceholder: "שם או תפקיד",
+  noMatches: "אף אחד לא מתאים לחיפוש.",
+  done: "סיום",
+  /** The button while nobody is selected -- disabled, so it never counts zero. */
+  send: "שליחה במייל",
+  /** Sharing is open, but nobody besides the host can see the event. */
+  noRecipients: "אין כרגע אנשים נוספים שיכולים לראות את האירוע.",
+};
+
+/** "שליחה לאדם אחד", "שליחה לשני אנשים", "שליחה ל־5 אנשים" -- a maqaf only before digits. */
+export function sendShareEmailsLabel(n: number): string {
+  return `שליחה ל${n > 2 ? "־" : ""}${personCount(n)}`;
+}
+
+/** One summary toast for a batch: every send succeeded. */
+export function shareEmailsSentLabel(n: number): string {
+  return n === 1 ? "המייל נשלח" : `נשלחו ${n} מיילים`;
+}
+
+/** Some succeeded and some did not -- never reported as a plain success. */
+export function shareEmailsPartlySentLabel(sent: number, tried: number): string {
+  return `מיילים שנשלחו: ${sent} מתוך ${tried}`;
+}
+
+export function shareEmailsFailedLabel(tried: number): string {
+  return tried === 1 ? "המייל לא נשלח" : "המיילים לא נשלחו";
+}
+
+/**
+ * What the share-email route answers when it will not or could not send. Short
+ * and safe: nothing here repeats the mail service's own response, its address
+ * or the sender configuration, which stay in the server log.
+ */
+export const SHARE_EMAIL_ACTION_COPY = {
+  self: "אי אפשר לשלוח את המייל לעצמכם.",
+  /** Agrees with the noun "האדם", not with anybody's gender. */
+  recipientCannotView:
+    "האדם הזה לא יכול לראות את האירוע, ולכן אי אפשר לשלוח אליו את הקישור. באירוע בהזמנה בלבד צריך להזמין אותו קודם.",
+  invalidRecipientEmail: "כתובת המייל של הנמען לא תקינה.",
+  notConfigured: "שליחת מיילים לא מוגדרת בשרת הזה.",
+  deliveryFailed: "שירות הדואר לא זמין כרגע. אפשר לנסות שוב מאוחר יותר.",
+  renderFailed: "לא הצלחנו להכין את המייל.",
+};
+
+/* ------------------------------------------------------------------- email */
+
+/**
+ * The words the shared email shell renders around every message, in
+ * `emails/BaseEmail/BaseEmail.tsx`. The footer is the organization's standard
+ * line, kept as the reference implementation has it; the alt texts are what a
+ * client shows while it is blocking images.
+ */
+export const EMAIL_LABELS = {
+  autoSentFooter: "הודעה זו נשלחה אוטומטית, אין להשיב למייל זה.",
+  organizationLogoAlt: "לוגו הארגון",
+  appLogoAlt: "לוגו המערכת",
+};
+
+/**
+ * The email a host sends to share an event, in HTML and in plain text.
+ *
+ * It is a message carrying the event's own link, not an invitation: it adds
+ * nobody to the invite list, registers nobody and grants no access -- the
+ * route only sends it to someone who can already see the event. So the copy
+ * says "shared", never "invited", and the subject names the event rather than
+ * an invitation. The sharer's verb takes the `/ה` form, the way the rest of
+ * the product writes a verb whose subject's gender it does not know.
+ */
+export const EVENT_SHARE_EMAIL_LABELS = {
+  date: "תאריך",
+  time: "שעה",
+  location: "מיקום",
+  openEvent: "לצפייה באירוע",
+  linkFallback: "אם הכפתור לא נפתח, אפשר להעתיק את הקישור הזה לדפדפן:",
+  /** The plain-text part's stand-in for the button. */
+  linkLine: "קישור לאירוע:",
+};
+
+/**
+ * What registering will do, said to somebody who has not done it yet. Not
+ * `ACCESS_DESCRIPTIONS`, which speaks to the host ("you decide who gets in").
+ * Nothing here promises a place: the event may be full by the time the link is
+ * opened, and the page says so then.
+ */
+const EVENT_SHARE_ACCESS_NOTES: Record<EventAccess, string> = {
+  open: "בהרשמה לאירוע הזה המקום שלך מאושר מיד.",
+  approval: "באירוע הזה ההרשמה היא בקשה, והמארחים מחליטים עליה.",
+  invite: "האירוע הזה מיועד למוזמנים בלבד.",
+};
+
+export function eventShareAccessNote(access: EventAccess): string {
+  return EVENT_SHARE_ACCESS_NOTES[access];
+}
+
+/**
+ * The subject is a mail header, and a title is host-authored text the event
+ * API stores as given -- so any run of whitespace, a line break included, is
+ * folded to one space. A newline in a header could start another one.
+ */
+export function eventShareEmailSubject(eventTitle: string): string {
+  return `אירוע בלוח האירועים: ${eventTitle.replace(/\s+/g, " ").trim()}`;
+}
+
+export function eventShareEmailGreeting(recipientName: string): string {
+  return `שלום ${recipientName},`;
+}
+
+export function eventShareEmailIntro(senderName: string): string {
+  return `${senderName} שיתף/ה איתך אירוע מלוח האירועים.`;
 }
 
 /**

@@ -97,3 +97,17 @@
   flex-wrap: wrap;
   gap: var(--space-2);
 }
+
+/* Sharing sits between Edit and the publish/cancel/delete group. */
+.shareTool {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  margin-top: var(--space-3);
+}
+
+.hostNote {
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-text-subtle);
+}

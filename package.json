@@ -9,6 +9,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "email:preview": "npx react-email dev --port 3002",
     "lint": "eslint",
     "typecheck": "next typegen && tsc --noEmit",
     "check:tsql": "node scripts/check-tsql-compat.mts",
@@ -19,18 +20,22 @@
     "db:reset": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --env-file-if-exists=.env.local lib/data/seed.mts --reset"
   },
   "dependencies": {
+    "@react-email/components": "^1.0.12",
+    "@react-email/render": "^2.0.8",
     "mssql": "^12.7.1",
     "next": "16.3.1",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
   "devDependencies": {
+    "@react-email/ui": "6.11.1",
     "@types/mssql": "^12.3.0",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.1",
+    "react-email": "6.11.1",
     "typescript": "^5"
   }
 }

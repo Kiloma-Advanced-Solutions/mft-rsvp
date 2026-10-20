@@ -348,6 +348,25 @@ export type InvitationRevocationAvailability =
   | { state: "closed"; reason: InvitationRevocationClosedReason };
 
 /**
+ * Whether an event may be shared right now -- its link copied or emailed to
+ * somebody -- and if not, why.
+ *
+ * About the event alone, like `CancellationAvailability`: *whether* the actor
+ * may share at all is `canManageEvent()`, and who would receive it is a
+ * separate question. Sharing grants nothing -- the link is the event's own
+ * canonical URL, so what a recipient sees is still `canViewEvent()` -- which is
+ * why only the lifecycle closes it: a draft is invisible to recipients, and a
+ * cancelled event or one that has started has nothing left to register for.
+ *
+ * Produced by `getSharingAvailability()` in `lib/permissions.ts`.
+ */
+export type SharingClosedReason = "draft" | "cancelled" | "started";
+
+export type SharingAvailability =
+  | { state: "open" }
+  | { state: "closed"; reason: SharingClosedReason };
+
+/**
  * One request as the host's approval queue needs it: the row, the person behind
  * it, whether they can still see what they asked to join, and what the host may
  * do about it.
@@ -402,6 +421,15 @@ export type EventDetailContext = EventWithContext & {
    * starts), so "not yours" is `null` rather than empty.
    */
   invitations: EventInvitations | null;
+  /**
+   * Who a host may email this event to: everyone who can already see it, less
+   * the host. Empty while sharing is closed (`getSharingAvailability()`).
+   *
+   * **`null` for anyone who may not manage the event**, like `invitations`, so
+   * nobody else is handed a list of the people who can see it. Sending an
+   * email grants nothing, so it never adds anybody who cannot.
+   */
+  shareRecipients: User[] | null;
 };
 
 /**

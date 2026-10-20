@@ -1,8 +1,9 @@
 /**
  * Who may see an event, who may manage it, who may take a place at it, what
  * a host may decide about somebody else's request, whether the event may be
- * cancelled, whether a host may take a confirmed place back or return it, and
- * whether a host may invite somebody or revoke their invitation.
+ * cancelled, whether a host may take a confirmed place back or return it,
+ * whether a host may invite somebody or revoke their invitation, and whether
+ * the event may be shared.
  *
  * The questions are deliberately separate: visibility is about discovery,
  * manageability is about being a host or an admin, availability is about one
@@ -35,6 +36,7 @@ import type {
   Registration,
   RegistrationAvailability,
   RequestDecisionAvailability,
+  SharingAvailability,
   User,
 } from "./types";
 
@@ -404,6 +406,38 @@ export function getInvitationRevocationAvailability(
     return { state: "closed", reason: "not_invited" };
   }
 
+  return { state: "open" };
+}
+
+/**
+ * May this event be shared right now -- its link copied, or emailed to somebody
+ * who can already see it?
+ *
+ * M10's rule; `TASKS.md` section 4 does not cover sharing. Like cancelling it
+ * takes no user: *whether* the actor may share is `canManageEvent()`, and every
+ * host gets the same answer here.
+ *
+ * Only the lifecycle closes it, because sharing grants nothing. The link is
+ * the event's canonical URL, so whoever opens it is still answered by
+ * `canViewEvent()`, and an invite-only event stays a 404 for anyone not on its
+ * list. What is left to decide is whether there is anything worth sending: a
+ * draft is invisible to every recipient, and a cancelled event or one that has
+ * started is closed to registration. It reads the current `startsAt`, which a
+ * host may edit, so moving a published event's start into the future makes it
+ * shareable again.
+ *
+ * The same answer as `getCancellationAvailability()` today, and deliberately a
+ * separate function: they are different questions that happen to agree, and
+ * one of them changing should not quietly change the other.
+ */
+export function getSharingAvailability(
+  event: Pick<EventRecord, "status" | "startsAt">,
+): SharingAvailability {
+  if (event.status === "draft") return { state: "closed", reason: "draft" };
+  if (event.status === "cancelled") {
+    return { state: "closed", reason: "cancelled" };
+  }
+  if (isPast(event.startsAt)) return { state: "closed", reason: "started" };
   return { state: "open" };
 }
 

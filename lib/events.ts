@@ -27,6 +27,7 @@ import {
   getInvitationListAvailability,
   getInvitationRevocationAvailability,
   getRequestDecisionAvailability,
+  getSharingAvailability,
 } from "./permissions";
 import type {
   EventDetailContext,
@@ -77,14 +78,32 @@ export async function getVisibleEventsWithContext(
 }
 
 /**
+ * One event the `viewer` is allowed to see, or `null` -- the event alone, with
+ * none of the context the detail screen derives.
+ *
+ * This is the visibility gate, and `getEventDetailForViewer()` goes through it
+ * too, so the two cannot disagree about who sees what. `null` means both "no
+ * such event" and "not yours", for the reason given below. For a route that
+ * needs only the event -- one that would otherwise load the user list and the
+ * registrations only to throw them away.
+ */
+export async function getEventForViewer(
+  eventId: string,
+  viewer: User,
+): Promise<EventRecord | null> {
+  const event = await db.events.get(eventId);
+  return event && canViewEvent(event, viewer) ? event : null;
+}
+
+/**
  * One event the `viewer` is allowed to see, with the extra detail the event
  * screen needs, or `null`.
  *
  * `null` means both "no such event" and "not yours", and the caller cannot tell
  * which. That is deliberate: `TASKS.md` section 4 requires a 404 rather than a
- * 403, because a 403 confirms the event exists. Visibility is decided here,
- * before any context is derived, so an invisible event never has its hosts,
- * counts or attendees loaded at all.
+ * 403, because a 403 confirms the event exists. Visibility is decided first, by
+ * `getEventForViewer()`, before any context is derived, so an invisible event
+ * never has its hosts, counts or attendees loaded at all.
  *
  * It returns `null` rather than calling `notFound()` itself so a route handler
  * can turn the same answer into an `ApiError` instead of a rendered page.
@@ -93,8 +112,8 @@ export async function getEventDetailForViewer(
   eventId: string,
   viewer: User,
 ): Promise<EventDetailContext | null> {
-  const event = await db.events.get(eventId);
-  if (!event || !canViewEvent(event, viewer)) return null;
+  const event = await getEventForViewer(eventId, viewer);
+  if (!event) return null;
 
   const [users, rows] = await Promise.all([
     db.users.list(),
@@ -127,7 +146,35 @@ export async function getEventDetailForViewer(
     invitations: context.viewerCanManage
       ? toInvitations(event, rows, users)
       : null,
+    // Who the event may be emailed to is a slice of the user list, so it is
+    // host-only as well, and `null` for everyone else.
+    shareRecipients: context.viewerCanManage
+      ? toShareRecipients(event, users, viewer)
+      : null,
   };
+}
+
+/**
+ * Who a host may email this event to: everybody who can already see it,
+ * except the host themselves -- `canViewEvent()` for each person, the same
+ * answer the event page gives them. On an invite-only event that is the invite
+ * list plus the hosts and admins; nobody else is offered, because the email
+ * grants nothing and would only lead them to a 404.
+ *
+ * Empty whenever sharing is closed, so a draft, a cancelled event or one that
+ * has started offers nobody. The share-email route asks every one of these
+ * questions again before it sends; this list is what the picker shows, not
+ * what makes a send allowed.
+ */
+function toShareRecipients(
+  event: EventRecord,
+  users: User[],
+  viewer: User,
+): User[] {
+  if (getSharingAvailability(event).state === "closed") return [];
+  return users.filter(
+    (user) => user.id !== viewer.id && canViewEvent(event, user),
+  );
 }
 
 /**

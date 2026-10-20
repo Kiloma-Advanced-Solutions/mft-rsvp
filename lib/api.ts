@@ -99,8 +99,25 @@ export async function readJson<T = unknown>(request: Request): Promise<T> {
 }
 
 /**
- * Client-side counterpart. Unwraps the success payload, or throws an `Error`
- * carrying the server's message so a component can show it directly.
+ * What `fetchJson` throws for a non-2xx response: an ordinary `Error` carrying
+ * the server's message, plus the HTTP status. Callers that only show the
+ * message need nothing else; one that has to tell "the page was stale" (4xx)
+ * from "a service behind the route failed" (5xx) reads `status`.
+ */
+export class RequestError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = "RequestError";
+    this.status = status;
+  }
+}
+
+/**
+ * Client-side counterpart. Unwraps the success payload, or throws a
+ * `RequestError` carrying the server's message so a component can show it
+ * directly.
  */
 export async function fetchJson<T>(
   input: RequestInfo | URL,
@@ -120,7 +137,7 @@ export async function fetchJson<T>(
     const message =
       (payload as { error?: { message?: string } } | null)?.error?.message ??
       requestFailedLabel(response.status);
-    throw new Error(message);
+    throw new RequestError(response.status, message);
   }
 
   return payload as T;
