@@ -1111,3 +1111,123 @@ yours" and "nobody yet" must be told apart.
 Consequences: invitees cannot see who else is invited. What an ordinary viewer
 of an invite-only event sees is unchanged — the event and who is going, nothing
 about the list.
+
+---
+
+## 2026-10-20 — A share link is the event's canonical URL and grants nothing
+
+Context: [TASKS.md](../TASKS.md) M10 left open whether a share link uses the
+event id, a token, a slug or a separate record, how holding one interacts with
+visibility, and whether links can be revoked or regenerated.
+
+Decision: the share link is the event's own page, `/events/[id]`, on the
+configured origin, built only by `buildEventShareUrl()` in
+[lib/shareLinks.ts](../lib/shareLinks.ts). No token, no slug, no record and no
+schema change. Opening it is answered by `canViewEvent()` exactly as typing the
+address would be.
+
+Rationale: a link that grants nothing cannot weaken invite-only visibility, which
+M10 required — an invite-only event stays a 404 for anyone not on its list, and
+registration reached through the link obeys every ordinary rule because it *is*
+the ordinary page. A token or a record would have been something else to store,
+revoke and regenerate, with no access of its own to justify it. The reasoning is
+in the header of [lib/shareLinks.ts](../lib/shareLinks.ts).
+
+Consequences: there is nothing to revoke or regenerate; changing who can see the
+event is the access mode and the invite list, as before. A member who copies the
+address bar has the same URL with the same access, so the copy action is not an
+authorisation boundary. Sharing cannot admit anyone who cannot already see the
+event.
+
+---
+
+## 2026-10-20 — Absolute links come from `EVENTS_APP_BASE_URL`, never the request
+
+Context: a share link is absolute — it is copied or mailed somewhere else — so
+the application needs its own origin, and a request's `Host` header is whatever
+the caller sent.
+
+Decision: `buildEventShareUrl()` reads the server-only `EVENTS_APP_BASE_URL` and
+accepts only a bare `http`/`https` origin. When it is missing or unusable the
+result is `null` rather than a throw: the detail page shows that sharing is
+unavailable and the share-email route answers 503. Nothing falls back to the
+request's own host.
+
+Rationale: a URL built from `Host` and mailed under the product's name would carry
+an attacker's hostname. Sharing is one optional host tool, unlike the database,
+which every page needs — so a missing value should cost the host that tool, not
+the whole detail page. See the header of [lib/shareLinks.ts](../lib/shareLinks.ts)
+and [.env.example](../.env.example).
+
+Consequences: moving the deployment means changing one variable. Every
+deployment that offers sharing has to set it.
+
+---
+
+## 2026-10-20 — Email goes only to people who can already see the event, and sharing has its own lifecycle rule
+
+Context: M10 added emailing the link. Who may receive it, and when sharing is
+offered at all, were not covered by [TASKS.md](../TASKS.md) §4.
+
+Decision: the recipients are every user `canViewEvent()` admits, minus the
+sender, built by [lib/events.ts](../lib/events.ts) as `shareRecipients` only for
+a viewer who may manage the event and `null` for everyone else. The route asks
+every question again before it sends. `getSharingAvailability()` in
+[lib/permissions.ts](../lib/permissions.ts) closes sharing on a draft, a
+cancelled event and one that has started, and takes only the event; who may
+share is `canManageEvent()`. It is a separate function from
+`getCancellationAvailability()`, although the two give the same answer today.
+
+Rationale: the email grants nothing, so sending it to someone who cannot see the
+event would only lead them to a 404. A draft is invisible to every recipient,
+and a cancelled or started event is closed to registration, so there is nothing
+worth sending.
+Built only for managers for the reason of the 2026-10-05 entry "The invite list
+is built only for managers, an invitee included". Sharing and cancelling are
+different questions that happen to agree; one changing should not quietly
+change the other.
+
+Consequences: sharing is not a way to invite. On an invite-only event, getting
+someone the link means inviting them first (M9). Moving a published event's
+start back into the future makes it shareable again.
+
+---
+
+## 2026-10-20 — Email uses the organization's transport and template conventions, behind a route handler, one recipient per request
+
+Context: the organization has a reference email implementation — a transport, a
+template shell for Outlook 2016 and a sender identity — which reached its sends
+through a Server Action. This repository's convention is route handlers. The
+organizational sender values were not known.
+
+Decision: the transport, template shell, palette and image convention are
+adopted from the reference, with the deliberate differences recorded in the
+headers of [lib/services/emailService.ts](../lib/services/emailService.ts),
+[emails/BaseEmail/](../emails/BaseEmail/) and
+[scripts/base64convertor.mts](../scripts/base64convertor.mts); the entry point
+is a route handler, `POST /api/events/[id]/share-emails/[userId]`, with no
+body. The sender is the Events Board system, configured through
+`EVENTS_MAIL_SENDER_NAME`, `EVENTS_MAIL_SENDER_EMAIL` and
+`EVENTS_MAIL_SYSTEM_ID` with no default; the host is named only in the text.
+One recipient per request, sent in sequence, best effort, with no automatic
+retry. Clients receive only short, fixed messages.
+
+Rationale: the Server Action was how the reference was called, not part of its
+email convention, and a route handler keeps the authorisation boundary one
+obvious layer, as [CLAUDE.md](../CLAUDE.md) requires. Per-person requests are the
+2026-10-05 invitation pattern: each send is authorised on its own and each result
+maps to one person. No retry, because a send that timed out may still have been
+delivered. Configuration rather than values written into the code, because the
+organization assigns them and they were not yet known; and no default, so an
+unconfigured server refuses rather than sending under an identity that is not
+its own. Fixed messages, because the mail service's response is not the
+client's to see. The details are in the headers of the route and
+[lib/services/emailService.ts](../lib/services/emailService.ts).
+
+Consequences: a batch can partly succeed, and is reported that way. Sending is
+refused as "not configured" until all four mail variables are present and pass
+`sendMail()`'s checks: each is non-empty, the sender address is a plausible
+email address, and the system id is a whole number. Nothing checks that
+`MAIL_SERVICE_URL` is a well-formed URL. The email templates are the one place
+outside the app's styling rules — see [CLAUDE.md](../CLAUDE.md). Real delivery
+and Outlook rendering are unverified; see [s_status.md](s_status.md).

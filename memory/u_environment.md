@@ -25,9 +25,10 @@ it. A framework error page rendering is not the app working. The sequence is in
 Data lives in SQL Server and survives a dev-server restart. It is a **shared
 organizational database**, not a disposable local one.
 
-- **Configuration** is one server-only variable, set in the untracked local env
-  file. [.env.example](../.env.example) is authoritative for which variables
-  exist and what they mean.
+- **Configuration** is one server-only variable for the database, set in the
+  untracked local env file; sharing and email have their own, below.
+  [.env.example](../.env.example) is authoritative for which variables exist
+  and what they mean.
 - **Setup, migrate, seed, reset and the read-only status checks** — the workflow
   and its commands are in [README.md](../README.md) "The database", which is
   authoritative. The fixtures — 12 events, 5 people, every state covered — are
@@ -70,6 +71,26 @@ The rules a migration must follow are in the runner's header,
 [lib/data/migrate.mts](../lib/data/migrate.mts), and in the compatibility
 document above.
 
+## Sharing and email
+
+- **Configuration.** [.env.example](../.env.example) is authoritative for the
+  variables, what each means and their format. Locally, set
+  `EVENTS_APP_BASE_URL` to the dev server's origin, or the host tools report
+  sharing as unavailable. The mail variables are left unset locally on purpose:
+  their real values belong to the organization's mail service, and unset, every
+  send is refused as "not configured" before any request is made.
+- **Previewing an email.** `npm run email:preview` starts the React Email
+  preview server on **port 3002**, separate from the dev server, and shows the
+  templates in [emails/](../emails/) with their built-in sample data. It needs no
+  database and no mail configuration.
+- **Email images** are `data:` URI modules in `emails/images/`, generated with
+  [scripts/base64convertor.mts](../scripts/base64convertor.mts), which has no
+  npm script; its header gives the usage.
+
+Seeing the email in the preview is not seeing it in Outlook, and delivery
+through the organization's real mail service has not been verified — see
+[s_status.md](s_status.md) "Known limitations".
+
 ## Persona-based development
 
 There is no authentication, and that is deliberate: the exercise is about
@@ -97,7 +118,9 @@ managing an event they do not host.
 [.claude/settings.json](../.claude/settings.json) lists the commands pre-approved
 in this repository — the everyday npm scripts (dev, build, lint, typecheck,
 install), common git commands, and `localhost:3000` curls. Anything outside that
-list prompts, and that includes the `check:*` and `db:*` scripts.
+list prompts, and that includes the `check:*` and `db:*` scripts and
+`email:preview`. [.claude/launch.json](../.claude/launch.json) has no
+configuration for the email preview server.
 
 ## Branch and worktree workflow
 

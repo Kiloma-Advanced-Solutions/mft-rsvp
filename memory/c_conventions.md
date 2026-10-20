@@ -17,6 +17,7 @@ this file.
 | Styling — tokens, CSS Modules, both themes | [CLAUDE.md](../CLAUDE.md) · tokens in [app/styles/tokens.css](../app/styles/tokens.css) |
 | User-facing copy | [CLAUDE.md](../CLAUDE.md) · vocabulary in [lib/labels.ts](../lib/labels.ts) |
 | UI language, direction and bidi — Hebrew copy, RTL, logical properties, `dir="auto"` | [a_system.md](a_system.md) "Language and direction" · words in [lib/labels.ts](../lib/labels.ts) · dates in [lib/date.ts](../lib/date.ts) |
+| Email templates and sending — the styling exception, Outlook 2016 markup, transport and sender | [CLAUDE.md](../CLAUDE.md) for the exception · the headers of [emails/BaseEmail/BaseEmail.tsx](../emails/BaseEmail/BaseEmail.tsx), [emails/BaseEmail/BaseEmailStyles.ts](../emails/BaseEmail/BaseEmailStyles.ts) and [lib/services/emailService.ts](../lib/services/emailService.ts) · shape in [a_system.md](a_system.md) "Email" |
 | Verification commands | the scripts in [package.json](../package.json), in the order [CLAUDE.md](../CLAUDE.md) requires |
 | Definition of done | [TASKS.md](../TASKS.md) §7 |
 | Milestone requirements | [TASKS.md](../TASKS.md) §5 |
