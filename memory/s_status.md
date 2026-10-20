@@ -5,19 +5,19 @@ progresses — it is current state, not a changelog.
 
 ## Active milestone
 
-**None in progress.** M1–M9 are complete and merged into
+**None in progress.** M1–M10 are complete and merged into
 `yardenah/events-board`: the original assignment's three `must` and two
 `should` milestones; M6, the first post-assignment milestone, which moved
 persistence to SQL Server (PR #24); M7, event cancellation (PR #28); M8,
-removing and restoring attendees (PR #30); and M9, invitation management
-(PR #32), the third item on the original stretch list, promoted. The UI is also
+removing and restoring attendees (PR #30); M9, invitation management
+(PR #32), the third item on the original stretch list, promoted; and M10,
+shareable event links and email sharing (PR #38). The UI is also
 localized to Hebrew and RTL (PR #25), which changed presentation only; what it
 fixed in place is in [a_system.md](a_system.md).
 
-**Next is M10 — shareable event links — and it has not started.** Its product
-decisions are still open and are listed in [TASKS.md](../TASKS.md) §5. M11
-(system redesign, against an external Style Guide that has not been supplied
-yet) and M12 (application logging) follow it and are future work. The rest of
+**Next are M11 and M12, both future work.** M11 (system redesign, against an
+external Style Guide that has not been supplied yet) and M12 (application
+logging) are specified in [TASKS.md](../TASKS.md) §5. The rest of
 the original stretch list — the calendar view first, then the waitlist, search,
 "my events", optimistic UI and a theme toggle — is also unstarted.
 Authoritative requirements for every milestone, extension and stretch goal:
@@ -26,7 +26,7 @@ Authoritative requirements for every milestone, extension and stretch goal:
 ## Status
 
 Both screens are server-rendered end to end, and the controls on them act — for
-attendees since M3, and for hosts since M4, M5, M7, M8 and M9.
+attendees since M3, and for hosts since M4, M5, M7, M8, M9 and M10.
 
 `/events` resolves the viewer, loads only the events that viewer may see, and
 then filters, sorts and groups them; the category and access filters live in the
@@ -44,8 +44,9 @@ Hosts act too. A host can **create** an event, **edit** it in place, **publish**
 a draft and **delete** it (M4), **decide the requests on it** (M5),
 **cancel** a published event that has not started yet (M7), **remove** a
 confirmed attendee or **restore** a removed one on an `approval` or `invite`
-event (M8), and **invite** existing people to an invite-only event or
-**revoke** their invitations (M9).
+event (M8), **invite** existing people to an invite-only event or
+**revoke** their invitations (M9), and **share** a published event that has
+not started (M10).
 
 A cancelled event stays on the board, in a section of its own, and its detail
 page stays readable to whoever could see it before; registering, withdrawing
@@ -78,6 +79,15 @@ registration as it is. On an event that is no longer invite-only, a list left
 over from when it was is shown read-only, and counts again if the event goes
 back to `invite`. Like the queue, the list is built only for people who may
 manage the event; an invitee sees nothing of it.
+
+In the host tools, a host can **copy the event's link** — with the URL shown in
+a read-only field if the clipboard is refused — and **email it** to people
+picked from everyone who can already see the event. The link is the event's
+own page and grants nothing: an invite-only event stays a 404 for anyone not on
+its list, and nothing is invited, registered or written. On a draft, a
+cancelled event or one that has started, the host tools say why sharing is
+closed instead. How it fits together is in [a_system.md](a_system.md) "Sharing
+events".
 
 **Everything is persistent (M6).** Users, events and registrations live in SQL
 Server behind the `lib/db.ts` contract the product was built on — kept, except
@@ -118,12 +128,41 @@ change since M6 — which admits the `removed` registration status.
 M9 added the invitation route, its three shared rules, the host's invitation
 list with its one client leaf, and a warning on a confirmed attendee who can no
 longer see the event, with no schema change.
+M10 added the sharing rule, the share-link builder, Copy Link and the
+share-email picker in the host tools, the share-email route, the email layer —
+the organizational transport, the React Email shell and template, the HTML and
+plain-text content, and Jerusalem-time email dates — plus the email preview
+script and the image conversion script, with no schema change.
 The shape of all of it is in [a_system.md](a_system.md).
 
 ## Deliberately absent
 
 Not missing — decided against, for this milestone or for the exercise. A later
 session should not treat any of these as an oversight to fix.
+
+From M10's scope — why the sharing and email items were decided is in
+[dec_log.md](dec_log.md). Send history was outside M10's scope rather than a
+recorded decision, and extended `MAIL_SERVICE_URL` validation was deliberately
+not implemented in this milestone:
+
+- **No share token, slug or record.** The link is the event's own URL, so
+  there is nothing to revoke or regenerate.
+- **No access through sharing.** Copying or emailing a link invites nobody,
+  registers nobody and takes no seat.
+- **No sharing a draft, a cancelled event or one that has started.**
+- **No emailing someone who cannot see the event**, and no emailing oneself.
+- **No send history and no notification record.** Nothing records who shared
+  what with whom, or when.
+- **No automatic retry and no bulk endpoint.** Emailing several people is one
+  request per person, in sequence, best effort; a failed one stays selected for
+  the host to send again by hand.
+- **No `MAIL_SERVICE_URL` validation beyond a non-empty value.** The value is
+  trimmed and trailing slashes are removed before `/sendMail` is appended, and
+  nothing more is checked — unlike `EVENTS_APP_BASE_URL`, which must be a bare
+  `http`/`https` origin. A malformed value is not rejected at startup or when
+  read: it is found only when a send is attempted, and the send fails — the
+  route reports it as a delivery failure (502). A well-formed but wrong URL is
+  not detected either; the request goes wherever it points.
 
 From M9's scope — why each was decided is in [dec_log.md](dec_log.md):
 
@@ -255,6 +294,31 @@ seat. The host's list flags the row; nothing resolves it. This is the accepted
 cost of keeping invitation and registration independent — see
 [dec_log.md](dec_log.md).
 
+**Email delivery is implemented but not verified against the organization.**
+What M10 verified, per PR #38: typecheck, lint, build and `check:tsql`; the
+exact request shape, the error paths and Jerusalem-time dates against a
+temporary local stand-in for the mail service; every refusal of the route
+through a temporary route-level harness; and the UI as five personas against
+that stand-in. None of it was kept as an automated test — the repository has no
+test suite. **Not verified:** the real mail service, the real
+`MAIL_SERVICE_URL` and sender values, actual delivery, and rendering in
+Outlook 2016 — including the `data:` URI logo — none of which was available.
+
+Sharing needs configuration in every deployment: `EVENTS_APP_BASE_URL` for the
+link at all, and `MAIL_SERVICE_URL`, `EVENTS_MAIL_SENDER_NAME`,
+`EVENTS_MAIL_SENDER_EMAIL` and `EVENTS_MAIL_SYSTEM_ID` for email. Without the
+first, the host tools say sharing is unavailable; without the others, every send
+is refused as "not configured". [.env.example](../.env.example) is
+authoritative. Copying to the clipboard also needs the page to be in a secure
+context, which the browser decides — plain `http` on a non-local host, for
+example, is not one. Where the clipboard is unavailable or refused, the copy
+fails and the URL is shown in a read-only field for copying by hand.
+
+A recipient who opens a shared link is not "signed in": the product has no
+authentication. They see the event as whichever persona their browser's cookie
+names, or as the default persona if it names none — see
+[u_environment.md](u_environment.md) "Persona-based development".
+
 ## Blockers
 
 None.
@@ -273,6 +337,6 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-10-06 — roadmap updated: M11 is now the system redesign and
-application logging moved to M12; no milestone in progress, M10 (shareable event
-links) next.
+Last updated: 2026-10-20 — M10 (shareable event links and email sharing,
+PR #38) delivered; no milestone in progress, M11 (system redesign) and M12
+(application logging) next.

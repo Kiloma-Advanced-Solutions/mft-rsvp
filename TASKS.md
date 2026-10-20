@@ -350,6 +350,22 @@ the event and register.
 **Not yet decided.** Whether this uses the event id, a token, a slug, a separate
 record, or something else.
 
+**Status: delivered.** The link's form, how it interacts with visibility, and
+whether it can be revoked were all decided during M10 and are implemented. The
+requirement above is kept as it was set. A share link is the event's canonical
+URL, `/events/[id]`, on the origin configured as `EVENTS_APP_BASE_URL` — no
+token, slug or record — and it grants nothing: whoever opens it is answered by
+the ordinary visibility rules, so an invite-only event stays a 404 for anyone
+not on its list, there is nothing to revoke or regenerate, and registering goes
+through the event's normal rules. The product has no sign-in, so a recipient
+sees the event as their browser's persona, or the default persona if none is
+set. Hosts and admins share from the detail page — copying the link, or
+emailing it to people who can already see the event — while the event is
+published and has not started. The rule is `getSharingAvailability()` in
+`lib/permissions.ts`; the link is built in `lib/shareLinks.ts`; emailing is
+`POST /api/events/[id]/share-emails/[userId]`, one person at a time; there was
+no schema change; and the reasoning is in `memory/dec_log.md`.
+
 #### M11 — System redesign
 
 **Goal.** Redesign the application's user interface to follow an external Style
@@ -363,7 +379,7 @@ scope, and what counts as done, are set in M11's own planning step.
   in-app `/styleguide` page, which renders the existing component kit.
 - Preserve the existing behaviour: the rules in section 4, visibility and the
   never-leak constraint in section 1, registration, capacity and lifecycle
-  behaviour, and every capability delivered in M1–M9. M11 changes how the
+  behaviour, and every capability delivered in M1–M10. M11 changes how the
   application looks, not what the rules are — unless the Style Guide or an
   explicitly approved redesign decision requires otherwise.
 

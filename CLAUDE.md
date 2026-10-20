@@ -17,6 +17,14 @@ no component library. If a dependency seems necessary, say why before adding it.
 - One `.module.css` next to each component. Nothing new goes in `app/globals.css`.
 - Check `/styleguide` before building a new component — it probably exists.
 - Both themes have to work. Tokens handle that automatically if you use them.
+- **One exception: email templates in `emails/`.** Email clients — Outlook 2016
+  above all — ignore stylesheets, class names and CSS variables, so templates
+  use inline style objects with literal hex colours and pixel values, nested
+  tables for layout, and `data:` URI images, as the headers of
+  `emails/BaseEmail/BaseEmail.tsx` and `emails/BaseEmail/BaseEmailStyles.ts`
+  explain. Tokens, CSS Modules and both themes do not apply there. The
+  exception covers `emails/` only — never anything under `app/` or
+  `components/`.
 
 ## Components
 

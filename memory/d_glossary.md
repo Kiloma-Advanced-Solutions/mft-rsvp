@@ -26,8 +26,9 @@ in [a_system.md](a_system.md).
 - **admin** — may manage every event in the system, hosted or not.
 - **host** — *not a role*. A host is the event's `organizerId`, or anyone in its
   `coHostIds`. This is the term that decides who may edit, publish, cancel,
-  delete, decide requests on, remove or restore attendees of, and manage the
-  invitations to a specific event. A host is not automatically an attendee.
+  delete, decide requests on, remove or restore attendees of, manage the
+  invitations to, and share a specific event. A host is not automatically an
+  attendee.
 - **invite list** / **invited user** — the people, beyond its hosts and admins,
   who may see an invite-only event; an invited user is someone on it (an event's
   `invitedUserIds`). Being invited is **not a registration and not a seat**: it
@@ -66,6 +67,13 @@ for the five seeded personas and what each is useful for.
     and terminal: an event never leaves it. Still visible to whoever could see
     it; registering, withdrawing and deciding requests are closed; its
     registrations are kept as they were.
+- **share link** — the absolute URL of an event's own page, `/events/[id]`, on
+  the configured application origin; what a host copies or emails. It **grants
+  nothing**: no token and no record, so there is nothing to revoke or
+  regenerate, and whoever opens it is answered by visibility exactly as if they
+  had typed the address — an invite-only event stays a 404 for anyone not on its
+  list. Not an invitation: sharing adds nobody to the invite list and registers
+  nobody.
 
 → [lib/types.ts](../lib/types.ts) for `EventRecord`, `EventAccess`, `EventStatus`,
 `EventCategory`, `EventLocation`.
@@ -123,8 +131,8 @@ interacts with each access mode.
   the event must be absent from pages *and* from API responses, and a direct URL
   must 404. A 403 would confirm the event exists.
 - **manageability** — "may this person edit, delete, publish, cancel, decide
-  requests on, remove and restore attendees of, or manage the invitations to
-  this event?" A separate
+  requests on, remove and restore attendees of, manage the invitations to, or
+  share this event?" A separate
   question with a separate answer: visibility is about discovery,
   manageability is about being a host or an admin. Keeping them distinct is
   what stops "can see" from creeping into "can change".
@@ -167,6 +175,11 @@ interacts with each access mode.
   revoked right now?" The ninth question. Only while access is `invite` and the
   person is on the list; deliberately *not* closed by a cancellation or a start
   time that has passed, because revoking only narrows who can see the event.
+- **sharing availability** — "may this event be shared right now?" The tenth
+  question, about the event's lifecycle alone and answered without reference to
+  who is asking — whether the actor may share at all is manageability. Closed on
+  a draft, a cancelled event and one that has started. It gives the same answer
+  as cancellation availability today, but is a separate question.
 - **`EventWithContext`** — the derived view-model an event screen usually needs:
   the event plus its hosts, the going and pending counts, the viewer's own
   registration, and whether the viewer may manage it. Built by
@@ -174,8 +187,10 @@ interacts with each access mode.
   detail screen's version adds the confirmed attendees themselves, the
   approval queue's rows, the **managed attendees** — the `going` and
   `removed` rows with what a host may do about each — and the host's view of
-  the **invite list**, with the **candidates** who may be added. The queue and
-  the managed attendees are left empty for anyone who may not manage the event;
-  the invite list is left `null` for them, an invitee included.
+  the **invite list**, with the **candidates** who may be added, and the
+  **share recipients** — everyone who can already see the event except the
+  viewer, empty while sharing is closed. The queue and the managed attendees are
+  left empty for anyone who may not manage the event; the invite list and the
+  share recipients are left `null` for them, an invitee included.
 
 → [TASKS.md](../TASKS.md) §4 for the authoritative visibility and action tables.

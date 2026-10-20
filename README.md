@@ -46,6 +46,7 @@ is yours, and `/styleguide` renders every component in the kit with real data.
 | `npm run db:migrate` | Apply pending schema migrations (`-- --dry-run`, `-- --status`) |
 | `npm run db:seed` | Insert the development fixtures into an empty SQL schema (`-- --status`) |
 | `npm run db:reset` | Clear this application's SQL data and re-seed it |
+| `npm run email:preview` | Preview the email templates on port 3002 |
 
 ## How it fits together
 
@@ -60,6 +61,7 @@ components/
   ui/                   Generic primitives
   events/               Event cards, badges, date blocks, capacity meters
   layout/               App shell, nav, persona switcher
+emails/                 Email templates, their shared shell and images
 lib/
   types.ts              The domain model
   db.ts                 The persistence boundary (server only)
@@ -69,6 +71,8 @@ lib/
   api.ts                Route handler and fetch helpers
   labels.ts             User-facing copy
   date.ts               Date formatting and grouping
+  emails/               Email content and its plain-text part
+  services/             Sending email through the mail service (server only)
 ```
 
 ## There is no authentication
@@ -88,8 +92,9 @@ handlers and `lib/events.ts` talk to `db` and know nothing about the driver.
 Server Component / Route Handler → lib/db.ts → lib/data/* → mssql → SQL Server
 ```
 
-There is one configuration variable, server-only:
-`EVENTS_DB_CONNECTION_STRING`. Copy `.env.example` to `.env.local` and fill it
+The database needs one configuration variable, server-only:
+`EVENTS_DB_CONNECTION_STRING`. (Sharing and email have their own — see
+[Email](#email).) Copy `.env.example` to `.env.local` and fill it
 in; `.env.local` is git-ignored and is the only place a real connection string
 ever lives.
 
@@ -168,3 +173,24 @@ Read
 before writing any SQL. The short version: application SQL is written to the
 SQL Server 2008 R2 feature floor and statically enforced; runtime verification
 has only been performed against Azure SQL DEV.
+
+## Email
+
+Hosts can email an event's link. The message is a React Email template in
+`emails/`, rendered on the server and sent through the organization's mail
+service by `lib/services/`.
+
+Configuration is in `.env.example`, which names every variable.
+`EVENTS_APP_BASE_URL` is the origin used for every event link — set it to
+`http://localhost:3000` locally. The mail service and sender variables are left
+unset locally: sending is then refused as "not configured", and nothing else is
+affected.
+
+```bash
+npm run email:preview            # the templates, with sample data, on port 3002
+node scripts/base64convertor.mts <image> [exportName]   # an email image, as a data: URI module
+```
+
+Email markup is written for Outlook 2016, so it follows different styling rules
+from the app — see the email exception in [`CLAUDE.md`](CLAUDE.md) and the
+header of `emails/BaseEmail/BaseEmail.tsx`.

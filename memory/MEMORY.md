@@ -63,7 +63,7 @@ are the truth.
 | --- | --- |
 | What do "host", "invite", "pending", "full" mean? | [d_glossary.md](d_glossary.md) |
 | What are the exact domain types? | [lib/types.ts](../lib/types.ts) — **authoritative** |
-| Who may see an event? Who may manage it? What happens when someone registers? What may a host decide about a request? May an event be cancelled? May a host remove or restore an attendee? May a host invite someone or revoke an invitation? | [TASKS.md](../TASKS.md) §4 — **authoritative** for the rules · [lib/permissions.ts](../lib/permissions.ts) — the implementation of visibility, manageability, registration availability and request decisions, and the home of cancellation availability, attendee removal and restore availability, and invitation and revocation availability, which §4 does not cover |
+| Who may see an event? Who may manage it? What happens when someone registers? What may a host decide about a request? May an event be cancelled? May a host remove or restore an attendee? May a host invite someone or revoke an invitation? May an event be shared? | [TASKS.md](../TASKS.md) §4 — **authoritative** for the rules · [lib/permissions.ts](../lib/permissions.ts) — the implementation of visibility, manageability, registration availability and request decisions, and the home of cancellation availability, attendee removal and restore availability, invitation and revocation availability, and sharing availability, which §4 does not cover |
 | What are the milestone requirements and the backlog? | [TASKS.md](../TASKS.md) §5 — **authoritative** |
 | Which mistakes are reviewers looking for? | [TASKS.md](../TASKS.md) §6 |
 
@@ -81,6 +81,8 @@ are the truth.
 | What are the API conventions? | [lib/api.ts](../lib/api.ts) + [app/api/session/route.ts](../app/api/session/route.ts) as the worked example |
 | How are dates formatted and grouped? | [lib/date.ts](../lib/date.ts) |
 | What words does the product use? | [lib/labels.ts](../lib/labels.ts) |
+| How is an event's share link built? | [lib/shareLinks.ts](../lib/shareLinks.ts) — **authoritative** · [a_system.md](a_system.md) "Sharing events" |
+| How is an email rendered, sent or previewed? | [a_system.md](a_system.md) "Email" · [emails/](../emails/) · [lib/services/](../lib/services/) · styling exception in [CLAUDE.md](../CLAUDE.md) · preview in [u_environment.md](u_environment.md) |
 
 ### Building UI
 
@@ -97,6 +99,7 @@ are the truth.
 | --- | --- |
 | How do I run the dev server, reset data, or switch persona? | [u_environment.md](u_environment.md) |
 | Database setup, migrate, seed or reset? | [u_environment.md](u_environment.md) → [README.md](../README.md) "The database" — **authoritative** for the workflow · variables in [.env.example](../.env.example) |
+| Which variables do sharing and email need? | [u_environment.md](u_environment.md) "Sharing and email" → [.env.example](../.env.example) — **authoritative** |
 | Which commands verify my work? | the scripts in [package.json](../package.json), run in the order [CLAUDE.md](../CLAUDE.md) requires |
 | Which personas do I switch between to test visibility? | [TASKS.md](../TASKS.md) §3 · seeded in [lib/seed.ts](../lib/seed.ts) |
 | What counts as done? | [TASKS.md](../TASKS.md) §7 — **authoritative** |
