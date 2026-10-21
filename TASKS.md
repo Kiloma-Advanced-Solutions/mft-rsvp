@@ -383,9 +383,29 @@ scope, and what counts as done, are set in M11's own planning step.
   application looks, not what the rules are — unless the Style Guide or an
   explicitly approved redesign decision requires otherwise.
 
+**Approved for M11, not yet implemented.** Deferred here from the pre-M11
+stabilization work, because each depends on the Style Guide:
+
+- **Category colours.** Each event category has one consistent colour on the
+  board's cards. The palette and the implementation approach are chosen after
+  the Style Guide has been reviewed. Implementing this supersedes the
+  `memory/dec_log.md` entry "An event's accent is assigned by the server"
+  (2026-09-01), which says an accent encodes nothing; that needs a new entry.
+- **Redundant explanatory notes.** Review the explanatory notes in the UI and
+  remove the ones that are purely redundant. Preserve every message that
+  explains a registration restriction, a permission or a meaningful business
+  state, and every message the API reuses to explain a refusal. There is no
+  broad copy cleanup before M11.
+
 **Not yet decided — pending the Style Guide.**
 
 - The detailed scope: which screens, components and states change.
+- What happens to the UI components and types that are retained, but no longer
+  used by any page, once the in-app `/styleguide` page is removed before M11 —
+  expected to include `SegmentedControl`, `Spinner`, `Radio`, `CardFooter` and
+  the `BadgeVariant` type, to be verified against the repository when M11
+  starts. M11 reviews each and decides whether to keep, adapt, replace or
+  remove it.
 - How the Style Guide relates to the current styling conventions in
   `CLAUDE.md`, the tokens in `app/styles/tokens.css`, the `components/ui/` kit
   and the `/styleguide` page — kept, extended or replaced.
