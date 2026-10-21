@@ -76,7 +76,8 @@ fetch, and merged back through its own PR before the next is cut.
   a started event (rename `cancelledAttendanceLabel` to reflect the wider use).
   `components/events/RegistrationPanel.tsx` shows `CapacityMeter` for every
   non-cancelled event today; a started event gets the neutral count instead.
-- **10:** see §7 "Long names" for the verified CSS causes.
+- **10:** reproduce first, then fix — see §7 "Long names" for what is verified
+  and what is not.
 - **11:** `lib/labels.ts` `removeAttendeeDialogMessage`, wording in §2.
 - **Out of scope:** any other copy, any card or list redesign.
 
@@ -121,7 +122,11 @@ fetch, and merged back through its own PR before the next is cut.
 - `removeEvent()` keeps its lock-first ordering, then
   `UPDATE … SET DeletedAt = @now, UpdatedAt = @now WHERE Id = @id AND DeletedAt IS NULL`;
   the three child `DELETE`s go.
-- `updateEvent`'s predicate gains `AND DeletedAt IS NULL`.
+- `updateEvent`'s predicate gains `AND DeletedAt IS NULL`. That stops a late
+  write, but `PATCH /api/events/[id]`, publish and cancel all turn a `null`
+  update into 409 "stale" today. Each must, after a `null` update, re-read the
+  event: missing or deleted → 404; still present → keep today's 409. This is the
+  same deleted-versus-stale rule as the registration writes below.
 - `EventRecord` gains no field — a deleted event never reaches the domain.
 - **The three non-seat registration writes** — withdraw
   (`DELETE /api/events/[id]/registrations`), reject and remove — must not
@@ -173,8 +178,10 @@ fetch, and merged back through its own PR before the next is cut.
 5. **C5** soft-delete-events
 6. **C6** host-participation
 
-C4 and C5 share almost no files and may run in parallel if wanted. Every other
-branch starts after its predecessor is merged.
+The order is strictly sequential: each branch is cut from the integration
+branch only after its predecessor's PR is merged (§3). C4 and C5 have little
+file overlap, but that does not make them parallel work — they follow the same
+order as every other branch.
 
 ## 5. Dependencies and sequencing rationale
 
@@ -187,8 +194,9 @@ branch starts after its predecessor is merged.
   presentation first keeps C6 to counting.
 - **C3 before C6:** both edit `getRegistrationAvailability`; the one-line change
   lands first so C6 builds on it.
-- **C4, C5 independent:** soft deletion filters below every rule; date rules sit
-  in the content write path.
+- **No code dependency between C4 and C5:** soft deletion filters below every
+  rule; date rules sit in the content write path. They still run in the
+  sequential order of §4.
 - **C6 last:** highest risk, touches the seat-claim protocol, and benefits from
   every earlier simplification.
 - **Shared files:** `lib/labels.ts` (C1, C2, C6 — different functions);
@@ -222,6 +230,10 @@ that implements it.
   plus the active-parent condition, with 404 for a deleted parent and 409 for a
   stale transition. Seat-taking writes are already covered by the event-row
   lock and the filtered `SELECT_EVENT_FOR_UPDATE`.
+- **Deleted is 404, stale is 409, on every write.** Any write that affects no
+  row because its event was deleted between the handler's read and its write —
+  event content edits, publish and cancel as well as the registration writes —
+  answers 404, never a 409 or a 200.
 - **Host participation is derived, never stored.** No Registration row is
   created for a host. Attendance and capacity are `hosts + non-host going rows`
   in both the SQL count and the application count, which must stay identical.
@@ -271,21 +283,40 @@ The underlying zone mismatch is pre-existing and stays out of scope.
 - Raw API callers sending a zone-less timestamp are parsed in the server's zone —
   existing behaviour, unchanged.
 
-### Long names — verified causes (C2)
+### Long names — reproduce before fixing (C2)
 
-- **Board card:** `.host` in `EventCard.module.css` already sets ellipsis, but it
-  is a flex item of `.footer` without `min-width: 0`, so it cannot shrink, and
-  the card's `overflow: hidden` clips it with no ellipsis. Needs `min-width: 0`,
-  plus a `title` with the full text.
-- **Detail page:** `Person` (`components/ui/Avatar.tsx`, `.person` is
-  `inline-flex`) sits in wrapping `.people` lists (`detail.module.css`,
-  `AttendeeList.module.css`) with no width cap, so a `nowrap` name widens past
-  the `Card` and the page scrolls horizontally. Needs `max-width: 100%` /
-  `min-width: 0` on `.person` and on the `.attendee` / `.flagged` wrappers, and a
-  `title` on the name. Full text stays in the DOM for screen readers; the
-  avatar already has `title={user.name}`.
-- Re-check `ApprovalQueue`, `InvitationList` and the share-email picker in the
-  320px aside in the same pass.
+The cause is **not yet established**. An earlier diagnosis (that `.host` cannot
+shrink without `min-width: 0`) was wrong and is withdrawn. What the CSS shows:
+
+- **Board card:** `.host` (`EventCard.module.css`) already has
+  `overflow: hidden`, `text-overflow: ellipsis` and `white-space: nowrap`. A
+  flex item whose overflow is not `visible` already has an automatic minimum
+  width of 0, so it can shrink inside `.footer`. The card has
+  `overflow: hidden`, and the grid columns are `minmax(310px, 1fr)`. Why the
+  reported name is cut off without an ellipsis is unknown.
+- **Detail page:** `.person` (`components/ui/Avatar.module.css`) already has
+  `min-width: 0`. `.personText` is a column flex container with
+  `align-items: flex-start`, and `.personName` has the ellipsis rules. One
+  candidate, unconfirmed: with `flex-start`, a `nowrap` name keeps its full
+  text width, so its ellipsis never applies and it overflows the page. The
+  wrapping lists (`.people` in `detail.module.css`, `.attendee` and `.flagged`
+  in `AttendeeList.module.css`) are other places to look.
+
+Required approach:
+
+- reproduce on both screens with the long-name development event the user
+  created, and identify in the browser which element actually overflows or
+  clips, and why;
+- choose the smallest CSS change that fixes that element, without speculative
+  `min-width` or `max-width` additions and without redesigning the card or the
+  lists;
+- keep the requirement: long names truncate with an ellipsis, the layout never
+  overflows horizontally, and the full name stays available (a `title` where
+  text is truncated; the avatar already has `title={user.name}`; the full text
+  stays in the DOM for screen readers);
+- check the other places `Person` is used in the same pass — hosts, attendees,
+  the removed group, `ApprovalQueue`, `InvitationList`, and the share-email
+  picker in the 320px aside.
 
 ### Soft deletion (C5)
 
@@ -298,7 +329,7 @@ The underlying zone mismatch is pre-existing and stays out of scope.
 - The migration targets the shared DEV database: `db:migrate` runs only with
   explicit approval.
 
-### Soft deletion racing the non-seat registration writes (C5)
+### Soft deletion racing in-flight writes (C5)
 
 The race: withdraw, reject and remove read the event, then update the
 registration in a separate, lock-free statement. Under soft deletion a delete
@@ -309,6 +340,14 @@ covered: seat claims, approvals, restores, inviting and revoking read the event
 through the filtered `SELECT_EVENT_FOR_UPDATE`, and `updateEvent` gains its own
 `DeletedAt IS NULL` predicate. The three routes above are the only callers of
 the generic registration update.
+
+The event handlers have the same race in a milder form. Content edit, publish
+and cancel read the event, then call `db.events.update()`. With the new
+predicate a delete committed in between makes the update affect no row, so no
+late write lands, but the handler would answer 409 "stale" instead of 404. That
+is why §3 requires the same re-read after a `null` update. Their update is a
+single statement on the event row itself, the row the soft delete also writes,
+so it adds no lock-ordering question.
 
 The single-statement design is expected to be safe, but **C5 must establish
 that, not assume it**:
@@ -365,7 +404,7 @@ test suite; temporary harnesses may be used but are not committed.
 | C2 | Upcoming, in-progress, past and cancelled events on the board and detail page show the right wording. A long Latin name and a long Hebrew name: ellipsis on the card, no page scroll on the detail page (hosts, attendees, removed group, queue, invitations). Both themes, narrow viewport. Removal dialog wording. |
 | C3 | As Priya, rejected on an `approval` event → closed. Switch to `open` → normal register → `going`. Back to `approval` after another rejection → closed. `invite` → still closed. Full `open` event → refused. Register and host-approve near-simultaneously → one wins, the other is stale. |
 | C4 | `curl`: create with a past start and with start = now → 400; future → 201. Edit a past draft to the future → ok; edit only its title → ok. Publish a past-dated draft → 409. Started event: edit description through the form → ok; change dates via `curl` → 400. Cancelled event: change dates → 400. |
-| C5 | Migrate (approved). Delete an event with registrations and invitations → board, detail, every route 404/absent for every persona, admin included; rows still in the database. Second delete → 404. `db:seed -- --status` sane. **Parent check:** after a soft delete, the data-layer update of one of its registrations returns `null`, and withdraw, reject and remove each answer 404. **Race:** with a soft delete held open in a separate session, withdraw, reject and remove each either complete before the delete or answer 404 after it — never 200 after the delete is visible; record the isolation mode `db:check` reports. **404 vs 409:** a stale transition on a live event still answers 409, a deleted parent 404. **Regression:** on a live event, concurrent transitions (e.g. withdraw vs host approval, two rejects, remove vs withdraw) still produce exactly one winner and a 409 for the loser, with no deadlock. |
+| C5 | Migrate (approved). Delete an event with registrations and invitations → board, detail, every route 404/absent for every persona, admin included; rows still in the database. Second delete → 404. `db:seed -- --status` sane. **Parent check:** after a soft delete, the data-layer update of one of its registrations returns `null`, and withdraw, reject and remove each answer 404. **Race:** with a soft delete held open in a separate session, withdraw, reject and remove each either complete before the delete or answer 404 after it — never 200 after the delete is visible; record the isolation mode `db:check` reports. **Event handlers:** with a delete landing between the handler's read and its update, content edit, publish and cancel each answer 404 and write nothing. **404 vs 409:** a stale transition on a live event — a registration change, or a publish or cancel that lost to another one — still answers 409; a deleted event answers 404. **Regression:** on a live event, concurrent transitions (e.g. withdraw vs host approval, two rejects, remove vs withdraw) still produce exactly one winner and a 409 for the loser, with no deadlock. |
 | C6 | Hosts see a host state and no register/withdraw action. Counts, meter, avatars and "Who is going" include hosts, first, no duplicates. A host's existing row is ignored everywhere. Capacity with hosts counted refuses the last-seat claim, including two near-simultaneous `curl` claims. Queue shows no host rows; host self-decision → 409. New event shows one participant. Co-host Daniel on `tsWorkshop`; Sara as admin-host and as non-host admin. |
 
 ## 9. Documentation per branch
