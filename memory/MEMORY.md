@@ -54,6 +54,7 @@ are the truth.
 | What is this product, and how is the system structured? | [a_system.md](a_system.md) · source code is authoritative |
 | How do I run it, and what is already built? | [u_environment.md](u_environment.md) · [README.md](../README.md) · [TASKS.md](../TASKS.md) §3 |
 | What are we working on right now? | [s_status.md](s_status.md) |
+| What is planned before M11, in which branches and in what order? | [docs/pre-m11-stabilization-plan.md](../docs/pre-m11-stabilization-plan.md) — a temporary plan, not implemented behaviour; retired when its last branch merges |
 | Why was a particular implementation approach chosen? | [dec_log.md](dec_log.md) · then the source file's header comment, then PR history (`gh pr list`) |
 | Which source should I open for question X? | [r_references.md](r_references.md) |
 
