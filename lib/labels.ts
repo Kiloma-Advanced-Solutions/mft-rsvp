@@ -905,7 +905,7 @@ export function removeAttendeeDialogMessage(
   name: string,
   inviteOnly: boolean,
 ): string {
-  const message = `ההרשמה של ${name} תוסר מרשימת המשתתפים, והמקום שלה יתפנה. תוכלו להחזיר אותה מאוחר יותר, כל עוד יש מקום באירוע.`;
+  const message = `ההרשמה של ${name} תוסר מרשימת המשתתפים, והמקום באירוע יתפנה. אפשר יהיה להחזיר את ההרשמה מאוחר יותר, כל עוד יש מקום באירוע.`;
   return inviteOnly
     ? `${message} ההזמנה לאירוע נשארת בתוקף, והאירוע ימשיך להופיע אצלם.`
     : message;
