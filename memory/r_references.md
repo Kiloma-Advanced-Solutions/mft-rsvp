@@ -42,6 +42,7 @@ wins. **Supporting** means: useful background, safe to skip.
 | Source | Answers | Standing |
 | --- | --- | --- |
 | [README.md](../README.md) | What the project is, how to install and run it, the directory map, why there is no auth, and "The database": setup from a fresh checkout, the read-only checks, reset, and the shared-database safeguards | Supporting — a good first read for a human, superseded by `TASKS.md` on requirements. **Authoritative** for the database workflow and its commands |
+| [docs/pre-m11-stabilization-plan.md](../docs/pre-m11-stabilization-plan.md) | The approved pre-M11 work: the eleven requested changes and their confirmed requirements, the six branches C1–C6 with their boundaries and order, decisions H1–H3, the technical findings and risks per branch, and the per-branch workflow. Read the section for the branch you are implementing | Supporting, **temporary** — a plan, not implemented behaviour; where it and the code disagree about what is built, the code wins. Deleted by the last of its branches once its rules are in `TASKS.md` and `dec_log.md` |
 | [.env.example](../.env.example) | Which environment variables exist, what each means, and where each may and may not be set | **Authoritative** for configuration |
 | `/styleguide` in the running app | Every component rendered with real data. Check here before building a new component | Supporting, and the fastest way to see the kit |
 | `/` in the running app | The start page: what is built and what is yours | Supporting |

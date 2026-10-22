@@ -5,7 +5,17 @@ progresses — it is current state, not a changelog.
 
 ## Active milestone
 
-**None in progress.** M1–M10 are complete and merged into
+**Pre-M11 stabilization — planned, not yet implemented.** Eleven fixes and
+behaviour changes requested after M10 are being delivered before M11 in six
+branches, C1–C6, in a fixed order; two of them (category colours and the
+explanatory-note review) are deferred into M11. The approved requirements,
+branch boundaries, order and decisions H1–H3 are in
+[docs/pre-m11-stabilization-plan.md](../docs/pre-m11-stabilization-plan.md),
+a temporary plan that the last of the six branches retires. Nothing it
+describes as new behaviour is built until its branch is merged. Branches
+merged so far: none.
+
+M1–M10 are complete and merged into
 `yardenah/events-board`: the original assignment's three `must` and two
 `should` milestones; M6, the first post-assignment milestone, which moved
 persistence to SQL Server (PR #24); M7, event cancellation (PR #28); M8,
@@ -15,11 +25,11 @@ shareable event links and email sharing (PR #38). The UI is also
 localized to Hebrew and RTL (PR #25), which changed presentation only; what it
 fixed in place is in [a_system.md](a_system.md).
 
-**Next are M11 and M12, both future work.** M11 (system redesign, against an
-external Style Guide that has not been supplied yet) and M12 (application
-logging) are specified in [TASKS.md](../TASKS.md) §5. The rest of
-the original stretch list — the calendar view first, then the waitlist, search,
-"my events", optimistic UI and a theme toggle — is also unstarted.
+**After the stabilization, M11 and M12, both future work.** M11 (system
+redesign, against an external Style Guide that has not been supplied yet) and
+M12 (application logging) are specified in [TASKS.md](../TASKS.md) §5. The
+rest of the original stretch list — the calendar view first, then the waitlist,
+search, "my events", optimistic UI and a theme toggle — is also unstarted.
 Authoritative requirements for every milestone, extension and stretch goal:
 [TASKS.md](../TASKS.md) §5.
 
@@ -337,6 +347,5 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-10-20 — M10 (shareable event links and email sharing,
-PR #38) delivered; no milestone in progress, M11 (system redesign) and M12
-(application logging) next.
+Last updated: 2026-10-21 — pre-M11 stabilization planned (six branches, none
+merged yet); M11 (system redesign) and M12 (application logging) follow it.
