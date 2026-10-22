@@ -78,10 +78,12 @@
   gap: var(--space-4);
 }
 
+/* Breaks a word wider than the column rather than widening the page. */
 .paragraph {
   color: var(--color-text-muted);
   line-height: var(--leading-normal);
   white-space: pre-line;
+  overflow-wrap: anywhere;
 }
 
 .people {

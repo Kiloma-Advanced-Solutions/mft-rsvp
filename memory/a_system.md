@@ -299,6 +299,15 @@ job title, a request's message — is rendered with `dir="auto"`, and the
 free-text inputs in `EventForm` carry it too. The structured controls (the
 dates, the capacity, the pickers) do not.
 
+**Free-form content can be one long word.** Nothing stops a title or a name
+being typed without spaces, and such text must never widen the page. Where it
+is shown whole — the detail page's title, summary and description, and a
+checkbox label such as a name in the invite or share picker — it carries
+`overflow-wrap: anywhere`; the board card's two-line title and summary carry it
+too, so the clamp's ellipsis can appear. A person's name and job title in
+`Person` stay on one line and truncate, capped at their column with
+`max-width: 100%`, and the name carries a `title` with the full text.
+
 `dir="auto"` sets the computed `direction` of the element it is placed on, and
 `direction` governs the inline alignment of everything inside that element. That
 is true of any container, not only a flex or grid one. So put it on **the text

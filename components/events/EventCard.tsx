@@ -77,9 +77,10 @@ export function EventCard({
           <p className={styles.category}>{CATEGORY_LABELS[event.category]}</p>
           {/*
             The event's own words, in whichever language the host wrote them.
-            See `dir="auto"` note in `PageHeader`.
+            See `dir="auto"` note in `PageHeader`. Clamped to two lines, so the
+            full title is also its tooltip; the detail page shows it whole.
           */}
-          <h3 className={styles.title} dir="auto">
+          <h3 className={styles.title} dir="auto" title={event.title}>
             {event.title}
           </h3>
           <p className={styles.summary} dir="auto">
@@ -114,7 +115,9 @@ export function EventCard({
           </span>
         </span>
         {hostName && (
-          <span className={styles.host}>{hostedByLabel(hostName)}</span>
+          <span className={styles.host} title={hostedByLabel(hostName)}>
+            {hostedByLabel(hostName)}
+          </span>
         )}
       </div>
     </Link>
