@@ -87,7 +87,8 @@ export function Person({
     <span className={cx(styles.person, className)}>
       <Avatar user={user} size={size} />
       <span className={styles.personText}>
-        <span className={styles.personName} dir="auto">
+        {/* Truncated when long, so the full name is also its tooltip. */}
+        <span className={styles.personName} dir="auto" title={user.name}>
           {user.name}
         </span>
         <span className={styles.personMeta} dir="auto">

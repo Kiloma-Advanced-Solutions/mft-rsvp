@@ -95,11 +95,18 @@
   color: var(--accent);
 }
 
+/*
+  `overflow-wrap: anywhere` on the two clamped blocks: a word longer than the
+  card -- a title typed without spaces -- otherwise stays on one line, runs
+  past the edge and is clipped there, and the clamp's ellipsis never appears
+  because it only marks the last line, not a line that is too wide.
+*/
 .title {
   margin-top: var(--space-1);
   font-size: var(--text-md);
   font-weight: var(--weight-semibold);
   line-height: var(--leading-snug);
+  overflow-wrap: anywhere;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -111,6 +118,7 @@
   font-size: var(--text-sm);
   color: var(--color-text-muted);
   line-height: var(--leading-snug);
+  overflow-wrap: anywhere;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -147,11 +155,18 @@
   background: var(--color-surface-subtle);
 }
 
+/*
+  The count does not give way to the host's name: a long name truncates in
+  whatever room is left. `max-width` keeps the count itself inside the footer,
+  so on its own it still truncates rather than overflowing.
+*/
 .attendance {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
+  flex-shrink: 0;
+  max-width: 100%;
 }
 
 .attendanceText {

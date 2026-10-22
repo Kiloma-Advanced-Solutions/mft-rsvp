@@ -299,6 +299,15 @@ job title, a request's message — is rendered with `dir="auto"`, and the
 free-text inputs in `EventForm` carry it too. The structured controls (the
 dates, the capacity, the pickers) do not.
 
+**Free-form content can be one long word.** Nothing stops a title or a name
+being typed without spaces, and such text must never widen the page. Where it
+is shown whole — the detail page's title, summary and description, and a
+checkbox label such as a name in the invite or share picker — it carries
+`overflow-wrap: anywhere`; the board card's two-line title and summary carry it
+too, so the clamp's ellipsis can appear. A person's name and job title in
+`Person` stay on one line and truncate, capped at their column with
+`max-width: 100%`, and the name carries a `title` with the full text.
+
 `dir="auto"` sets the computed `direction` of the element it is placed on, and
 `direction` governs the inline alignment of everything inside that element. That
 is true of any container, not only a flex or grid one. So put it on **the text
@@ -470,6 +479,16 @@ viewer's state and consumes the `viewerCanManage` the loader already derived;
 is presentation only and stays a Server Component, and the host-only section is
 gated on manageability and absent from the markup for everyone else — hiding it
 in CSS would still ship it.
+
+**Attendance once nobody can join.** An event that is cancelled or has started
+(`isPast`, so one in progress too) shows attendance as a plain headcount —
+`closedAttendanceLabel()` on the board card, never "full", "be the first" or
+places left. On the detail page a started event shows that headcount in place
+of the capacity meter. An empty "Who is going" on a cancelled or started event
+says "אין נרשמים" rather than "nobody has registered yet". A cancelled event
+otherwise keeps its own detail-page presentation: no meter and no headcount in
+the panel. Presentation only — what is open or closed is still decided by
+`lib/permissions.ts`.
 
 There are four host-only surfaces on the page, and they sit apart on purpose.
 The **host tools** card in the aside holds the event's own actions — edit,

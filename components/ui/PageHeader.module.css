@@ -27,11 +27,19 @@
   flex-wrap: wrap;
 }
 
+/*
+  A basis of half the row, not the text's own width: with `auto`, a long title
+  or summary asked for its whole one-line width and pushed the actions onto a
+  row of their own, while a short one left them beside it. Now the actions sit
+  beside the title whenever half the row and the actions fit side by side, and
+  drop below it only on a row too narrow for that -- whatever the title says.
+*/
 .titleGroup {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   min-width: 0;
+  flex: 1 1 50%;
 }
 
 .eyebrow {
@@ -42,15 +50,22 @@
   color: var(--color-primary-text);
 }
 
+/*
+  The title and description are often an event's own words, so a word with no
+  break opportunity is possible. `overflow-wrap: anywhere` breaks it rather than
+  letting it widen the page; both still show in full.
+*/
 .title {
   font-size: var(--text-2xl);
   font-weight: var(--weight-bold);
+  overflow-wrap: anywhere;
 }
 
 .description {
   max-width: 62ch;
   font-size: var(--text-base);
   color: var(--color-text-muted);
+  overflow-wrap: anywhere;
 }
 
 .actions {

@@ -905,7 +905,7 @@ export function removeAttendeeDialogMessage(
   name: string,
   inviteOnly: boolean,
 ): string {
-  const message = `ההרשמה של ${name} תוסר מרשימת המשתתפים, והמקום שלה יתפנה. תוכלו להחזיר אותה מאוחר יותר, כל עוד יש מקום באירוע.`;
+  const message = `ההרשמה של ${name} תוסר מרשימת המשתתפים, והמקום באירוע יתפנה. אפשר יהיה להחזיר את ההרשמה מאוחר יותר, כל עוד יש מקום באירוע.`;
   return inviteOnly
     ? `${message} ההזמנה לאירוע נשארת בתוקף, והאירוע ימשיך להופיע אצלם.`
     : message;
@@ -1355,10 +1355,11 @@ export function attendanceLabel(
 }
 
 /**
- * The attendance line on a cancelled event's card: a headcount and nothing
- * that invites anyone to register -- no "be the first", no places left.
+ * The attendance line of an event nobody can join any more -- cancelled, or
+ * already started: a headcount and nothing that invites anyone to register --
+ * no "be the first", no places left.
  */
-export function cancelledAttendanceLabel(going: number): string {
+export function closedAttendanceLabel(going: number): string {
   return going === 0 ? CAPACITY_LABELS.noRegistrations : goingCountLabel(going);
 }
 
@@ -1367,7 +1368,7 @@ export const CAPACITY_LABELS = {
   full: "מלא",
   noLimit: "ללא הגבלה",
   beFirst: "היו הראשונים להירשם",
-  /** A cancelled event nobody had registered for. */
+  /** A cancelled or started event nobody had registered for. */
   noRegistrations: "אין נרשמים",
   /** The badge on a published event whose start has gone by. */
   past: "עבר",

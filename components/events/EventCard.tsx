@@ -7,7 +7,7 @@ import { isPast } from "@/lib/date";
 import {
   CATEGORY_LABELS,
   attendanceLabel,
-  cancelledAttendanceLabel,
+  closedAttendanceLabel,
   hostedByLabel,
 } from "@/lib/labels";
 import type { EventRecord, RegistrationStatus, User } from "@/lib/types";
@@ -51,10 +51,11 @@ export function EventCard({
 }) {
   const going = goingCount ?? attendees.length;
   const cancelled = event.status === "cancelled";
-  // A cancelled event is not "full": nobody can join it either way, and the
+  // Cancelled or already started: nobody can join it any more. It is dimmed,
+  // its attendance line is a plain headcount, and it is never "full" -- the
   // full styling would suggest it is only a lack of room.
-  const full = !cancelled && event.capacity !== null && going >= event.capacity;
-  const dimmed = cancelled || isPast(event.startsAt);
+  const closed = cancelled || isPast(event.startsAt);
+  const full = !closed && event.capacity !== null && going >= event.capacity;
 
   return (
     <Link
@@ -62,7 +63,7 @@ export function EventCard({
       className={cx(
         styles.card,
         styles[event.accent],
-        dimmed && styles.dimmed,
+        closed && styles.dimmed,
         cancelled && styles.cancelled,
       )}
     >
@@ -76,9 +77,10 @@ export function EventCard({
           <p className={styles.category}>{CATEGORY_LABELS[event.category]}</p>
           {/*
             The event's own words, in whichever language the host wrote them.
-            See `dir="auto"` note in `PageHeader`.
+            See `dir="auto"` note in `PageHeader`. Clamped to two lines, so the
+            full title is also its tooltip; the detail page shows it whole.
           */}
-          <h3 className={styles.title} dir="auto">
+          <h3 className={styles.title} dir="auto" title={event.title}>
             {event.title}
           </h3>
           <p className={styles.summary} dir="auto">
@@ -107,13 +109,15 @@ export function EventCard({
         <span className={styles.attendance}>
           {attendees.length > 0 && <AvatarStack users={attendees} max={4} size="xs" />}
           <span className={cx(styles.attendanceText, full && styles.full)}>
-            {cancelled
-              ? cancelledAttendanceLabel(going)
+            {closed
+              ? closedAttendanceLabel(going)
               : attendanceLabel(going, event.capacity, full)}
           </span>
         </span>
         {hostName && (
-          <span className={styles.host}>{hostedByLabel(hostName)}</span>
+          <span className={styles.host} title={hostedByLabel(hostName)}>
+            {hostedByLabel(hostName)}
+          </span>
         )}
       </div>
     </Link>

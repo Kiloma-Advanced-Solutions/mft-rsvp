@@ -137,10 +137,14 @@
   cursor: not-allowed;
 }
 
+/* `overflow-wrap: anywhere` because a label is often someone's name, and a
+   name with no spaces would otherwise set this column's minimum width and run
+   past the list. Ordinary words still wrap at spaces. */
 .checkText {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  overflow-wrap: anywhere;
 }
 
 .checkLabel {

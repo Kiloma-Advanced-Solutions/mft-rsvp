@@ -13,9 +13,9 @@ branch boundaries, order and decisions H1–H3 are in
 [docs/pre-m11-stabilization-plan.md](../docs/pre-m11-stabilization-plan.md),
 a temporary plan that the last of the six branches retires. Nothing it
 describes as new behaviour is built until its branch is merged. Branches
-merged so far: none. C1 (removing the workshop pages) is implemented on its
-branch, `yardenah/remove-workshop-pages`, and has not yet been reviewed or
-merged; C2–C6 have not started.
+merged so far: C1 (removing the workshop pages, PR #41). C2 (UI text fixes)
+is implemented on its branch, `yardenah/ui-text-fixes`, and awaiting review;
+C3–C6 have not started.
 
 M1–M10 are complete and merged into
 `yardenah/events-board`: the original assignment's three `must` and two
@@ -352,6 +352,6 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-10-22 — pre-M11 stabilization in progress: C1 implemented on
-its branch, not yet merged (none of the six merged yet); M11 (system redesign)
-and M12 (application logging) follow it.
+Last updated: 2026-10-22 — pre-M11 stabilization in progress: C1 merged
+(PR #41), C2 implemented on its branch and awaiting review; M11 (system
+redesign) and M12 (application logging) follow it.

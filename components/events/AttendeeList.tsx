@@ -1,6 +1,8 @@
 import { Badge, Card, Person } from "@/components/ui";
+import { isPast } from "@/lib/date";
 import {
   ATTENDEE_LABELS,
+  CAPACITY_LABELS,
   DETAIL_LABELS,
   attendeeRestoreClosedNote,
 } from "@/lib/labels";
@@ -22,6 +24,10 @@ import styles from "./AttendeeList.module.css";
  * `goingCount` rather than a length is the headline, because only `going` rows
  * count and a row whose person has left the company still holds a place.
  *
+ * Nobody coming to an event that is cancelled or has started reads as a plain
+ * fact, in the words a closed event's card uses, not as "nobody has registered
+ * yet".
+ *
  * The one interactive part is `AttendeeActions`, which receives an id, a name
  * and what it may do — nothing about anybody else.
  */
@@ -31,12 +37,17 @@ export function AttendeeList({
   goingCount,
   managed,
 }: {
-  event: Pick<EventRecord, "id" | "access">;
+  event: Pick<EventRecord, "id" | "access" | "status" | "startsAt">;
   attendees: User[];
   goingCount: number;
   /** The host's view of the same rows, or `null` for anyone who is not one. */
   managed: ManagedAttendee[] | null;
 }) {
+  const empty =
+    event.status === "cancelled" || isPast(event.startsAt)
+      ? CAPACITY_LABELS.noRegistrations
+      : DETAIL_LABELS.noAttendees;
+
   return (
     <section>
       <div className={styles.head}>
@@ -45,18 +56,18 @@ export function AttendeeList({
       </div>
 
       {managed === null ? (
-        <People attendees={attendees} />
+        <People attendees={attendees} empty={empty} />
       ) : (
-        <ManagedPeople event={event} managed={managed} />
+        <ManagedPeople event={event} managed={managed} empty={empty} />
       )}
     </section>
   );
 }
 
 /** The list everybody but a host sees, unchanged from before M8. */
-function People({ attendees }: { attendees: User[] }) {
+function People({ attendees, empty }: { attendees: User[]; empty: string }) {
   if (attendees.length === 0) {
-    return <p className={styles.muted}>{DETAIL_LABELS.noAttendees}</p>;
+    return <p className={styles.muted}>{empty}</p>;
   }
 
   return (
@@ -77,9 +88,12 @@ function People({ attendees }: { attendees: User[] }) {
 function ManagedPeople({
   event,
   managed,
+  empty,
 }: {
   event: Pick<EventRecord, "id" | "access">;
   managed: ManagedAttendee[];
+  /** What an empty list says; see `AttendeeList`. */
+  empty: string;
 }) {
   const going = managed.filter((row) => row.status === "going");
   const removed = managed.filter((row) => row.status === "removed");
@@ -90,7 +104,7 @@ function ManagedPeople({
         <p className={styles.muted}>
           {removed.length > 0
             ? ATTENDEE_LABELS.noConfirmedAttendees
-            : DETAIL_LABELS.noAttendees}
+            : empty}
         </p>
       ) : (
         <div className={styles.people}>
