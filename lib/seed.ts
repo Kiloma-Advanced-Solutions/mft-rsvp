@@ -7,8 +7,8 @@
  * developer sees and the rows in the database cannot describe different events.
  *
  * The application reads the fixed ids and the persona order from here --
- * `lib/session.ts` and `/styleguide` both do -- but never the records. Event and
- * registration data comes from the database, through `lib/db.ts`.
+ * `lib/session.ts` does -- but never the records. Event and registration data
+ * comes from the database, through `lib/db.ts`.
  *
  * SERVER ONLY. Timestamps are computed relative to "now" each time the fixtures
  * are built, so the board always has a sensible past/present/future spread no
@@ -44,7 +44,7 @@ function daysAgo(days: number): string {
  * The fixtures' own ids, written out as fixed UUIDs rather than generated.
  *
  * They are constants and not `crypto.randomUUID()` calls on purpose: the
- * persona cookie holds a user id, `/styleguide` needs particular events, and
+ * persona cookie holds a user id, a seeded event's URL is its id, and
  * `DEFAULT_USER_ID` has to keep resolving -- all of which break if the ids move
  * every time the fixtures are rebuilt. Seeding the database, and resetting it
  * with `npm run db:reset`, therefore always produce the same ids.

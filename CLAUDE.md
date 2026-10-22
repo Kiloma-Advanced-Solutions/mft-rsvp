@@ -15,7 +15,9 @@ no component library. If a dependency seems necessary, say why before adding it.
 - Every colour, space, radius, shadow and font size comes from a token in
   `app/styles/tokens.css`. No hex codes and no magic pixel values in components.
 - One `.module.css` next to each component. Nothing new goes in `app/globals.css`.
-- Check `/styleguide` before building a new component — it probably exists.
+- Check `components/ui/` (its barrel is `components/ui/index.ts`),
+  `components/events/` and `components/layout/` before building a new
+  component — it probably exists.
 - Both themes have to work. Tokens handle that automatically if you use them.
 - **One exception: email templates in `emails/`.** Email clients — Outlook 2016
   above all — ignore stylesheets, class names and CSS variables, so templates

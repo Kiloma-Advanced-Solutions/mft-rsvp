@@ -52,9 +52,9 @@ events they are allowed to see — and registers for the ones they want.
 
 Since M6 the app needs a database before it will serve a page: configure,
 migrate and seed it first, as README.md "The database" describes. Then run
-`npm run dev` and open <http://localhost:3000> — the start page lists it all,
-and `/styleguide` renders every component with real data. Read that page before
-you write any CSS.
+`npm run dev` and open <http://localhost:3000>, which redirects to the board at
+`/events`. Read the tokens and the components listed below before you write any
+CSS.
 
 | Where | What |
 | --- | --- |
@@ -62,7 +62,7 @@ you write any CSS.
 | `app/globals.css` | Reset and base elements. |
 | `components/ui/` | Button, Badge, Card, Field/Input/Select/Textarea, Modal, ConfirmDialog, Toast, Avatar, EmptyState, Spinner, SegmentedControl, PageHeader. |
 | `components/events/` | `EventCard`, `EventGrid`, `DateBlock`, `AccessBadge`, `EventStatusBadge`, `RegistrationBadge`, `CapacityMeter`, `EventMetaLine`, `EventMetaDetails`. |
-| `components/layout/` | The app shell, nav and persona switcher. |
+| `components/layout/` | The app shell, its brand link and the persona switcher. |
 | `lib/types.ts` | The domain model. Read this first. |
 | `lib/db.ts` | The persistence boundary, server only. Backed by SQL Server since M6. |
 | `lib/seed.ts` | 12 events, 5 people, every state covered. |
@@ -376,7 +376,8 @@ inspected, this milestone records only what is already known; its detailed
 scope, and what counts as done, are set in M11's own planning step.
 
 - The redesign follows the external Style Guide — a separate document from the
-  in-app `/styleguide` page, which renders the existing component kit.
+  in-app `/styleguide` page, which rendered the existing component kit and was
+  removed before M11 by the pre-M11 stabilization branch C1.
 - Preserve the existing behaviour: the rules in section 4, visibility and the
   never-leak constraint in section 1, registration, capacity and lifecycle
   behaviour, and every capability delivered in M1–M10. M11 changes how the
@@ -401,14 +402,14 @@ stabilization work, because each depends on the Style Guide:
 
 - The detailed scope: which screens, components and states change.
 - What happens to the UI components and types that are retained, but no longer
-  used by any page, once the in-app `/styleguide` page is removed before M11 —
+  used by any page, now that the in-app `/styleguide` page has been removed —
   expected to include `SegmentedControl`, `Spinner`, `Radio`, `CardFooter` and
   the `BadgeVariant` type, to be verified against the repository when M11
   starts. M11 reviews each and decides whether to keep, adapt, replace or
   remove it.
 - How the Style Guide relates to the current styling conventions in
-  `CLAUDE.md`, the tokens in `app/styles/tokens.css`, the `components/ui/` kit
-  and the `/styleguide` page — kept, extended or replaced.
+  `CLAUDE.md`, the tokens in `app/styles/tokens.css` and the `components/ui/`
+  kit — kept, extended or replaced.
 - How it applies to the Hebrew, right-to-left interface and to both themes.
 - The definition of done for this milestone.
 

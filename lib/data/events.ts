@@ -40,8 +40,7 @@ import type { EventPatch } from "../db";
 
 /**
  * `StartsAt` first only so the order never changes between calls. Nothing
- * depends on it: `app/events/page.tsx` sorts and groups the board itself, and
- * `/styleguide` picks its samples by seed id rather than by position.
+ * depends on it: `app/events/page.tsx` sorts and groups the board itself.
  */
 const SELECT_EVENTS = `
 SELECT Id, Title, Summary, Description, StartsAt, EndsAt,

@@ -1231,3 +1231,72 @@ email address, and the system id is a whole number. Nothing checks that
 `MAIL_SERVICE_URL` is a well-formed URL. The email templates are the one place
 outside the app's styling rules — see [CLAUDE.md](../CLAUDE.md). Real delivery
 and Outlook rendering are unverified; see [s_status.md](s_status.md).
+
+---
+
+## 2026-10-22 — The workshop pages are retired, and `/` redirects to the board
+
+Context: two pages had outlived the workshop the repository started as — the
+English "Start here" page at `/`, describing what was supplied and what was left
+to build, and `/styleguide`, rendering the component kit with hand-written
+props. Neither was part of the product. M11 will redesign the interface against
+an external Style Guide, and later pre-M11 branches change the props and
+meaning of components `/styleguide` rendered. The options were to keep the
+pages, translate them, or retire them; and, for `/`, to render the board there,
+redirect, or leave it a 404.
+
+Decision: both pages are deleted. `/` keeps a page, `app/page.tsx`, whose only
+job is `redirect("/events")`, a temporary (307) redirect. The top bar's brand
+link points to `/events`, and its nav keeps one entry, the board. The components
+and types that no page uses once `/styleguide` is gone — `SegmentedControl`,
+`Spinner`, `Radio`, `CardFooter` and `BadgeVariant` — are kept.
+
+Rationale: keeping or translating the pages meant maintaining a description of
+a finished workshop and mirroring every later component change into a page the
+external Style Guide replaces, development use included. A redirect keeps the
+board at a single canonical URL, `/events`, where rendering it at `/` too would
+give it two; and `/` is the address people type, so it should not be a 404. A
+308 is cached by browsers indefinitely, so if M11 ever gives `/` a page of its
+own, anyone who had seen the redirect would never reach it; a 307 costs the
+same single extra request without that risk. The redirect lives in
+`app/page.tsx` rather than in a `next.config` `redirects()` or a proxy because
+every other route is decided under `app/`, and the project has neither of the
+others — adding one for a single path would create a second place routes are
+defined. Its cost is that the root layout still runs, reading the session and
+the persona list, before the redirect is sent; that is negligible. The unused
+components stay because removing pages is not a decision about the kit: whether
+each is kept, adapted, replaced or removed depends on the Style Guide, and
+[TASKS.md](../TASKS.md) §5 "M11 — System redesign" records that review.
+
+Consequences: there is no in-app page that renders every component; the
+`components/` directories are the reference until the Style Guide arrives, as
+[CLAUDE.md](../CLAUDE.md) says. Some kit exports are now rendered by no page —
+intended, until M11. `/styleguide` answers 404. The 2026-09-16 entry "The UI is
+Hebrew and RTL; the domain stays English" notes that `/` and `/styleguide`
+stayed English; that part no longer describes the app, but the seeded fixtures
+are still English, so mixed-direction content remains the normal case.
+
+---
+
+## 2026-10-22 — The top bar has no separate nav; the brand is its only link
+
+Context: the entry above, "The workshop pages are retired, and `/` redirects to
+the board", left the top bar's nav with one entry, the board. That entry and the
+brand beside it now led to the same place, `/events`.
+
+Decision: the nav is removed. The brand — the "E" mark and the product name — is
+the top bar's only link, to `/events`. `NavLink`, the client component that
+highlighted the current nav entry, its styles in `AppShell.module.css`, and the
+two labels only the nav used are deleted; the brand takes over the nav's job of
+pushing the persona switcher to the far end of the bar. This refines the entry
+above, which said the nav keeps one entry.
+
+Rationale: two links to one destination, side by side, are one link too many,
+and a nav with a single entry has nothing to navigate between. `NavLink` is
+deleted rather than kept, unlike the kit components that entry retained,
+because it is app-frame code with no other consumer, not part of the
+`components/ui/` kit whose future M11 decides.
+
+Consequences: the top bar has no navigation landmark and no active-route
+highlight. If a second top-level destination is added, the nav comes back with
+it — whether as a restored `NavLink` or in whatever form the M11 redesign sets.
