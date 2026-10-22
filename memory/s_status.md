@@ -5,7 +5,7 @@ progresses — it is current state, not a changelog.
 
 ## Active milestone
 
-**Pre-M11 stabilization — planned, not yet implemented.** Eleven fixes and
+**Pre-M11 stabilization — in progress.** Eleven fixes and
 behaviour changes requested after M10 are being delivered before M11 in six
 branches, C1–C6, in a fixed order; two of them (category colours and the
 explanatory-note review) are deferred into M11. The approved requirements,
@@ -13,7 +13,9 @@ branch boundaries, order and decisions H1–H3 are in
 [docs/pre-m11-stabilization-plan.md](../docs/pre-m11-stabilization-plan.md),
 a temporary plan that the last of the six branches retires. Nothing it
 describes as new behaviour is built until its branch is merged. Branches
-merged so far: none.
+merged so far: none. C1 (removing the workshop pages) is implemented on its
+branch, `yardenah/remove-workshop-pages`, and has not yet been reviewed or
+merged; C2–C6 have not started.
 
 M1–M10 are complete and merged into
 `yardenah/events-board`: the original assignment's three `must` and two
@@ -119,10 +121,13 @@ Everything that is not the product was supplied. Do not rebuild it — see
 
 - Design tokens (light and dark) and the `components/ui/` kit.
 - `components/events/` — cards, badges, date blocks, capacity meter.
-- `components/layout/` — app shell, nav, persona switcher.
+- `components/layout/` — app shell, brand link, persona switcher.
 - The fixtures — 12 events and 5 people covering every state.
 - `/api/session` (the API house-style example).
-- `/styleguide` and the start page at `/`.
+
+The supplied start page at `/` and the `/styleguide` page were retired by C1:
+`/` redirects to the board at `/events`, and the components the style guide
+showed are kept in `components/`.
 
 The product built on top of that: the board and the detail screen, the shared
 permission and event-context layers beneath them, the registration write path,
@@ -347,5 +352,6 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-10-21 — pre-M11 stabilization planned (six branches, none
-merged yet); M11 (system redesign) and M12 (application logging) follow it.
+Last updated: 2026-10-22 — pre-M11 stabilization in progress: C1 implemented on
+its branch, not yet merged (none of the six merged yet); M11 (system redesign)
+and M12 (application logging) follow it.

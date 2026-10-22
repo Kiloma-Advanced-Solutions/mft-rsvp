@@ -73,9 +73,10 @@ copy for a new one; see "Registering" below.
 Routes and composition. The default is a Server Component, with the client
 boundary pushed down to the leaf that needs it — [CLAUDE.md](../CLAUDE.md) states
 the rule. `/events` is the board, `/events/[id]` the detail screen — which is
-also where hosts manage and edit — `/events/new` the one route that exists
-because there is nothing yet to edit in place, `/styleguide` the live component
-reference, and `/` the start page. Placement rules: [CLAUDE.md](../CLAUDE.md).
+also where hosts manage and edit — and `/events/new` the one route that exists
+because there is nothing yet to edit in place. `/` has no page of its own: it
+redirects to `/events`. The top bar has no separate nav: its brand link, the only
+link in it, leads to `/events` too. Placement rules: [CLAUDE.md](../CLAUDE.md).
 
 ### Identity boundary — `lib/session.ts`
 
@@ -204,11 +205,11 @@ logic that lives in the route is turning that answer into a status code. See
   `ShareEventActions`, `ShareEmailPicker`, and the
   `EventMeta` family (`DateBlock`, `AccessBadge`, `EventStatusBadge`,
   `RegistrationBadge`, `EventMetaLine`, `EventMetaDetails`, `CapacityMeter`).
-- `layout/` — the app frame: `AppShell`, `NavLink`, `PersonaSwitcher`.
+- `layout/` — the app frame: `AppShell` (with the brand link) and `PersonaSwitcher`.
 
 `EventCard` renders only what it is passed — deriving counts, attendees and the
-viewer's own status is the caller's job. Check `/styleguide` before building
-anything new; it probably already exists.
+viewer's own status is the caller's job. Check these three directories before
+building anything new; it probably already exists.
 
 ### Styling layer — `app/styles/tokens.css`
 
@@ -235,10 +236,9 @@ Rubik is the interface font, loaded through `next/font` with the Hebrew *and*
 Latin subsets and placed in front of Geist in `--font-sans`, so Latin inside a
 Hebrew sentence keeps the same face.
 
-The workshop scaffolding is deliberately not translated — `/` and `/styleguide`
-are still English, and so are the seeded fixtures in
-[lib/seed.ts](../lib/seed.ts). That is what makes the mixed-direction handling
-below load-bearing rather than theoretical.
+The seeded fixtures in [lib/seed.ts](../lib/seed.ts) are deliberately not
+translated — their titles, names and venues are still English. That is what
+makes the mixed-direction handling below load-bearing rather than theoretical.
 
 **Presentation changed; the domain did not.** Every stored value, union member,
 URL query value and `ApiError` `code` keeps its English identifier —
@@ -1046,4 +1046,3 @@ Why the protocol replaced the race M3 accepted: [dec_log.md](dec_log.md).
 | Copy Link and the share-email picker | [components/events/ShareEventActions.tsx](../components/events/ShareEventActions.tsx) |
 | Event components | [components/events/](../components/events/) |
 | App frame | [components/layout/](../components/layout/) |
-| Live component reference | `/styleguide` in the running app |

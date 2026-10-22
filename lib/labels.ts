@@ -1234,7 +1234,7 @@ function requestCount(n: number): string {
 /* ----------------------------------------------------------------- the app */
 
 /**
- * The app frame: the brand, the nav and the document title.
+ * The app frame: the brand and the document title.
  *
  * These had been typed into `AppShell` and `app/layout.tsx`. They are the same
  * kind of thing as everything above -- words the product says -- so they live
@@ -1242,10 +1242,6 @@ function requestCount(n: number): string {
  */
 export const APP_LABELS = {
   brand: "לוח האירועים",
-  /** Names the top-level nav for a screen reader. */
-  nav: "ראשי",
-  navBoard: "הלוח",
-  navStyleGuide: "מדריך העיצוב",
   /** `metadata.title.default` and `.template` in the root layout. */
   documentTitle: "לוח האירועים",
   documentTitleTemplate: "%s · לוח האירועים",

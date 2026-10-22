@@ -90,7 +90,7 @@ are the truth.
 | Question | Where |
 | --- | --- |
 | What are the styling conventions? | [CLAUDE.md](../CLAUDE.md) (the rules) + [app/styles/tokens.css](../app/styles/tokens.css) (the tokens) |
-| Which components already exist? | [components/ui/index.ts](../components/ui/index.ts) · [components/events/](../components/events/) · [components/layout/](../components/layout/) — all rendered at `/styleguide` |
+| Which components already exist? | [components/ui/index.ts](../components/ui/index.ts) · [components/events/](../components/events/) · [components/layout/](../components/layout/) |
 | Server or Client Component? | [CLAUDE.md](../CLAUDE.md) · [a_system.md](a_system.md) for the data-flow shape |
 | The UI is Hebrew and RTL — what must I preserve? | [a_system.md](a_system.md) "Language and direction" · [lib/labels.ts](../lib/labels.ts) · [lib/date.ts](../lib/date.ts) |
 
