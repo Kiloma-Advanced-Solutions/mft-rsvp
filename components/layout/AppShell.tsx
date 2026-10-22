@@ -26,7 +26,11 @@ export async function AppShell({ children }: { children: ReactNode }) {
     <div className={styles.shell}>
       <header className={styles.topbar}>
         <div className={styles.topbarInner}>
-          <Link href="/events" className={styles.brand}>
+          <Link
+            href="/events"
+            className={styles.brand}
+            aria-label={APP_LABELS.brand}
+          >
             <span className={styles.brandMark} aria-hidden>
               E
             </span>
