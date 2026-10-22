@@ -1,5 +1,6 @@
 import { Card } from "@/components/ui";
-import { registrationCtaCopy } from "@/lib/labels";
+import { isPast } from "@/lib/date";
+import { closedAttendanceLabel, registrationCtaCopy } from "@/lib/labels";
 import type {
   EventRecord,
   Registration,
@@ -27,6 +28,10 @@ import styles from "./RegistrationPanel.module.css";
  * registration -- and the note says the event will not take place. It drops the
  * capacity meter: places left, or "full", describe an event people can still
  * join. The headcount stays in the page's attendee section.
+ *
+ * An event that has already started drops the meter for the same reason, but
+ * keeps a plain headcount in its place -- the same words a closed event's card
+ * uses.
  */
 export function RegistrationPanel({
   event,
@@ -34,7 +39,7 @@ export function RegistrationPanel({
   goingCount,
   viewerRegistration,
 }: {
-  event: Pick<EventRecord, "id" | "capacity" | "status">;
+  event: Pick<EventRecord, "id" | "capacity" | "status" | "startsAt">;
   availability: RegistrationAvailability;
   goingCount: number;
   viewerRegistration: Registration | null;
@@ -53,9 +58,12 @@ export function RegistrationPanel({
           </div>
         )}
 
-        {event.status !== "cancelled" && (
-          <CapacityMeter going={goingCount} capacity={event.capacity} />
-        )}
+        {event.status !== "cancelled" &&
+          (isPast(event.startsAt) ? (
+            <p className={styles.count}>{closedAttendanceLabel(goingCount)}</p>
+          ) : (
+            <CapacityMeter going={goingCount} capacity={event.capacity} />
+          ))}
 
         {copy.action && (
           <RegistrationActions

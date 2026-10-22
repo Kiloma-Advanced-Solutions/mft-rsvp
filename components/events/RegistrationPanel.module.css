@@ -10,6 +10,14 @@
   display: flex;
 }
 
+/* A started event's headcount, in place of the meter. Same weight as the
+   meter's own count, so the panel keeps its rhythm. */
+.count {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--color-text);
+}
+
 .note {
   font-size: var(--text-sm);
   color: var(--color-text-muted);

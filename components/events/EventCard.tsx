@@ -7,7 +7,7 @@ import { isPast } from "@/lib/date";
 import {
   CATEGORY_LABELS,
   attendanceLabel,
-  cancelledAttendanceLabel,
+  closedAttendanceLabel,
   hostedByLabel,
 } from "@/lib/labels";
 import type { EventRecord, RegistrationStatus, User } from "@/lib/types";
@@ -51,10 +51,11 @@ export function EventCard({
 }) {
   const going = goingCount ?? attendees.length;
   const cancelled = event.status === "cancelled";
-  // A cancelled event is not "full": nobody can join it either way, and the
+  // Cancelled or already started: nobody can join it any more. It is dimmed,
+  // its attendance line is a plain headcount, and it is never "full" -- the
   // full styling would suggest it is only a lack of room.
-  const full = !cancelled && event.capacity !== null && going >= event.capacity;
-  const dimmed = cancelled || isPast(event.startsAt);
+  const closed = cancelled || isPast(event.startsAt);
+  const full = !closed && event.capacity !== null && going >= event.capacity;
 
   return (
     <Link
@@ -62,7 +63,7 @@ export function EventCard({
       className={cx(
         styles.card,
         styles[event.accent],
-        dimmed && styles.dimmed,
+        closed && styles.dimmed,
         cancelled && styles.cancelled,
       )}
     >
@@ -107,8 +108,8 @@ export function EventCard({
         <span className={styles.attendance}>
           {attendees.length > 0 && <AvatarStack users={attendees} max={4} size="xs" />}
           <span className={cx(styles.attendanceText, full && styles.full)}>
-            {cancelled
-              ? cancelledAttendanceLabel(going)
+            {closed
+              ? closedAttendanceLabel(going)
               : attendanceLabel(going, event.capacity, full)}
           </span>
         </span>
