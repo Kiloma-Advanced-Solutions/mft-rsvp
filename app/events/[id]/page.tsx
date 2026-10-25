@@ -36,11 +36,12 @@ import {
 import {
   getCancellationAvailability,
   getRegistrationAvailability,
+  getScheduleAvailability,
   getSharingAvailability,
 } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
 import { buildEventShareUrl } from "@/lib/shareLinks";
-import type { EventRecord, User } from "@/lib/types";
+import type { EventRecord, ScheduleLockReason, User } from "@/lib/types";
 
 import styles from "./detail.module.css";
 
@@ -155,6 +156,7 @@ export default async function EventDetailPage({
             // `datetime-local` value and cannot disagree about the timezone.
             initialValues={toFormValues(event)}
             goingCount={goingCount}
+            scheduleLock={scheduleLockReason(event)}
           />
         </Card>
       ) : (
@@ -254,6 +256,18 @@ export default async function EventDetailPage({
  */
 function isEditing(value: string | string[] | undefined): boolean {
   return value === "1";
+}
+
+/**
+ * Why the form's dates are locked, or `undefined` when they may change.
+ * Decided here, on the server, by the same rule the `PATCH` route runs; the
+ * form only disables what this says is locked.
+ */
+function scheduleLockReason(
+  event: EventRecord,
+): ScheduleLockReason | undefined {
+  const availability = getScheduleAvailability(event, Date.now());
+  return availability.state === "locked" ? availability.reason : undefined;
 }
 
 /** Plain text, with blank lines separating paragraphs — see `EventRecord`. */

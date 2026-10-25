@@ -211,10 +211,10 @@ export function parseEventBody(
     summary: pick(raw, "summary", base.summary),
     description: pick(raw, "description", base.description),
     // An API caller sends ISO timestamps where the form sends
-    // `datetime-local` values; `parseTimestamp` accepts either, so both go
-    // through `pick` unchanged.
-    startsAt: pick(raw, "startsAt", base.startsAt),
-    endsAt: pick(raw, "endsAt", base.endsAt),
+    // `datetime-local` values; `parseTimestamp` accepts either. A date in the
+    // same minute as the stored one is the stored one -- see `pickDate`.
+    startsAt: pickDate(raw, "startsAt", base.startsAt, fallback?.startsAt),
+    endsAt: pickDate(raw, "endsAt", base.endsAt, fallback?.endsAt),
     category: pick(raw, "category", base.category),
     access: pick(raw, "access", base.access),
     // The wire contract is unchanged: `capacity: null` (or absent on an event
@@ -295,6 +295,74 @@ function pick(
   if (!(key in raw)) return fallback;
   return typeof raw[key] === "string" ? (raw[key] as string) : "";
 }
+
+/**
+ * A date over the wire, with the stored value kept when the request sends back
+ * the same minute.
+ *
+ * The form can only express whole minutes, while a stored timestamp may carry
+ * seconds -- so an untouched date comes back a few seconds off. Treating that
+ * as "unchanged" is only safe if the stored value is also what gets written:
+ * otherwise a request could move a locked date by up to a minute while the
+ * schedule rule saw no change. Swapping it in here, before `parseEventForm`
+ * runs, also means end-after-start is checked against the values that will
+ * actually be stored.
+ *
+ * Applies to every event alike; whether a *changed* date is allowed is
+ * `checkEventSchedule()`'s question, not this one's. Without a stored value
+ * (creating), the submitted value passes through as it is.
+ */
+function pickDate(
+  raw: Record<string, unknown>,
+  key: "startsAt" | "endsAt",
+  fallback: string,
+  stored: string | undefined,
+): string {
+  const value = pick(raw, key, fallback);
+  if (stored === undefined) return value;
+
+  const submitted = new Date(value.trim()).getTime();
+  if (Number.isNaN(submitted)) return value;
+
+  const sameMinute =
+    Math.floor(submitted / MINUTE_MS) ===
+    Math.floor(Date.parse(stored) / MINUTE_MS);
+  return sameMinute ? stored : value;
+}
+
+const MINUTE_MS = 60 * 1000;
+
+/**
+ * The field errors a refused request carried, if any.
+ *
+ * A server answer is untrusted shape, so only the keys this form knows and only
+ * string messages are kept; anything else is dropped and the caller falls back
+ * to the request's own message.
+ */
+export function readFieldErrors(details: unknown): EventFieldErrors {
+  if (typeof details !== "object" || details === null) return {};
+
+  const errors: EventFieldErrors = {};
+  for (const key of FIELD_ERROR_KEYS) {
+    const message = (details as Record<string, unknown>)[key];
+    if (typeof message === "string" && message !== "") errors[key] = message;
+  }
+  return errors;
+}
+
+const FIELD_ERROR_KEYS: (keyof EventFieldErrors)[] = [
+  "title",
+  "summary",
+  "description",
+  "startsAt",
+  "endsAt",
+  "location",
+  "locationVenue",
+  "locationUrl",
+  "category",
+  "capacity",
+  "access",
+];
 
 /**
  * `capacity` over the wire, as the two form values the rule is written against.

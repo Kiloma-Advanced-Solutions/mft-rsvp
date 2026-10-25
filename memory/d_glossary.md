@@ -67,6 +67,12 @@ for the five seeded personas and what each is useful for.
     and terminal: an event never leaves it. Still visible to whoever could see
     it; registering, withdrawing and deciding requests are closed; its
     registrations are kept as they were.
+- **started** (also **past**) — the event's start time has passed, by the
+  server's clock. An event in progress has started. It closes registering,
+  withdrawing, deciding, removing, restoring, cancelling, sharing and inviting,
+  and locks the dates
+  of a published event; a cancelled event's dates are locked whether or not it
+  has started, and a draft's never are.
 - **share link** — the absolute URL of an event's own page, `/events/[id]`, on
   the configured application origin; what a host copies or emails. It **grants
   nothing**: no token and no record, so there is nothing to revoke or

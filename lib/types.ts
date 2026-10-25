@@ -239,6 +239,40 @@ export type CancellationAvailability =
   | { state: "closed"; reason: CancellationClosedReason };
 
 /**
+ * Whether an event's start and end may still be changed, and if not, why.
+ *
+ * About the event alone, like `CancellationAvailability`: *whether* the actor
+ * may edit at all is `canManageEvent()`. A published event that has started
+ * and a cancelled one keep the schedule they have; a draft and a published
+ * event that has not started may still move.
+ *
+ * Produced by `getScheduleAvailability()` in `lib/permissions.ts`, which the
+ * detail page and `checkEventSchedule()` both call.
+ */
+export type ScheduleLockReason = "started" | "cancelled";
+
+export type ScheduleAvailability =
+  | { state: "open" }
+  | { state: "locked"; reason: ScheduleLockReason };
+
+/**
+ * Why one date was refused: the event's dates are locked, or a start that
+ * changed is not later than now.
+ */
+export type ScheduleRefusal = ScheduleLockReason | "start_not_future";
+
+/**
+ * The outcome of `checkEventSchedule()`, keyed by the field that was refused
+ * so a form can put each reason next to its input.
+ */
+export type ScheduleCheck =
+  | { ok: true }
+  | {
+      ok: false;
+      errors: Partial<Record<"startsAt" | "endsAt", ScheduleRefusal>>;
+    };
+
+/**
  * Whether a host may take back one confirmed place right now, and if not, why.
  *
  * About a row somebody else owns, like `RequestDecisionAvailability`, and it

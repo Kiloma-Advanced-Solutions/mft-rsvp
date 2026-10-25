@@ -1342,3 +1342,58 @@ its rule refuses it, so the loser gets a 409 through that refusal ("already
 registered" for the person, "nothing left to decide" for the host), not through
 the stale-write outcome. This refines the 2026-09-06 entry; it does not
 supersede it.
+
+---
+
+## 2026-10-25 — An event's dates lock once it has started or been cancelled, and a new start must be in the future
+
+Context: changes 5 and 8 of the pre-M11 stabilization asked that no event be
+scheduled in the past and that an event which has happened or been called off
+keep its dates. Until then the only date rule was end-after-start, so a host
+could create an event in the past, publish a past-dated draft, and move a
+started or cancelled event anywhere. The 2026-09-28 entry "Cancelling is a
+terminal `published → cancelled` transition, open only before the event starts"
+had recorded, as a consequence, that "a cancelled event may be edited to any
+date".
+
+Decision: one pure rule, `checkEventSchedule()` in
+[lib/permissions.ts](../lib/permissions.ts), takes the stored event (or `null`
+on create), the dates that would be written and the server's `now`. A date that
+changes is judged; one that does not is never refused. A start that changes must
+be strictly later than now. A published event that has started and a cancelled
+one, at any date, refuse any change to either date — `getScheduleAvailability()`
+answers which, and the detail page uses it to disable the form's date inputs.
+The create and edit routes run the rule after parsing and answer a 400 with field
+errors; publishing a draft whose start has passed is a 409. It is **not** in
+`parseEventForm`: a `PATCH` fills omitted fields from the stored event, so a
+"future start" check there would refuse every edit of a started event.
+
+`parseEventBody` keeps the stored value when a `PATCH` sends a date in the same
+minute as the stored one, for both dates and on every event, before the
+existing end-after-start check runs. The form omits locked dates entirely, so
+the stored ones stand. `RequestError` now carries the response's `details`, and
+the form shows the server's field errors next to their fields.
+
+Rationale: whether a date may change is a lifecycle question, so it sits with
+the other availability rules rather than in the input parser, which stays about
+well-formedness. Taking `now` as a parameter gives one clock reading per request
+and keeps the rule testable; "started" is still the comparison `isPast` makes.
+The same-minute rule exists because the form can only express whole minutes
+while `datetime2(3)` keeps seconds, so an untouched date comes back slightly
+different. Calling that "unchanged" is only safe if the stored value is also
+what is written — otherwise a request could move a locked date by seconds while
+the rule saw no change — and swapping it in before parsing means end-after-start
+is checked against what is actually stored. A cancelled event keeps its dates
+because its record is what people were told; moving them changes nothing for
+anyone and only makes the record wrong.
+
+Consequences: this supersedes the "a cancelled event may be edited to any date"
+consequence of the 2026-09-28 entry; the rest of that entry stands. An event
+that has started can no longer be made cancellable or shareable again by moving
+its start. No API caller can change a stored date by less than a minute, on any
+event. A draft whose start passes stays editable and is published only after its
+start is moved. An event that starts between the page loading and the save is
+decided by the server's clock, last write wins. The form's `datetime-local`
+values are still produced in the server's time zone and read in the browser's;
+omitting locked dates keeps that pre-existing mismatch from refusing ordinary
+edits of a started event, but the mismatch itself is not fixed.

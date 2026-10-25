@@ -22,6 +22,7 @@ import type {
   RegistrationStatus,
   RequestDecisionAvailability,
   RequestDecisionClosedReason,
+  ScheduleRefusal,
   SharingClosedReason,
   UserRole,
 } from "./types";
@@ -565,6 +566,9 @@ export const MANAGE_ACTION_COPY = {
   notADraft: "אפשר לפרסם רק טיוטה.",
   /** The event moved or disappeared underneath the request. */
   stale: "האירוע הזה השתנה. רעננו את הדף ונסו שוב.",
+  /** A draft whose start has already passed cannot go live as it is. */
+  pastDraft:
+    "אי אפשר לפרסם טיוטה שמועד ההתחלה שלה כבר עבר. עדכנו את המועד ונסו שוב.",
 
   /* Toast titles. The server's own message goes underneath as the description. */
   created: "הטיוטה נוצרה",
@@ -588,6 +592,31 @@ const CANCELLATION_CLOSED_NOTES: Record<CancellationClosedReason, string> = {
   cancelled: "האירוע הזה כבר בוטל.",
   started: "האירוע כבר התחיל, ולכן אי אפשר לבטל אותו.",
 };
+
+/**
+ * Why a date was refused, for the field it belongs to. The rule that produced
+ * the reason is `checkEventSchedule()`; a lock reason doubles as the hint under
+ * a date input the form has disabled.
+ */
+const SCHEDULE_REFUSAL_NOTES: Record<ScheduleRefusal, string> = {
+  start_not_future: "מועד ההתחלה חייב להיות בעתיד.",
+  started: "האירוע כבר התחיל, ולכן אי אפשר לשנות את המועדים שלו.",
+  cancelled: "האירוע בוטל, ולכן אי אפשר לשנות את המועדים שלו.",
+};
+
+export function scheduleRefusalNote(reason: ScheduleRefusal): string {
+  return SCHEDULE_REFUSAL_NOTES[reason];
+}
+
+/** Every refused date as its message, keyed the way the form's errors are. */
+export function scheduleFieldErrors(
+  errors: Partial<Record<"startsAt" | "endsAt", ScheduleRefusal>>,
+): Partial<Record<"startsAt" | "endsAt", string>> {
+  return {
+    ...(errors.startsAt && { startsAt: scheduleRefusalNote(errors.startsAt) }),
+    ...(errors.endsAt && { endsAt: scheduleRefusalNote(errors.endsAt) }),
+  };
+}
 
 export function cancellationClosedNote(
   reason: CancellationClosedReason,
