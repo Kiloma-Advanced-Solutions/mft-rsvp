@@ -115,7 +115,10 @@ export type EventRecord = {
  *
  * - `going`      -- confirmed, counts against capacity.
  * - `pending`    -- awaiting a host decision (only on `approval` events).
- * - `rejected`   -- a host declined the request.
+ * - `rejected`   -- a host declined the request. Blocks asking again while the
+ *                   event's access is `approval` or `invite`, though a host may
+ *                   still approve it; an `open` event lets them register again
+ *                   on their own.
  * - `cancelled`  -- the person withdrew.
  * - `waitlisted` -- the event was full when they registered. Stretch goal;
  *                   nothing in the skeleton produces this status yet.

@@ -545,6 +545,13 @@ it**, and registering again revives that same row; a revived row starts a new
 cycle, so the previous cycle's decision fields and message are cleared. Nothing
 here writes `waitlisted`.
 
+A `rejected` or `removed` row is revived the same way, but only while the
+event's access is `open`; on `approval` and `invite` it stays closed and only a
+host can bring the person back. While that exception applies, the panel keeps
+the person's old status badge and explains beside the register button that the
+event is now open (`registrationCtaCopy` in [lib/labels.ts](../lib/labels.ts)).
+A changed access mode registers nobody by itself.
+
 ```
 RegistrationActions (client) → fetchJson → route handler
       ↓                                        ↓
@@ -684,7 +691,8 @@ them, rather than assembled and then withheld.
 
 **What is actionable.** The queue holds the two statuses a host can still act
 on: `pending` requests, and `rejected` ones — [TASKS.md](../TASKS.md) §4 keeps a
-turned-down person approvable while forbidding them to ask again. `going`,
+turned-down person approvable while forbidding them to ask again, unless the
+event is now `open`, where they may register on their own. `going`,
 `cancelled`, `waitlisted` and `removed` rows are not a host's to decide.
 Approving is therefore the only *decision* that takes a row out of the queue:
 an approved person becomes a confirmed attendee and appears under "Who is
@@ -692,7 +700,8 @@ going" instead. Taking a confirmed place back is not a decision on a request
 but a capability of its own — see "Managing attendees" below. A row can also
 leave with no host acting at all: a pending requester may withdraw, which sets
 their registration to `cancelled` — neither of the two statuses this queue
-holds.
+holds — and a rejected person on an `open` event may register, which sets it
+to `going`.
 
 **What closes it.** A draft, a cancelled event or one that has already started
 refuses both decisions, the same closure `getRegistrationAvailability()` applies
@@ -717,6 +726,11 @@ are not symmetric when they race:
 - **reject first, approve second** — approval re-reads the row under the lock,
   finds it `rejected`, and the shared rule allows approving a rejected request,
   so it may legitimately move it `rejected → going` if the locked checks pass.
+- **approve against the person registering again on an `open` event** — both
+  are seat claims, so they serialise on the event-row lock and each re-reads the
+  row under it. The second finds the row already `going` and its rule refuses:
+  the request is no longer decidable, or the person is already in. The loser
+  gets a 409 through that refusal, not through the stale-write path.
 
 What holds either way: **no decision is written against a status the operation
 did not read and expect.**

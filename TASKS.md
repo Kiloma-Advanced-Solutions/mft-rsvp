@@ -153,7 +153,9 @@ host cannot approve past capacity.
 
 Anyone who is `going` or `pending` may withdraw, which sets them to `cancelled`.
 They may register again afterwards. Someone who was `rejected` may not
-re-request — the host can still approve them from the queue.
+re-request — the host can still approve them from the queue. The exception is
+an event whose access is currently `open`: there they may register again like
+anyone else, subject to the same closures and capacity.
 
 ---
 
