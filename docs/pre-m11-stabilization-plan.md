@@ -43,7 +43,7 @@ documentation). Every branch must re-verify its own baseline.
 | 6 | Past-event attendance labels | Events whose start has passed show neutral attendance counts on the board and the detail page — no "be the first to register", no places-left wording. "Past" keeps its existing meaning: start time has passed. | C2 |
 | 7 | Hosts participate automatically | Every host (organizer and co-hosts) is a participant by virtue of the role, with **no** Registration row. Hosts count toward capacity, cannot opt out while hosts, and cannot register, request, withdraw, or approve/reject their own registration. Admins who are not hosts register normally. All attendance displays and capacity rules reflect host participation. See §11 for H1–H3. Reverses `TASKS.md` §4 "A host is not automatically an attendee." | C6 |
 | 8 | No rescheduling past events | Once an event has started, its start and end are locked. A cancelled event's start and end are always locked. Other edits stay available where existing rules allow. Drafts with past dates may be corrected to future dates. Publishing a past-dated draft is refused. Server time decides. | C4 |
-| 9 | Rejected users on open events | A previously rejected user may register again only while the event's access is `open` — not `invite`. Registration is explicit; nothing is auto-approved on an access change. The existing seat-claim protocol is reused. The normal register action and note are shown; no special message. | C3 |
+| 9 | Rejected users on open events | A previously rejected user may register again only while the event's access is `open` — not `invite`. Registration is explicit; nothing is auto-approved on an access change. The existing seat-claim protocol is reused. The normal register action is shown, with an explanatory note beside it (approved during C3, mirroring the removed-on-open note): "הבקשה שלכם לא אושרה בעבר, אבל עכשיו האירוע פתוח ואפשר להירשם. ההרשמה תאושר מיד." | C3 |
 | 10 | Long names | Long names truncate with an ellipsis on `/events` cards and on `/events/[id]`, with no horizontal page overflow. The full name stays accessible. No redesign. | C2 |
 | 11 | Gender-neutral removal confirmation | Replace the first sentence of `removeAttendeeDialogMessage` with: "ההרשמה של {name} תוסר מרשימת המשתתפים, והמקום באירוע יתפנה. אפשר יהיה להחזיר את ההרשמה מאוחר יותר, כל עוד יש מקום באירוע." Behaviour unchanged; the invite-only suffix stays. No wider localization audit. | C2 |
 
@@ -86,9 +86,12 @@ fetch, and merged back through its own PR before the next is cut.
 - `lib/permissions.ts` `getRegistrationAvailability`: the `rejected` refusal
   becomes `status === "rejected" && event.access !== "open"`, mirroring the
   existing `removed` exception. Update the comment.
-- Nothing else in code: `registrationCtaCopy` already falls through to the
-  normal register copy, and `claimSeat` already revives the row (see §6).
-- **Out of scope:** `invite` access, auto-approval, new copy.
+- `lib/labels.ts` `registrationCtaCopy`: a rejected viewer who may register
+  gets the explanatory note in §2 instead of the normal one, beside the same
+  register action and badge — the removed-on-open convention. Approved during
+  C3; it replaces the original "no new copy" boundary.
+- Nothing else in code: `claimSeat` already revives the row (see §6).
+- **Out of scope:** `invite` access, auto-approval, any copy beyond that note.
 
 ### C4 — `yardenah/event-date-rules` (changes 5, 8)
 
@@ -250,7 +253,9 @@ that implements it.
 - **Rejected on an open event reuses `claimSeat`**, which already revives the
   existing row as a new cycle (clearing message and decision fields), guarded by
   a compare-and-set on `rejected`. One row per person and event is preserved; a
-  concurrent host approval serialises on the same lock and loses as stale.
+  concurrent host approval serialises on the same lock, and whichever runs
+  second re-reads the row as `going` and is refused with a 409 by the rule —
+  not through the stale-write outcome.
 - **"Past" means started:** `isPast(startsAt)`, as everywhere else. An event in
   progress is past.
 - **Capacity may be below attendance**, now including below the host count (H2).
@@ -402,7 +407,7 @@ test suite; temporary harnesses may be used but are not committed.
 | --- | --- |
 | C1 | `/` → `/events`; brand → `/events`; `/styleguide` 404s; nav has one entry; no unused-import lint errors; every page still renders. |
 | C2 | Upcoming, in-progress, past and cancelled events on the board and detail page show the right wording. A long Latin name and a long Hebrew name: ellipsis on the card, no page scroll on the detail page (hosts, attendees, removed group, queue, invitations). Both themes, narrow viewport. Removal dialog wording. |
-| C3 | As Priya, rejected on an `approval` event → closed. Switch to `open` → normal register → `going`. Back to `approval` after another rejection → closed. `invite` → still closed. Full `open` event → refused. Register and host-approve near-simultaneously → one wins, the other is stale. |
+| C3 | As Priya, rejected on an `approval` event → closed. Switch to `open` → normal register → `going`. Back to `approval` after another rejection → closed. `invite` → still closed. Full `open` event → refused. Register and host-approve near-simultaneously → one wins, the other gets a 409. |
 | C4 | `curl`: create with a past start and with start = now → 400; future → 201. Edit a past draft to the future → ok; edit only its title → ok. Publish a past-dated draft → 409. Started event: edit description through the form → ok; change dates via `curl` → 400. Cancelled event: change dates → 400. |
 | C5 | Migrate (approved). Delete an event with registrations and invitations → board, detail, every route 404/absent for every persona, admin included; rows still in the database. Second delete → 404. `db:seed -- --status` sane. **Parent check:** after a soft delete, the data-layer update of one of its registrations returns `null`, and withdraw, reject and remove each answer 404. **Race:** with a soft delete held open in a separate session, withdraw, reject and remove each either complete before the delete or answer 404 after it — never 200 after the delete is visible; record the isolation mode `db:check` reports. **Event handlers:** with a delete landing between the handler's read and its update, content edit, publish and cancel each answer 404 and write nothing. **404 vs 409:** a stale transition on a live event — a registration change, or a publish or cancel that lost to another one — still answers 409; a deleted event answers 404. **Regression:** on a live event, concurrent transitions (e.g. withdraw vs host approval, two rejects, remove vs withdraw) still produce exactly one winner and a 409 for the loser, with no deadlock. |
 | C6 | Hosts see a host state and no register/withdraw action. Counts, meter, avatars and "Who is going" include hosts, first, no duplicates. A host's existing row is ignored everywhere. Capacity with hosts counted refuses the last-seat claim, including two near-simultaneous `curl` claims. Queue shows no host rows; host self-decision → 409. New event shows one participant. Co-host Daniel on `tsWorkshop`; Sara as admin-host and as non-host admin. |

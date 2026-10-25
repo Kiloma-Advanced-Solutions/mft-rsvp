@@ -135,9 +135,13 @@ export function getRegistrationAvailability(
     return { state: "registered", action: "withdraw", status };
   }
 
-  // A rejected request cannot be sent again; only a host can revive it. A
-  // withdrawn (`cancelled`) one can, so it falls through.
-  if (status === "rejected") return { state: "closed", reason: "rejected" };
+  // A rejected request cannot be sent again while a host decides who gets in --
+  // only a host can revive it, from the queue. An `open` event has no host
+  // decision to respect, so there the row falls through and is reclaimed like a
+  // withdrawn (`cancelled`) one, as a new cycle.
+  if (status === "rejected" && event.access !== "open") {
+    return { state: "closed", reason: "rejected" };
+  }
 
   // Someone a host removed may not put themselves back while a host decides
   // who gets in -- only a host can restore them. The current access mode wins,
@@ -187,7 +191,10 @@ export function getRegistrationAvailability(
  * Two rules from `TASKS.md` section 4 meet here. A host "cannot approve past
  * capacity", which closes approving on a full event while leaving rejection
  * alone; and someone rejected "may not re-request — the host can still approve
- * them from the queue", which keeps a `rejected` row approvable.
+ * them from the queue", which keeps a `rejected` row approvable. On an `open`
+ * event the person may also register again on their own; the row stays
+ * approvable here either way, and whichever lands first under the event lock
+ * wins.
  */
 export function getRequestDecisionAvailability(
   event: EventRecord,

@@ -1300,3 +1300,45 @@ because it is app-frame code with no other consumer, not part of the
 Consequences: the top bar has no navigation landmark and no active-route
 highlight. If a second top-level destination is added, the nav comes back with
 it — whether as a restored `NavLink` or in whatever form the M11 redesign sets.
+
+---
+
+## 2026-10-25 — A rejected person may register again on an `open` event, and is told why
+
+Context: the 2026-09-06 entry "A rejected request stays approvable, and
+approval is the only decision that clears the queue" applied
+[TASKS.md](../TASKS.md) §4 — a rejected person "may not re-request" — on every
+access mode. On an `open` event that left someone locked out of an event that
+admits anyone, while a removed person in the same position could already come
+back (the 2026-09-30 entry "Removing is its own `removed` status, and the
+current access mode decides the way back"). Change 9 of the pre-M11
+stabilization asked for the same exception for `rejected`.
+
+Decision: `getRegistrationAvailability()` closes a `rejected` row only while
+the event's access is not `open`. On an `open` event the row falls through to
+the ordinary checks — capacity included — and registering revives it through
+`claimSeat` as a new cycle: `rejected → going` on the same row, with the
+previous message and decision fields cleared. On `approval` and `invite` it
+stays closed, and a host may still approve it from the queue on any access
+mode. Changing the access mode registers nobody. The registration panel keeps
+the "לא אושר" badge and the normal register action, and replaces the normal
+note with one that explains the event is now open, as `REMOVED_REOPENED_NOTE`
+does for a removed person; the board card shows the badge alone.
+
+Rationale: the refusal exists so a person cannot override a host's decision
+about who gets in, and an `open` event has no such decision — the same
+reasoning as the removed exception, so the two now read alike. Reusing
+`claimSeat` keeps one row per person and event and keeps the seat protocol the
+only path to `going`. The badge is kept because it is the person's true status
+until they register; the note is what stops it contradicting the button. The
+history was not preserved separately: a revived row is a new cycle everywhere
+else, and nothing in the product reads the old decision once it is overtaken.
+
+Consequences: if the person registers and the event later returns to
+`approval`, nothing remembers the rejection — after withdrawing they may request
+again. A host approving the row while the person registers is two seat claims
+on the same event lock: whichever runs second re-reads the row as `going` and
+its rule refuses it, so the loser gets a 409 through that refusal ("already
+registered" for the person, "nothing left to decide" for the host), not through
+the stale-write outcome. This refines the 2026-09-06 entry; it does not
+supersede it.

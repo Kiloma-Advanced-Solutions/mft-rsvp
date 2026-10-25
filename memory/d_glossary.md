@@ -85,7 +85,8 @@ for the five seeded personas and what each is useful for.
 - `going` — confirmed. The only status that counts against capacity.
 - `pending` — awaiting a host's decision. Only occurs on `approval` events.
 - `rejected` — a host declined the request. Not final from the host's side: the
-  person may not ask again, but a host may still approve them later.
+  person may not ask again, but a host may still approve them later. Once the
+  event is `open`, ordinary registration is also their way back.
 - **approval queue** — the host-only list on an event's detail page of the
   requests still awaiting a decision, together with the ones already turned
   down. Approving is the only host decision that removes a row: the person

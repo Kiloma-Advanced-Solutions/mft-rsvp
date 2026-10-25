@@ -258,10 +258,28 @@ const REMOVED_REOPENED_NOTE =
   "הוסרתם מהאירוע בעבר, אבל עכשיו הוא פתוח ואפשר להירשם שוב. ההרשמה תאושר מיד.";
 
 /**
+ * The same, for someone whose request was turned down: their badge still says
+ * so, and the register button beside it needs the reason it is there.
+ */
+const REJECTED_REOPENED_NOTE =
+  "הבקשה שלכם לא אושרה בעבר, אבל עכשיו האירוע פתוח ואפשר להירשם. ההרשמה תאושר מיד.";
+
+/**
+ * Notes for a registration that would otherwise close, but may be reclaimed
+ * because the event is now open. `getRegistrationAvailability()` lets these two
+ * statuses register only on an `open` event, so `register` with one of them
+ * means exactly that.
+ */
+const REOPENED_NOTES: Partial<Record<RegistrationStatus, string>> = {
+  removed: REMOVED_REOPENED_NOTE,
+  rejected: REJECTED_REOPENED_NOTE,
+};
+
+/**
  * `viewerStatus` only changes the wording for a cancelled event -- see
- * `CANCELLED_EVENT_NOTES` -- and for a removed person who may register again
- * because the event is now open. Everything else is decided by `availability`
- * alone.
+ * `CANCELLED_EVENT_NOTES` -- and for a removed or rejected person who may
+ * register again because the event is now open -- see `REOPENED_NOTES`.
+ * Everything else is decided by `availability` alone.
  */
 export function registrationCtaCopy(
   availability: RegistrationAvailability,
@@ -277,9 +295,8 @@ export function registrationCtaCopy(
         : {
             action: "הרשמה",
             note:
-              viewerStatus === "removed"
-                ? REMOVED_REOPENED_NOTE
-                : "ההרשמה תאושר מיד.",
+              (viewerStatus ? REOPENED_NOTES[viewerStatus] : undefined) ??
+              "ההרשמה תאושר מיד.",
           };
 
     /*

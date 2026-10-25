@@ -13,9 +13,10 @@ branch boundaries, order and decisions H1–H3 are in
 [docs/pre-m11-stabilization-plan.md](../docs/pre-m11-stabilization-plan.md),
 a temporary plan that the last of the six branches retires. Nothing it
 describes as new behaviour is built until its branch is merged. Branches
-merged so far: C1 (removing the workshop pages, PR #41). C2 (UI text fixes)
-is implemented on its branch, `yardenah/ui-text-fixes`, and awaiting review;
-C3–C6 have not started.
+merged so far: C1 (removing the workshop pages, PR #41) and C2 (UI text
+fixes, PR #42). C3 (rejected users on open events) is implemented on its
+branch, `yardenah/rejected-reopen`, and awaiting review; C4–C6 have not
+started.
 
 M1–M10 are complete and merged into
 `yardenah/events-board`: the original assignment's three `must` and two
@@ -68,7 +69,10 @@ were.
 The approval queue is a host-only section of `/events/[id]` listing the requests
 still waiting and the ones already turned down, with whatever message the
 requester sent. A host approves or rejects each one, and the counts, the
-capacity meter and "Who is going" re-derive on the spot. How it fits together is
+capacity meter and "Who is going" re-derive on the spot. A person who was turned
+down cannot ask again while the event is `approval` or `invite`, but if it is
+switched to `open` they may register on their own, and their panel says why the
+register button is there. How it fits together is
 in [a_system.md](a_system.md); why it behaves as it does is in
 [dec_log.md](dec_log.md).
 
@@ -352,6 +356,6 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-10-22 — pre-M11 stabilization in progress: C1 merged
-(PR #41), C2 implemented on its branch and awaiting review; M11 (system
-redesign) and M12 (application logging) follow it.
+Last updated: 2026-10-25 — pre-M11 stabilization in progress: C1 (PR #41) and
+C2 (PR #42) merged, C3 implemented on its branch and awaiting review; M11
+(system redesign) and M12 (application logging) follow it.
