@@ -659,10 +659,12 @@ sends a date in the same minute, since the form cannot express seconds, so
 "unchanged" there is exact and nothing can move a locked date by seconds. The
 detail page asks `getScheduleAvailability()` and passes the answer to the form,
 which disables the two date inputs with the reason as their hint and leaves them
-out of the request. The form also refuses a changed start that is not in the
-future against the browser's clock, sets the start picker's minimum when it is
-focused, and shows the server's field errors — carried on `RequestError` —
-beside their fields.
+out of the request; it validates them as the exact stored timestamps, not the
+minute-rounded values the inputs display, so a start and end seconds apart in
+the same minute do not read as an end before the start. The form also refuses a
+changed start that is not in the future against the browser's clock, sets the
+start picker's minimum when it is focused, and shows the server's field errors
+— carried on `RequestError` — beside their fields.
 
 **Accent** is assigned by the server when the event is created and is not
 host-editable. It is a tint on the board card and date block, invisible on the

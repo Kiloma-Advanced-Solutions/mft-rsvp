@@ -76,8 +76,17 @@ export function EventForm({
    * Set when editing an event whose dates may no longer change, decided on the
    * server by `getScheduleAvailability()`. The two date inputs are disabled,
    * say why, and are left out of the request so the stored dates stand.
+   *
+   * Carries the stored timestamps exactly, because those -- not the
+   * minute-rounded `initialValues` -- are what the locked dates are validated
+   * as: a start and end seconds apart in the same minute display identically,
+   * and would otherwise read as an end that is not after the start.
    */
-  scheduleLock?: ScheduleLockReason;
+  scheduleLock?: {
+    reason: ScheduleLockReason;
+    startsAt: string;
+    endsAt: string;
+  };
 }) {
   const [locationKind, setLocationKind] = useState(initialValues.locationKind);
   const [access, setAccess] = useState(initialValues.access);
@@ -103,7 +112,9 @@ export function EventForm({
   const showsLink = locationKind === "online" || locationKind === "hybrid";
 
   const datesLocked = scheduleLock !== undefined;
-  const dateHint = datesLocked ? scheduleRefusalNote(scheduleLock) : undefined;
+  const dateHint = scheduleLock
+    ? scheduleRefusalNote(scheduleLock.reason)
+    : undefined;
 
   async function submit(formEvent: FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
@@ -111,11 +122,11 @@ export function EventForm({
     const values = readForm(new FormData(formEvent.currentTarget));
 
     // A disabled input is not submitted, so locked dates would read as blank.
-    // Validate against the values the page was given instead -- they are not
+    // Validate against the exact stored timestamps instead -- they are not
     // sent, so the stored dates are what the server keeps.
-    if (datesLocked) {
-      values.startsAt = initialValues.startsAt;
-      values.endsAt = initialValues.endsAt;
+    if (scheduleLock) {
+      values.startsAt = scheduleLock.startsAt;
+      values.endsAt = scheduleLock.endsAt;
     }
 
     const parsed = parseEventForm(values);

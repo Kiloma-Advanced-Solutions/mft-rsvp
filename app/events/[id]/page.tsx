@@ -156,7 +156,7 @@ export default async function EventDetailPage({
             // `datetime-local` value and cannot disagree about the timezone.
             initialValues={toFormValues(event)}
             goingCount={goingCount}
-            scheduleLock={scheduleLockReason(event)}
+            scheduleLock={scheduleLock(event)}
           />
         </Card>
       ) : (
@@ -259,15 +259,23 @@ function isEditing(value: string | string[] | undefined): boolean {
 }
 
 /**
- * Why the form's dates are locked, or `undefined` when they may change.
- * Decided here, on the server, by the same rule the `PATCH` route runs; the
- * form only disables what this says is locked.
+ * Why the form's dates are locked, with the stored dates it validates them as,
+ * or `undefined` when they may change. Decided here, on the server, by the
+ * same rule the `PATCH` route runs; the form only disables what this says is
+ * locked.
  */
-function scheduleLockReason(
+function scheduleLock(
   event: EventRecord,
-): ScheduleLockReason | undefined {
+):
+  | { reason: ScheduleLockReason; startsAt: string; endsAt: string }
+  | undefined {
   const availability = getScheduleAvailability(event, Date.now());
-  return availability.state === "locked" ? availability.reason : undefined;
+  if (availability.state !== "locked") return undefined;
+  return {
+    reason: availability.reason,
+    startsAt: event.startsAt,
+    endsAt: event.endsAt,
+  };
 }
 
 /** Plain text, with blank lines separating paragraphs — see `EventRecord`. */
