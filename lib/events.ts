@@ -96,6 +96,27 @@ export async function getEventForViewer(
 }
 
 /**
+ * Whether the event still exists -- not deleted, not missing.
+ *
+ * For an event write route -- edit, publish, cancel -- whose conditional
+ * update came back `null` and which must say why: the event was deleted
+ * between the route's read and its write, which is a 404, or its status moved
+ * first, which stays a 409. Those updates write the event row itself, so the
+ * delete and the update are ordered by that row's own lock and this re-read
+ * sees the answer. (Registration transitions need no re-read: they lock the
+ * event first and are told `gone` or `stale` outright.)
+ *
+ * It answers through the ordinary filtered read, so a deleted event is simply
+ * absent -- the same answer any other read gets. It is deliberately not a
+ * visibility check and must not replace one: it is only ever asked after the
+ * route has already authorised the caller against an event they could see, so
+ * a 409 it leads to tells them nothing they did not already know.
+ */
+export async function eventExists(eventId: string): Promise<boolean> {
+  return (await db.events.get(eventId)) !== null;
+}
+
+/**
  * One event the `viewer` is allowed to see, with the extra detail the event
  * screen needs, or `null`.
  *

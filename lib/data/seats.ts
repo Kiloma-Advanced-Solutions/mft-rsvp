@@ -52,8 +52,11 @@
  *
  * What is deliberately NOT here, because none of it can raise the count:
  * withdrawing, rejecting, a host removing a confirmed attendee, and requesting
- * a place on an approval event. Those are ordinary single-statement writes,
- * made safe by the expected-status predicate in `registrations.ts` alone.
+ * a place on an approval event. Withdrawing, rejecting and removing are made
+ * safe against each other by the expected-status predicate, and against a soft
+ * delete by taking this same event-row lock first -- but with no count and no
+ * rule to re-run, so they live in `registrations.ts` as
+ * `transitionRegistration`, not here.
  *
  * Written to the SQL Server 2008 R2 feature floor and statically enforced;
  * runtime execution has been verified against Azure SQL DEV only.

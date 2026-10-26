@@ -1,14 +1,15 @@
 /**
  * Registration reads and writes. SERVER ONLY -- it reaches `client.ts`.
  *
- * The subtle part of this file is `updateRegistration`, and it is worth
+ * The subtle part of this file is `updateRegistrationOn`, and it is worth
  * reading the comment on `assignPatch` before changing anything in it.
  */
 
 import sql from "mssql";
 import type { Request, Transaction } from "mssql";
 
-import { getPool, type Runner } from "./client";
+import { getPool, inTransaction, type Runner } from "./client";
+import { lockEvent } from "./events";
 import { isUuid, toRegistration, type RegistrationRow } from "./rows";
 import type { Registration, RegistrationStatus } from "../types";
 import type { RegistrationPatch } from "../db";
@@ -148,8 +149,8 @@ export async function findRegistration(
 /**
  * One row by its own id, on the pool.
  *
- * Paired with `readRegistrationById` below exactly as `updateRegistration` is
- * with `updateRegistrationOn`, and for the same reason: the seat-claim path
+ * Paired with `readRegistrationById` below, which takes a runner, for this
+ * reason: the seat-claim path
  * needs this read on its own transaction, under the event-row lock, while a
  * route deciding whether a row exists at all needs it outside one. It sits up
  * here with the ordinary reads because that is what it is -- the section below
@@ -334,7 +335,89 @@ function assignPatch(request: Request, patch: RegistrationPatch): string[] {
 }
 
 /**
- * Update and read back in one batch.
+ * What happened to a registration transition: withdraw, reject or remove.
+ *
+ * Shaped like the outcomes in `lib/data/seats.ts`, and decided under the same
+ * event-row lock, so each answer is the true one rather than a guess: `gone`
+ * means there is no live event -- missing or soft-deleted -- and nothing was
+ * written; `stale` means the event is there but the row was no longer in the
+ * status the caller decided against.
+ */
+export type RegistrationTransition =
+  | { outcome: "updated"; registration: Registration }
+  | { outcome: "stale" }
+  | { outcome: "gone" };
+
+/**
+ * Withdraw, reject or remove one registration: **the event row first, then the
+ * row.**
+ *
+ * None of these can raise the `going` count, so none needs the seat protocol's
+ * count or rule. What they do need is to be ordered against a soft delete. An
+ * event's registrations outlive it, so a transition that read a live event
+ * could otherwise write its row after the delete committed and report success
+ * on an event that no longer exists. A same-statement check on the parent is
+ * not enough on its own: under `READ_COMMITTED_SNAPSHOT` with optimized
+ * locking (Azure SQL), an `UPDATE` that has to wait on its target row does not
+ * re-evaluate the parent after the wait, and C5 reproduced exactly that write
+ * landing after a committed delete.
+ *
+ * So this takes the event-row lock (`lockEvent`, the filtered `UPDLOCK` that
+ * the seat claim and the soft delete take too) before it touches the row:
+ *
+ *   - the delete committed first: the lock finds no live event, nothing is
+ *     written, and the answer is `gone`;
+ *   - this locked first: the delete waits until this commits, and this write
+ *     is ordered before it.
+ *
+ * Event row first, then the registration row -- the order every transaction
+ * in this application follows, so no cycle is possible. The compare-and-set on
+ * `expectedStatus` is unchanged: two writers deciding the same row still
+ * produce one `updated` and one `stale`.
+ *
+ * The caller must already have checked that the registration belongs to
+ * `eventId`; every route does, and a row's `EventId` never changes.
+ */
+export async function transitionRegistration({
+  eventId,
+  id,
+  patch,
+  updatedAt,
+  expectedStatus,
+}: {
+  eventId: string;
+  id: string;
+  patch: RegistrationPatch;
+  updatedAt: string;
+  expectedStatus: RegistrationStatus;
+}): Promise<RegistrationTransition> {
+  const pool = await getPool();
+
+  return inTransaction(
+    pool,
+    async (transaction): Promise<RegistrationTransition> => {
+      if (!(await lockEvent(transaction, eventId))) return { outcome: "gone" };
+
+      const registration = await updateRegistrationOn(
+        transaction,
+        id,
+        patch,
+        updatedAt,
+        expectedStatus,
+      );
+
+      return registration === null
+        ? { outcome: "stale" }
+        : { outcome: "updated", registration };
+    },
+  );
+}
+
+/**
+ * Update and read back in one batch, on a given runner -- in practice always a
+ * transaction that already holds the event-row lock: `transitionRegistration`
+ * above, or the seat protocol in `lib/data/seats.ts`. On the pool the write
+ * would commit on its own, outside both the lock and any rollback.
  *
  * `UPDATE ...; IF @@ROWCOUNT > 0 SELECT ...` is the idiom
  * `scripts/tsql-fixtures/allowed.sql` demonstrates: one round trip, and an
@@ -358,29 +441,16 @@ function assignPatch(request: Request, patch: RegistrationPatch): string[] {
  *
  * Omitting `expectedStatus` keeps the unconditional behaviour, which is what
  * callers that are not making a state transition still want.
- */
-export async function updateRegistration(
-  id: string,
-  patch: RegistrationPatch,
-  updatedAt: string,
-  expectedStatus?: RegistrationStatus,
-): Promise<Registration | null> {
-  return updateRegistrationOn(
-    await getPool(),
-    id,
-    patch,
-    updatedAt,
-    expectedStatus,
-  );
-}
-
-/**
- * The same update, on a given runner.
  *
- * `lib/data/seats.ts` needs this to write through its own transaction: the
- * pool-based version above would run on a different connection, so the write
- * would commit on its own and survive a rollback the rest of the seat claim
- * needed it to follow.
+ * **The statement also requires a live parent event** -- an `EXISTS` on
+ * `dbo.Events_Events` with `DeletedAt IS NULL`, so a registration write checks
+ * its parent in the same statement. Every caller holds the event-row lock, so
+ * today the condition is always true when it runs; it stays as a second line
+ * of defence, so a future caller that forgets the lock still cannot write a
+ * deleted event's row once the delete committed before its statement began.
+ * It is **not** a substitute for the lock: under row versioning it reads the
+ * parent as of the statement's start, and an `UPDATE` that waits on its target
+ * row does not re-check it afterwards.
  */
 export async function updateRegistrationOn(
   runner: Runner,
@@ -401,10 +471,18 @@ export async function updateRegistrationOn(
 
   // A separate parameter name from the patch's own `status`, which is the value
   // being written rather than the one being required.
-  let predicate = `WHERE Id = @id`;
+  //
+  // Both carry the active-parent condition: the row is written only while its
+  // event exists and is not deleted, checked in this same statement. A second
+  // line of defence behind the caller's event-row lock -- see above.
+  let predicate = `WHERE Id = @id
+  AND EXISTS (SELECT 1 FROM dbo.Events_Events AS e
+              WHERE e.Id = dbo.Events_Registrations.EventId AND e.DeletedAt IS NULL)`;
   if (expectedStatus !== undefined) {
     request.input("expectedStatus", sql.NVarChar(16), expectedStatus);
-    predicate = `WHERE Id = @id AND Status = @expectedStatus`;
+    predicate = `WHERE Id = @id AND Status = @expectedStatus
+  AND EXISTS (SELECT 1 FROM dbo.Events_Events AS e
+              WHERE e.Id = dbo.Events_Registrations.EventId AND e.DeletedAt IS NULL)`;
   }
 
   // The only interpolation in this file, and it carries no caller data: every

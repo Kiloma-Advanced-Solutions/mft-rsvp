@@ -1206,9 +1206,10 @@ export const DELETE_DIALOG = {
 /**
  * The same warning, naming what is actually destroyed alongside the event.
  *
- * `db.events.remove()` deletes **every** registration for the event, not only
- * the confirmed ones, so a pending request disappears as surely as a place
- * does. Counting only the confirmed ones understated an irreversible action --
+ * Deleting takes **every** registration out of reach with the event, not only
+ * the confirmed ones -- the rows are kept in the database, but nobody can see
+ * or act on them again -- so a pending request is lost as surely as a place
+ * is. Counting only the confirmed ones understated an irreversible action --
  * a host looking at "Awaiting approval 2" in the same card was told nothing
  * about those two.
  */

@@ -21,7 +21,7 @@
 
 import { ApiError, jsonOk, withErrorHandling } from "@/lib/api";
 import { db } from "@/lib/db";
-import { getEventDetailForViewer } from "@/lib/events";
+import { eventExists, getEventDetailForViewer } from "@/lib/events";
 import { MANAGE_ACTION_COPY, cancellationClosedNote } from "@/lib/labels";
 import { canManageEvent, getCancellationAvailability } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
@@ -58,7 +58,8 @@ export const POST = withErrorHandling(
 
     // Conditional on the row still being published, so two requests that both
     // read it that way cannot both cancel it: the second writes nothing and is
-    // told the event changed, as is one whose event was deleted in between.
+    // told the event changed. One whose event was deleted in between writes
+    // nothing either, and is told it is not there.
     // No seat lock: cancelling gives nobody a place, and a seat claim that
     // locks this row after the write re-reads `cancelled` and refuses.
     const event = await db.events.update(
@@ -66,7 +67,14 @@ export const POST = withErrorHandling(
       { status: "cancelled" },
       "published",
     );
-    if (!event) throw ApiError.conflict(MANAGE_ACTION_COPY.stale);
+    if (!event) {
+      // Nothing written. Either the event was deleted between the read above
+      // and this write -- the same 404 as an event that never existed -- or it
+      // is still there and the row moved first, which stays a conflict.
+      throw (await eventExists(detail.event.id))
+        ? ApiError.conflict(MANAGE_ACTION_COPY.stale)
+        : ApiError.notFound();
+    }
 
     return jsonOk({ event });
   },

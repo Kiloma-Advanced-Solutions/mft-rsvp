@@ -14,10 +14,11 @@ branch boundaries, order and decisions H1–H3 are in
 a temporary plan that the last of the six branches retires. Nothing it
 describes as new behaviour is built until its branch is merged. Branches
 merged so far: C1 (removing the workshop pages, PR #41), C2 (UI text
-fixes, PR #42) and C3 (rejected users on open events, PR #43). C4 (event
-date rules) is implemented and verified on its branch,
-`yardenah/event-date-rules`, but not yet committed, reviewed or merged;
-C5 and C6 have not started.
+fixes, PR #42), C3 (rejected users on open events, PR #43) and C4 (event
+date rules, PR #44). C5 (soft deletion) is implemented and verified on its
+branch, `yardenah/soft-delete-events`, but not yet committed, reviewed or
+merged; its migration `0003` is already applied to the shared DEV database.
+C6 has not started.
 
 M1–M10 are complete and merged into
 `yardenah/events-board`: the original assignment's three `must` and two
@@ -62,11 +63,19 @@ event (M8), **invite** existing people to an invite-only event or
 **revoke** their invitations (M9), and **share** a published event that has
 not started (M10).
 
-On the C4 branch, not yet merged: a new or moved start must be in the future,
-a draft whose start has passed cannot be published until it is moved, and a
-published event that has started or a cancelled one keeps its dates — the form
-shows them disabled and says why. The rules are in [TASKS.md](../TASKS.md) §4
-"Scheduling".
+Since C4, a new or moved start must be in the future, a draft whose start has
+passed cannot be published until it is moved, and a published event that has
+started or a cancelled one keeps its dates — the form shows them disabled and
+says why. The rules are in [TASKS.md](../TASKS.md) §4 "Scheduling".
+
+On the C5 branch, not yet merged: deleting an event is **soft**. The event row
+stays, stamped with `DeletedAt`, and from then on it does not exist for anyone
+— absent from the board, a 404 on its page and on every route, admins
+included. Its registrations, co-hosts and invitations stay in the database,
+unreachable. Nothing restores or purges a deleted event. The delete
+confirmation and its wording are unchanged. How it works is in
+[a_system.md](a_system.md) "Data layer" and "Managing events"; why, in
+[dec_log.md](dec_log.md).
 
 A cancelled event stays on the board, in a section of its own, and its detail
 page stays readable to whoever could see it before; registering, withdrawing
@@ -165,6 +174,19 @@ The shape of all of it is in [a_system.md](a_system.md).
 
 Not missing — decided against, for this milestone or for the exercise. A later
 session should not treat any of these as an oversight to fix.
+
+From C5's scope (on its branch) — why each was decided is in
+[dec_log.md](dec_log.md):
+
+- **No restore and no recycle bin.** A deleted event cannot be brought back
+  through the product.
+- **No retention period and no purge.** Deleted rows and their children stay
+  until a development reset removes everything.
+- **No admin view of deleted events.** Deletion hides an event from admins too.
+- **No new event status.** Deleted is not a lifecycle state; it is the event
+  ceasing to exist for every reader.
+- **No change to the delete confirmation** or its wording, which stays true
+  from the user's side.
 
 From M10's scope — why the sharing and email items were decided is in
 [dec_log.md](dec_log.md). Send history was outside M10's scope rather than a
@@ -276,7 +298,8 @@ for one event serialize on its row. See [a_system.md](a_system.md)
 An event read is stitched from several reads of committed data, not one
 snapshot; accepted for rendering. Only capacity-sensitive writes and invitation
 writes re-decide under the event-row lock — see [a_system.md](a_system.md)
-"Data layer".
+"Data layer". On the C5 branch, withdrawing, rejecting and removing also take
+that lock, to be ordered against a delete, but they do not re-decide under it.
 
 Migrations are single-operator, and applied migrations are immutable by
 convention only — see [u_environment.md](u_environment.md) "Migration operating
@@ -287,6 +310,17 @@ enforced; runtime verification has only been performed against Azure SQL DEV,
 not a real 2008 R2 server. What remains unverified is listed in
 [docs/sql-server-2008r2-compatibility.md](../docs/sql-server-2008r2-compatibility.md)
 "Deployment preflight".
+
+C5's concurrency behaviour — soft delete against edits, lifecycle transitions,
+seat claims and the three registration transitions — was verified only on
+Azure SQL DEV, which runs `READ_COMMITTED_SNAPSHOT` and optimized locking. It
+relies on `UPDLOCK` and lock ordering, both available on 2008 R2, but has not
+been run against a real 2008 R2 server.
+
+Migration `0003` is applied to the shared DEV database, so any build of the
+application that predates C5 — another worktree's dev server, an unmerged
+branch — still reads soft-deleted events as live and still hard-deletes. Only
+code that includes C5 hides them.
 
 Concurrent edits to the same event are last-write-wins: `EventRecord` carries no
 version, so M4 did not attempt optimistic concurrency, and M6 kept that. Named,
@@ -320,8 +354,10 @@ still free the seat: by removing them, or by giving their sight of the event
 back — re-inviting them, or moving the event off `invite` — after which they
 can withdraw. Once the event has
 started or been cancelled, withdrawing, removing and inviting are all closed
-while revoking stays open, so nothing short of deleting the event frees that
-seat. The host's list flags the row; nothing resolves it. This is the accepted
+while revoking stays open, so nothing frees that seat; deleting the event only
+takes it out of reach together with the event — on the C5 branch the row
+itself is kept. The host's list flags the row; nothing resolves it. This is the
+accepted
 cost of keeping invitation and registration independent — see
 [dec_log.md](dec_log.md).
 
@@ -368,6 +404,7 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-10-25 — pre-M11 stabilization in progress: C1 (PR #41),
-C2 (PR #42) and C3 (PR #43) merged, C4 implemented on its branch and not yet
-merged; M11 (system redesign) and M12 (application logging) follow it.
+Last updated: 2026-10-26 — pre-M11 stabilization in progress: C1 (PR #41),
+C2 (PR #42), C3 (PR #43) and C4 (PR #44) merged; C5 implemented and verified
+on its branch, not yet merged, with migration `0003` applied to shared DEV; C6
+not started; M11 (system redesign) and M12 (application logging) follow.

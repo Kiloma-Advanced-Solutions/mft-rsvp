@@ -186,7 +186,7 @@ export function HostEventActions({
         onCancel={() => setConfirmOpen(false)}
         onConfirm={remove}
         title={DELETE_DIALOG.title}
-        // Names the consequence: deleting an event deletes its registrations.
+        // Names the consequence: deleting an event ends its registrations.
         message={deleteDialogMessage(goingCount, pendingCount)}
         confirmLabel={DELETE_DIALOG.confirm}
         cancelLabel={DELETE_DIALOG.cancel}

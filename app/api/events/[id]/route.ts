@@ -20,7 +20,7 @@
 
 import { ApiError, jsonOk, readJson, withErrorHandling } from "@/lib/api";
 import { db } from "@/lib/db";
-import { getEventDetailForViewer } from "@/lib/events";
+import { eventExists, getEventDetailForViewer } from "@/lib/events";
 import { parseEventBody } from "@/lib/eventInput";
 import {
   EVENT_FORM_ERRORS,
@@ -101,7 +101,14 @@ export const PATCH = withErrorHandling(
     }
 
     const event = await db.events.update(detail.event.id, parsed.value);
-    if (!event) throw ApiError.conflict(MANAGE_ACTION_COPY.stale);
+    if (!event) {
+      // Nothing written. Either the event was deleted between the read above
+      // and this write -- the same 404 as an event that never existed -- or it
+      // is still there and the row moved first, which stays a conflict.
+      throw (await eventExists(detail.event.id))
+        ? ApiError.conflict(MANAGE_ACTION_COPY.stale)
+        : ApiError.notFound();
+    }
 
     return jsonOk({ event });
   },
@@ -110,9 +117,12 @@ export const PATCH = withErrorHandling(
 /**
  * Delete the event.
  *
- * `db.events.remove()` takes the event's registrations with it, which is why
- * the dialog in front of this says how many people lose a place. No body is
- * read; this handler is safe to call with none at all.
+ * `db.events.remove()` soft-deletes it: the event becomes nonexistent to every
+ * reader, and its registrations go out of reach with it -- kept in the
+ * database, but no longer anybody's place -- which is why the dialog in front
+ * of this says how many people lose a place. A second delete finds no live
+ * event and is a 404. No body is read; this handler is safe to call with none
+ * at all.
  */
 export const DELETE = withErrorHandling(
   async (_request: Request, context: Context) => {

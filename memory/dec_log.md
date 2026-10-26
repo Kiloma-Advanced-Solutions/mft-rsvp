@@ -1397,3 +1397,115 @@ decided by the server's clock, last write wins. The form's `datetime-local`
 values are still produced in the server's time zone and read in the browser's;
 omitting locked dates keeps that pre-existing mismatch from refusing ordinary
 edits of a started event, but the mismatch itself is not fixed.
+
+---
+
+## 2026-10-26 — Deleting an event is soft: the row is stamped and hidden from every reader, and nothing it owns is removed
+
+Context: change 3 of the pre-M11 stabilization asked that deleting an event
+keep its data. Until then `removeEvent` deleted the event's registrations,
+co-hosts and invitations and then the event row, which the 2026-09-01 entry
+"Host edits never destroy a registration; deleting deliberately does" had
+chosen. The options were a soft-delete column, a new `deleted` status, or
+moving deleted events elsewhere; and, for visibility, hiding a deleted event
+from everyone or keeping it visible to admins.
+
+Decision: migration `0003` adds `dbo.Events_Events.DeletedAt datetime2(3)
+NULL`. Deleting locks the event row and stamps `DeletedAt` and `UpdatedAt` from
+the application's clock, only while `DeletedAt IS NULL`; it removes no row from
+any table. Every statement that reads an event row — the board list, the
+single read, the seat claim's locked read and the bare lock — filters
+`DeletedAt IS NULL`, so a deleted event is nonexistent to every reader, admins
+included: absent from the board, a 404 on its page and on every route, and
+`gone` to the seat protocol and the invitation writes. `DeletedAt` does not
+reach `EventRecord`, and there is no new status. Event updates require
+`DeletedAt IS NULL`; when edit, publish or cancel affect no row, the route
+re-reads the event through the ordinary filtered read (`eventExists`) and
+answers 404 if it is gone and the existing 409 if its status moved. There is
+no restore, no admin view, no retention period and no purge.
+
+Rationale: a column filtered at the data layer is the smallest change that
+makes a deleted event disappear everywhere at once — pages and routes keep the
+404 they already give a missing event, and nothing above `lib/data/` had to
+learn a new state. A status would have put "deleted" into every rule in
+`lib/permissions.ts` and into the domain type, for an event nobody may see.
+Hiding it from admins too keeps one answer for "does this event exist", and an
+admin view was not asked for. Deleted is 404 rather than 409 because, to the
+caller, the event no longer exists — the same answer whether it was deleted
+before their request or during it.
+
+Consequences: this supersedes the deletion half of the 2026-09-01 entry —
+deleting no longer destroys registrations; it takes them out of reach with the
+event. The delete confirmation's wording, which names the places and requests
+lost, stays true from the user's side and is unchanged. Child rows of deleted
+events accumulate; a development reset still hard-deletes everything. **Every
+future event read must include `DeletedAt IS NULL`**, or it leaks deleted
+events. The 2026-10-05 consequence that "nothing short of deleting the event
+frees the place" of a revoked invitee on a started or cancelled event now reads
+as: nothing frees it; deleting takes it out of reach. Code from before C5,
+running against a database that has `0003`, still sees deleted events — the
+shared DEV database is one such case.
+
+---
+
+## 2026-10-26 — Withdraw, reject and remove take the event-row lock first; a same-statement parent check alone failed on Azure SQL
+
+Context: once deletion is soft, an event's registrations outlive it, so a
+withdraw, reject or remove that read a live event could write its row after the
+event was deleted and answer 200 for an event that no longer exists. Hard
+deletion had hidden this by removing the row. The approved plan kept these
+three writes lock-free — single `UPDATE` statements with the expected-status
+compare-and-set plus an `EXISTS` on a live parent event — on the reasoning that
+under row versioning a write that does not see an uncommitted delete is simply
+ordered before it. It named a locked transaction as the fallback if testing
+disproved that.
+
+Testing on Azure SQL DEV disproved it. That database runs
+`READ_COMMITTED_SNAPSHOT` and optimized locking. When the registration `UPDATE`
+had to wait on its target row — another writer holding it — and the delete
+committed during the wait, the update resumed and wrote the row: 200, after the
+delete. With optimized locking the `EXISTS` is evaluated when the row is
+qualified, before the wait, and is not re-evaluated afterwards unless the target
+row itself changed. Reproduced through the API for all three writes, and
+directly in SQL. A `READCOMMITTEDLOCK` hint on the `EXISTS` was tried as an
+experiment: it made the write wait for a delete still in flight, but still
+wrote after one that committed during the wait, so it was not a fix.
+
+Decision: `transitionRegistration` in
+[lib/data/registrations.ts](../lib/data/registrations.ts) runs each of the
+three as a short transaction that first takes the event-row lock — `lockEvent`,
+the existing filtered `LOCK_EVENT` with `UPDLOCK, ROWLOCK`, the same lock the
+seat claim and the soft delete take — and then makes the unchanged
+compare-and-set update. No live event to lock: nothing is written, `gone`, 404.
+Row no longer in the expected status: `stale`, 409. Otherwise the existing
+success response. The `EXISTS` stays in the update as a second line of defence
+for any future caller that forgets the lock. The pool-level registration update
+was removed, so every runtime registration write now runs under its event's
+lock. Because the transaction already knows which of the two happened, these
+routes do not re-read the event afterwards; `eventExists` serves only edit,
+publish and cancel.
+
+Rationale: a write that holds the event row cannot be overtaken by a delete,
+which needs the same row: either the delete committed first and the lock finds
+nothing, or the write locked first and the delete waits for it to commit. That
+holds whatever the isolation flavour, because it rests on `UPDLOCK` and lock
+order rather than on how a statement's reads are versioned — so it is expected
+to behave the same on a stock 2008 R2 as on Azure. It is the seat protocol's
+own shape without the count or the rule, and it keeps the documented lock order
+— event row first — with no exception, which the lock-free design would have
+needed. Verified on Azure SQL DEV: in both orders, for all three writes, with
+and without a competing lock on the registration row, the observed blocking
+chain showed the delete waiting on the transition or the transition waiting on
+the delete, and the outcome was 200-then-delete or 404 with nothing written;
+concurrent transitions on a live event still produced exactly one winner and a
+409, with no deadlock.
+
+Consequences: withdrawing, rejecting and removing now serialise with seat
+claims, invitation writes, edits, lifecycle transitions and deletes of the same
+event on its row — more contention than before, briefly, per event. The
+statements are short and no measurable effect was seen, but no load test was
+run. A future write to registration rows must take the event-row lock first.
+The behaviour has been observed only on Azure SQL DEV; it has not been run on a
+real SQL Server 2008 R2. This replaces the lock-free design in
+[docs/pre-m11-stabilization-plan.md](../docs/pre-m11-stabilization-plan.md) §3
+"C5" and §6, which record the change.

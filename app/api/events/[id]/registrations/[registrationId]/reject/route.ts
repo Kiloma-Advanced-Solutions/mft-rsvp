@@ -97,15 +97,18 @@ export const POST = withErrorHandling(
       );
     }
 
-    // No event lock: turning somebody down frees nothing and takes nothing, so
-    // it cannot affect capacity. What it must not do is overwrite a decision
-    // that landed first, so the write is conditional on the row still being in
-    // the status this refusal check was based on -- an approval that won the
-    // race leaves this affecting no rows, and the host is told it changed.
+    // Turning somebody down frees nothing and takes nothing, so it cannot
+    // affect capacity and needs no count. What it must not do is overwrite a
+    // decision that landed first, so the write is conditional on the row still
+    // being in the status this refusal check was based on -- an approval that
+    // won the race leaves this `stale`, and the host is told it changed. It
+    // takes the event-row lock first, so a delete that committed before it
+    // leaves it `gone`: nothing written, the same 404 as a missing event.
     //
     // `message` stays: it is what the request said, and a host looking at the
     // rejected group later should still see what they turned down.
-    const decided = await db.registrations.update(
+    const write = await db.registrations.update(
+      detail.event.id,
       registration.id,
       {
         status: "rejected",
@@ -115,8 +118,13 @@ export const POST = withErrorHandling(
       registration.status,
     );
 
-    if (!decided) throw ApiError.conflict(REQUEST_ACTION_COPY.stale);
-
-    return jsonOk({ registration: decided });
+    switch (write.outcome) {
+      case "updated":
+        return jsonOk({ registration: write.registration });
+      case "stale":
+        throw ApiError.conflict(REQUEST_ACTION_COPY.stale);
+      case "gone":
+        throw ApiError.notFound();
+    }
   },
 );

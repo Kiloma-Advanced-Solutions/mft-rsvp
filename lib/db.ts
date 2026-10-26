@@ -41,20 +41,23 @@
  * took no lock and checked no capacity, so a `going` row written through it
  * would have put an event over its limit with nothing to catch it -- and an
  * unused method on this object is an invitation to do exactly that. The store
- * now offers no way to create a registration except the safe one. Everything
- * else here remains one statement against one table.
+ * now offers no way to create a registration except the safe one.
  *
- * `registrations.update` is held to the same line by its patch type rather than
+ * `registrations.update` -- withdraw, reject, remove -- is a short transaction
+ * too since C5: it takes the event-row lock before writing the row, so it is
+ * ordered against a soft delete of that event. It is held to the same line as
+ * the seat writes by its patch type rather than
  * by a comment: `RegistrationUpdate` admits no `status: "going"`, and no
  * `eventId` or `userId` either, so the generic write can neither hand out a
  * place nor move one to another event or another person. `lib/data/seats.ts`
  * keeps the full `RegistrationPatch` because granting a place under the lock is
  * its job.
  *
- * Most updates also take an expected status, which makes the write conditional
- * on the row still being in the state the caller decided against. A `null`
- * return means it was not, which is a conflict rather than a missing row --
- * callers already report both the same way.
+ * Updates also take an expected status, which makes the write conditional on
+ * the row still being in the state the caller decided against. An event
+ * update that comes back `null` means either that or that the event was
+ * deleted, and its routes ask `eventExists` which; a registration update says
+ * which outright, `stale` or `gone`.
  *
  * Never import this from a Client Component. Client code talks to API routes.
  */
@@ -75,7 +78,8 @@ import {
   getRegistration,
   listRegistrations,
   removeRegistration,
-  updateRegistration,
+  transitionRegistration,
+  type RegistrationTransition,
 } from "./data/registrations";
 import {
   approveRequest,
@@ -221,11 +225,12 @@ export const db = {
     },
 
     /**
-     * Deletes the event and every registration attached to it. Orphaned
-     * registrations would otherwise show up in "my events" forever.
+     * Soft-deletes the event: it is stamped deleted and from then on every read
+     * treats it as nonexistent. Its registrations, co-hosts and invitations are
+     * kept, unreachable. `false` if there was no live event to delete.
      */
     async remove(id: string): Promise<boolean> {
-      return removeEvent(id);
+      return removeEvent(id, now());
     },
 
     /**
@@ -287,23 +292,37 @@ export const db = {
     },
 
     /**
+     * Withdraw, reject or remove one of `eventId`'s registrations.
+     *
      * `expectedStatus` makes this a compare-and-set: the row is written only if
-     * it is still in the status the caller's decision was based on. Every state
-     * transition passes it -- withdrawing, rejecting, removing, reviving -- so
-     * two writers deciding the same row cannot both win. A `null` return then
-     * means the row moved, which routes report as a conflict.
+     * it is still in the status the caller's decision was based on, so two
+     * writers deciding the same row cannot both win -- the loser gets `stale`,
+     * which routes report as a conflict.
+     *
+     * It takes the event-row lock first, like every other write that touches
+     * an event's registrations, so it is ordered against a soft delete: `gone`
+     * means the event is missing or was deleted first and nothing was written,
+     * which routes report as a 404. See `transitionRegistration` in
+     * `lib/data/registrations.ts`.
      *
      * It cannot grant a place, and it cannot move a row to another event or
      * another person -- `RegistrationUpdate` does not admit any of the three.
-     * Withdrawing, rejecting and removing are what remain, and none can raise
-     * the `going` count, which is why none needs the event lock.
+     * Withdrawing, rejecting and removing are what remain; none can raise the
+     * `going` count, so none needs the seat protocol's count or rule.
      */
     async update(
+      eventId: string,
       id: string,
       patch: RegistrationUpdate,
-      expectedStatus?: RegistrationStatus,
-    ): Promise<Registration | null> {
-      return updateRegistration(id, patch, now(), expectedStatus);
+      expectedStatus: RegistrationStatus,
+    ): Promise<RegistrationTransition> {
+      return transitionRegistration({
+        eventId,
+        id,
+        patch,
+        updatedAt: now(),
+        expectedStatus,
+      });
     },
 
     async remove(id: string): Promise<boolean> {

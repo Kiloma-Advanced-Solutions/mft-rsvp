@@ -8,9 +8,17 @@
  * `lib/events.ts` loads its three collections once instead of per event.
  *
  * Writes that touch more than one table run in a transaction, so an event never
- * exists without its co-hosts, and deleting one never leaves a registration
- * behind. Inviting and revoking change one person's invite row at a time, under
- * the event-row lock.
+ * exists without its co-hosts. Inviting and revoking change one person's invite
+ * row at a time, under the event-row lock.
+ *
+ * **Deletion is soft.** Deleting an event stamps its `DeletedAt` and removes
+ * nothing; its registrations, co-hosts and invitations stay in the database.
+ * Every statement below that reads an event row filters on
+ * `DeletedAt IS NULL`, so a deleted event is nonexistent to every read --
+ * admins included -- and `DeletedAt` never reaches `EventRecord`. **A new event
+ * read must carry the same filter**, or it leaks deleted events. The membership
+ * reads that are not scoped to one event (`SELECT_COHOSTS`, `SELECT_INVITES`)
+ * need none: their rows are only ever stitched onto events read here.
  */
 
 import sql from "mssql";
@@ -47,6 +55,7 @@ SELECT Id, Title, Summary, Description, StartsAt, EndsAt,
        LocationKind, LocationVenue, LocationAddress, LocationUrl, LocationPlatform,
        Category, Accent, Capacity, Access, Status, OrganizerId, CreatedAt, UpdatedAt
 FROM   dbo.Events_Events
+WHERE  DeletedAt IS NULL
 ORDER  BY StartsAt ASC, Id ASC;
 `;
 
@@ -55,7 +64,7 @@ SELECT Id, Title, Summary, Description, StartsAt, EndsAt,
        LocationKind, LocationVenue, LocationAddress, LocationUrl, LocationPlatform,
        Category, Accent, Capacity, Access, Status, OrganizerId, CreatedAt, UpdatedAt
 FROM   dbo.Events_Events
-WHERE  Id = @id;
+WHERE  Id = @id AND DeletedAt IS NULL;
 `;
 
 /**
@@ -85,20 +94,22 @@ SELECT Id, Title, Summary, Description, StartsAt, EndsAt,
        LocationKind, LocationVenue, LocationAddress, LocationUrl, LocationPlatform,
        Category, Accent, Capacity, Access, Status, OrganizerId, CreatedAt, UpdatedAt
 FROM   dbo.Events_Events WITH (UPDLOCK, ROWLOCK)
-WHERE  Id = @id;
+WHERE  Id = @id AND DeletedAt IS NULL;
 `;
 
 /**
  * The lock on its own, for a writer that needs the mutex but not the facts.
  *
- * `removeEvent` uses it to take the event row before deleting anything that
- * references it, which is what keeps every transaction in this application
- * acquiring locks in the same order.
+ * `removeEvent` takes it before marking the event deleted, and the
+ * registration transitions that cannot raise the count -- withdraw, reject,
+ * remove -- take it before writing their row, through `lockEvent` below. That
+ * is what keeps every transaction in this application acquiring locks in the
+ * same order. An event already deleted is not locked and not found.
  */
 const LOCK_EVENT = `
 SELECT Id
 FROM   dbo.Events_Events WITH (UPDLOCK, ROWLOCK)
-WHERE  Id = @id;
+WHERE  Id = @id AND DeletedAt IS NULL;
 `;
 
 const SELECT_COHOSTS = `
@@ -166,14 +177,15 @@ DELETE FROM dbo.Events_EventInvites
 WHERE  EventId = @eventId AND UserId = @userId;
 `;
 
-const DELETE_REGISTRATIONS_FOR_EVENT = `
-DELETE FROM dbo.Events_Registrations
-WHERE  EventId = @id;
-`;
-
-const DELETE_EVENT = `
-DELETE FROM dbo.Events_Events
-WHERE  Id = @id;
+/**
+ * Soft deletion. The row stays and is stamped; `DeletedAt IS NULL` in the
+ * predicate makes a second delete affect nothing. `@now` is bound by the
+ * application -- no statement here reads a server clock.
+ */
+const SOFT_DELETE_EVENT = `
+UPDATE dbo.Events_Events
+SET    DeletedAt = @now, UpdatedAt = @now
+WHERE  Id = @id AND DeletedAt IS NULL;
 `;
 
 /* -------------------------------------------------------------------- reads */
@@ -258,11 +270,12 @@ export async function getEvent(id: string): Promise<EventRecord | null> {
  * gone, which inside a transaction means it was deleted by whoever held the
  * lock before us -- a real answer, not an error.
  *
- * Exported for `lib/data/seats.ts` alone. Outside this file nothing else
- * should be locking event rows, and a second caller is a sign the protocol is
- * being reinvented somewhere it should not be. Inside it, `removeEvent` and the
- * two invitation writes take the same lock through the private statements,
- * for lock order rather than for capacity.
+ * Exported for `lib/data/seats.ts` alone. Outside this file the only other
+ * event-row lock is `lockEvent`, taken by the registration transitions in
+ * `registrations.ts`; a further caller is a sign the protocol is being
+ * reinvented somewhere it should not be. Inside it, `removeEvent` and the two
+ * invitation writes take the same lock through the private statements, for
+ * lock order rather than for capacity.
  */
 export async function readEventForUpdate(
   transaction: Transaction,
@@ -271,6 +284,30 @@ export async function readEventForUpdate(
   if (!isUuid(id)) return null;
 
   return readEvent(transaction, id, SELECT_EVENT_FOR_UPDATE);
+}
+
+/**
+ * Take the event-row lock inside `transaction`, without reading the event.
+ * `false` if there is no live event to lock -- missing, or soft-deleted.
+ *
+ * The same `UPDLOCK` as the seat claim, held until the transaction ends, so a
+ * soft delete -- which takes this lock too -- cannot commit between this and
+ * the caller's write: whichever transaction locks the row first is ordered
+ * first. For writers that need the lock but not the facts: `removeEvent`
+ * here, and `transitionRegistration` in `registrations.ts`.
+ */
+export async function lockEvent(
+  transaction: Transaction,
+  id: string,
+): Promise<boolean> {
+  if (!isUuid(id)) return false;
+
+  const locked = await transaction
+    .request()
+    .input("id", sql.UniqueIdentifier, id)
+    .query<{ Id: string }>(LOCK_EVENT);
+
+  return locked.recordset[0] !== undefined;
 }
 
 /* ------------------------------------------------------------------- writes */
@@ -451,7 +488,8 @@ function assignPatch(request: sql.Request, patch: EventPatch): string[] {
  * want it: two requests that both read a draft must not both publish it, nor
  * two that both read a published event both cancel it. The second finds no row
  * in the expected status any more, affects nothing, and gets the `null` that
- * route handlers already report as a conflict.
+ * route handlers report as a conflict -- unless the event has since been
+ * deleted, which also comes back `null` and which they report as a 404.
  *
  * Ordinary content edits pass no `expectedStatus` and stay last-write-wins,
  * which is what M4 decided and what Slice 8 deliberately does not revisit.
@@ -478,10 +516,16 @@ export async function updateEvent(
 
     // A separate parameter name from the patch's own `status`: one is the
     // value being written, the other the value being required.
-    let predicate = `WHERE Id = @id`;
+    //
+    // `DeletedAt IS NULL` in both: a delete that commits between a handler's
+    // read and this write leaves the update affecting nothing, so no late
+    // write lands on a deleted event. The `null` that follows is the same one a
+    // lost compare-and-set produces; the route tells the two apart by
+    // re-reading the event (`eventExists` in `lib/events.ts`).
+    let predicate = `WHERE Id = @id AND DeletedAt IS NULL`;
     if (expectedStatus !== undefined) {
       request.input("expectedStatus", sql.NVarChar(16), expectedStatus);
-      predicate = `WHERE Id = @id AND Status = @expectedStatus`;
+      predicate = `WHERE Id = @id AND Status = @expectedStatus AND DeletedAt IS NULL`;
     }
 
     // The only interpolation here carries no caller data: every fragment is a
@@ -526,59 +570,36 @@ export async function updateEvent(
 }
 
 /**
- * Delete the event and everything that points at it.
+ * Soft-delete the event: stamp `DeletedAt`, and `UpdatedAt` with it.
  *
- * Children first, because every foreign key is `ON DELETE NO ACTION` -- Slice 4
- * chose that deliberately so a forgotten cleanup fails loudly instead of
- * cascading invisibly. This is the cleanup, and it is visible.
+ * Nothing is removed. The event's registrations, co-hosts and invitations stay
+ * in the database exactly as they were; every event read filters the row out,
+ * so they are unreachable rather than gone. There is no restore and no purge.
  *
- * The registrations go with it, which is the behaviour `lib/db.ts` had and what
- * the delete dialog warns about; orphaned registrations would otherwise show up
- * in "my events" forever.
- *
- * **The event row is locked first, and that ordering is the point.** A seat
- * claim locks the event row and then writes a registration; this transaction
- * writes registrations and then the event row. Taken in that order the two
- * deadlock -- each holding what the other needs next -- so this takes the event
- * row before touching anything that references it. Every transaction in this
- * application now acquires the event row first, and nothing acquires two.
- *
- * The delete order itself is unchanged: children before parent, because every
- * foreign key is `ON DELETE NO ACTION`. Only a lock acquisition is added in
- * front of it.
+ * **The event row is locked first, and that ordering is kept on purpose.** A
+ * seat claim locks the event row and then writes a registration; every
+ * transaction in this application takes the event row first, and nothing
+ * acquires two. This one now writes only the event row itself, but taking the
+ * lock first keeps it in that order and gives a deleted or missing event the
+ * same `false` before anything is written.
  */
-export async function removeEvent(id: string): Promise<boolean> {
+export async function removeEvent(id: string, now: string): Promise<boolean> {
   if (!isUuid(id)) return false;
 
   const pool = await getPool();
 
   return inTransaction(pool, async (transaction) => {
-    const locked = await transaction
-      .request()
-      .input("id", sql.UniqueIdentifier, id)
-      .query<{ Id: string }>(LOCK_EVENT);
-
-    // No row to lock is no event to delete, and the same `false` the caller
-    // would have got from the delete below.
-    if (locked.recordset[0] === undefined) return false;
-
-    for (const statement of [
-      DELETE_REGISTRATIONS_FOR_EVENT,
-      DELETE_COHOSTS_FOR_EVENT,
-      DELETE_INVITES_FOR_EVENT,
-    ]) {
-      await transaction
-        .request()
-        .input("id", sql.UniqueIdentifier, id)
-        .query(statement);
-    }
+    // No live row to lock is no event to delete -- missing, or deleted
+    // already -- and the same `false` the caller would get from the update.
+    if (!(await lockEvent(transaction, id))) return false;
 
     const result = await transaction
       .request()
       .input("id", sql.UniqueIdentifier, id)
-      .query(DELETE_EVENT);
+      .input("now", sql.DateTime2(3), new Date(now))
+      .query(SOFT_DELETE_EVENT);
 
-    // Whether the event was there at all. A miss deletes nothing and answers
+    // Whether a live event was there at all. A miss writes nothing and answers
     // `false`, the same as the in-memory store's "no such index".
     return result.rowsAffected[0] > 0;
   });
