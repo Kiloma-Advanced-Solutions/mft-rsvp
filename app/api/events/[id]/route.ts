@@ -22,8 +22,12 @@ import { ApiError, jsonOk, readJson, withErrorHandling } from "@/lib/api";
 import { db } from "@/lib/db";
 import { getEventDetailForViewer } from "@/lib/events";
 import { parseEventBody } from "@/lib/eventInput";
-import { EVENT_FORM_ERRORS, MANAGE_ACTION_COPY } from "@/lib/labels";
-import { canManageEvent } from "@/lib/permissions";
+import {
+  EVENT_FORM_ERRORS,
+  MANAGE_ACTION_COPY,
+  scheduleFieldErrors,
+} from "@/lib/labels";
+import { canManageEvent, checkEventSchedule } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
 import type { EventDetailContext } from "@/lib/types";
 
@@ -72,7 +76,8 @@ async function loadManageableEvent(
  * Every field is optional, and the stored record supplies whatever the request
  * leaves out -- so the rules are checked against the event as it *would be*,
  * not against the patch alone. That is what makes a request carrying only
- * `endsAt` still get tested against the stored `startsAt`.
+ * `endsAt` still get tested against the stored `startsAt`, and what lets the
+ * form leave out the dates of an event whose dates are locked.
  */
 export const PATCH = withErrorHandling(
   async (request: Request, context: Context) => {
@@ -82,6 +87,17 @@ export const PATCH = withErrorHandling(
     const parsed = parseEventBody(body, detail.event);
     if (!parsed.ok) {
       throw ApiError.badRequest(EVENT_FORM_ERRORS.formRejected, parsed.errors);
+    }
+
+    // Judged against the event as stored: only a date that actually changes is
+    // checked, and a started or cancelled event's dates do not change at all.
+    // One clock reading, and it is the server's.
+    const schedule = checkEventSchedule(detail.event, parsed.value, Date.now());
+    if (!schedule.ok) {
+      throw ApiError.badRequest(
+        EVENT_FORM_ERRORS.formRejected,
+        scheduleFieldErrors(schedule.errors),
+      );
     }
 
     const event = await db.events.update(detail.event.id, parsed.value);

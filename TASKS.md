@@ -157,6 +157,27 @@ re-request — the host can still approve them from the queue. The exception is
 an event whose access is currently `open`: there they may register again like
 anyone else, subject to the same closures and capacity.
 
+### Scheduling
+
+An event has **started** once its start time has passed, by the server's
+clock. The server decides; the form only mirrors it.
+
+| Event | Start and end may change | A start that changes |
+| --- | --- | --- |
+| Being created | — | must be later than now |
+| `draft`, any date | yes | must be later than now |
+| `published`, not started | yes | must be later than now |
+| `published`, started | **no** | — |
+| `cancelled`, any date | **no** | — |
+
+- Only a date that changes is checked. A draft whose start has passed can still
+  have its other fields edited, and changing only the end is allowed wherever
+  the dates may change.
+- A submitted date in the same minute as the stored one counts as unchanged,
+  and the stored value is kept.
+- A draft whose start has passed cannot be published until its start is moved.
+- A refused date is a 400 naming the field; publishing a past draft is a 409.
+
 ---
 
 ## 5. Milestones

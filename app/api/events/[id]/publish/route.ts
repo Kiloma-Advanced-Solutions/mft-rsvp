@@ -18,6 +18,7 @@
  */
 
 import { ApiError, jsonOk, withErrorHandling } from "@/lib/api";
+import { isPast } from "@/lib/date";
 import { db } from "@/lib/db";
 import { getEventDetailForViewer } from "@/lib/events";
 import { MANAGE_ACTION_COPY } from "@/lib/labels";
@@ -57,6 +58,13 @@ export const POST = withErrorHandling(
           ? MANAGE_ACTION_COPY.alreadyPublished
           : MANAGE_ACTION_COPY.notADraft,
       );
+    }
+
+    // A draft may be edited at any date, but it cannot go live already in the
+    // past. A conflict, like the status check: the host may publish, this
+    // draft just has to be moved first. "Past" is `isPast`, as everywhere.
+    if (isPast(detail.event.startsAt)) {
+      throw ApiError.conflict(MANAGE_ACTION_COPY.pastDraft);
     }
 
     // Conditional on the row still being a draft, so two requests that both

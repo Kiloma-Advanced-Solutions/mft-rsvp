@@ -18,8 +18,12 @@
 import { ApiError, jsonOk, readJson, withErrorHandling } from "@/lib/api";
 import { db } from "@/lib/db";
 import { parseEventBody } from "@/lib/eventInput";
-import { EVENT_FORM_ERRORS, MANAGE_ACTION_COPY } from "@/lib/labels";
-import { canCreateEvent } from "@/lib/permissions";
+import {
+  EVENT_FORM_ERRORS,
+  MANAGE_ACTION_COPY,
+  scheduleFieldErrors,
+} from "@/lib/labels";
+import { canCreateEvent, checkEventSchedule } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
 import type { AccentKey } from "@/lib/types";
 
@@ -76,6 +80,16 @@ export const POST = withErrorHandling(async (request: Request) => {
   const parsed = parseEventBody(body);
   if (!parsed.ok) {
     throw ApiError.badRequest(EVENT_FORM_ERRORS.formRejected, parsed.errors);
+  }
+
+  // Nothing is stored yet, so the start is new by definition and has to be
+  // later than the server's clock -- the browser's answer decides nothing.
+  const schedule = checkEventSchedule(null, parsed.value, Date.now());
+  if (!schedule.ok) {
+    throw ApiError.badRequest(
+      EVENT_FORM_ERRORS.formRejected,
+      scheduleFieldErrors(schedule.errors),
+    );
   }
 
   const event = await db.events.create({

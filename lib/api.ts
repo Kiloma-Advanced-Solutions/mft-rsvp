@@ -103,14 +103,20 @@ export async function readJson<T = unknown>(request: Request): Promise<T> {
  * the server's message, plus the HTTP status. Callers that only show the
  * message need nothing else; one that has to tell "the page was stale" (4xx)
  * from "a service behind the route failed" (5xx) reads `status`.
+ *
+ * `details` is the failure's `details` exactly as the server sent it -- for the
+ * event form, its field errors. It is untrusted shape, so a caller that reads
+ * it checks it first; `undefined` when the response carried none.
  */
 export class RequestError extends Error {
   readonly status: number;
+  readonly details?: unknown;
 
-  constructor(status: number, message: string) {
+  constructor(status: number, message: string, details?: unknown) {
     super(message);
     this.name = "RequestError";
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -134,10 +140,11 @@ export async function fetchJson<T>(
   const payload: unknown = await response.json().catch(() => null);
 
   if (!response.ok) {
-    const message =
-      (payload as { error?: { message?: string } } | null)?.error?.message ??
-      requestFailedLabel(response.status);
-    throw new RequestError(response.status, message);
+    const error = (
+      payload as { error?: { message?: string; details?: unknown } } | null
+    )?.error;
+    const message = error?.message ?? requestFailedLabel(response.status);
+    throw new RequestError(response.status, message, error?.details);
   }
 
   return payload as T;

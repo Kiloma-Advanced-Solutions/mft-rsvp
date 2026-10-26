@@ -1,9 +1,9 @@
 /**
  * Who may see an event, who may manage it, who may take a place at it, what
  * a host may decide about somebody else's request, whether the event may be
- * cancelled, whether a host may take a confirmed place back or return it,
- * whether a host may invite somebody or revoke their invitation, and whether
- * the event may be shared.
+ * cancelled, whether its dates may still change, whether a host may take a
+ * confirmed place back or return it, whether a host may invite somebody or
+ * revoke their invitation, and whether the event may be shared.
  *
  * The questions are deliberately separate: visibility is about discovery,
  * manageability is about being a host or an admin, availability is about one
@@ -21,7 +21,8 @@
  * Synchronous, and with no store and no session: the caller resolves the viewer
  * through `getCurrentUser()` and passes it in along with any counts, which keeps
  * the trusted-identity boundary in one place. The only impurity is the clock,
- * read through `isPast` to decide whether an event has already started.
+ * read through `isPast` to decide whether an event has already started -- except
+ * in the schedule rules, which take `now` from their caller.
  */
 
 import { isPast } from "./date";
@@ -36,6 +37,8 @@ import type {
   Registration,
   RegistrationAvailability,
   RequestDecisionAvailability,
+  ScheduleAvailability,
+  ScheduleCheck,
   SharingAvailability,
   User,
 } from "./types";
@@ -241,8 +244,8 @@ export function getRequestDecisionAvailability(
  * event back out of `cancelled`. A draft is not exposed to anyone who could be
  * told it was cancelled, a cancelled event stays cancelled, and one that has
  * started has nothing left to call off. It reads the event's current
- * `startsAt`, which a host may edit, so moving a published event's start into
- * the future makes it cancellable again.
+ * `startsAt`. A host may move that start only while the event has not started
+ * (`checkEventSchedule()`), so an event that has started stays uncancellable.
  */
 export function getCancellationAvailability(
   event: Pick<EventRecord, "status" | "startsAt">,
@@ -253,6 +256,80 @@ export function getCancellationAvailability(
   }
   if (isPast(event.startsAt)) return { state: "closed", reason: "started" };
   return { state: "open" };
+}
+
+/**
+ * May this event's start and end still be changed?
+ *
+ * Takes no user, like cancellation: *whether* the actor may edit at all is
+ * `canManageEvent()`. A cancelled event keeps its dates whatever they are, and
+ * so does a published one that has started -- what happened stays on record. A
+ * draft has no audience yet, so it stays movable at any date, including a past
+ * one that needs correcting.
+ *
+ * `now` is passed in rather than read here so one request decides against one
+ * clock reading, and "started" is the same comparison `isPast` makes.
+ */
+export function getScheduleAvailability(
+  event: Pick<EventRecord, "status" | "startsAt">,
+  now: number,
+): ScheduleAvailability {
+  if (event.status === "cancelled") {
+    return { state: "locked", reason: "cancelled" };
+  }
+  if (event.status === "published" && Date.parse(event.startsAt) < now) {
+    return { state: "locked", reason: "started" };
+  }
+  return { state: "open" };
+}
+
+/** A new or changed start has to be strictly later than now. */
+export function isStartInFuture(startsAt: string, now: number): boolean {
+  return Date.parse(startsAt) > now;
+}
+
+/**
+ * May an event be written with these dates?
+ *
+ * `stored` is the event as it is, or `null` when it is being created. `next`
+ * is the start and end that would be written -- already through
+ * `parseEventBody`, which keeps a stored value wherever the request sent the
+ * same minute back, so "changed" here is an exact comparison.
+ *
+ * Only a date that changes is judged. An unchanged past start does not stop a
+ * draft's title being fixed, and an unchanged end is never refused. Kept apart
+ * from `parseEventForm` on purpose: a `PATCH` fills omitted fields from the
+ * stored event, so "start must be in the future" there would refuse every edit
+ * of an event that has started.
+ */
+export function checkEventSchedule(
+  stored: Pick<EventRecord, "status" | "startsAt" | "endsAt"> | null,
+  next: Pick<EventRecord, "startsAt" | "endsAt">,
+  now: number,
+): ScheduleCheck {
+  const startChanged =
+    stored === null || Date.parse(next.startsAt) !== Date.parse(stored.startsAt);
+  const endChanged =
+    stored !== null && Date.parse(next.endsAt) !== Date.parse(stored.endsAt);
+
+  if (stored !== null) {
+    const availability = getScheduleAvailability(stored, now);
+    if (availability.state === "locked") {
+      if (!startChanged && !endChanged) return { ok: true };
+      return {
+        ok: false,
+        errors: {
+          ...(startChanged && { startsAt: availability.reason }),
+          ...(endChanged && { endsAt: availability.reason }),
+        },
+      };
+    }
+  }
+
+  if (startChanged && !isStartInFuture(next.startsAt, now)) {
+    return { ok: false, errors: { startsAt: "start_not_future" } };
+  }
+  return { ok: true };
 }
 
 /**
@@ -430,8 +507,8 @@ export function getInvitationRevocationAvailability(
  * list. What is left to decide is whether there is anything worth sending: a
  * draft is invisible to every recipient, and a cancelled event or one that has
  * started is closed to registration. It reads the current `startsAt`, which a
- * host may edit, so moving a published event's start into the future makes it
- * shareable again.
+ * host can no longer move once the event has started (`checkEventSchedule()`),
+ * so an event that has started stays unshareable.
  *
  * The same answer as `getCancellationAvailability()` today, and deliberately a
  * separate function: they are different questions that happen to agree, and

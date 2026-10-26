@@ -13,10 +13,11 @@ branch boundaries, order and decisions H1–H3 are in
 [docs/pre-m11-stabilization-plan.md](../docs/pre-m11-stabilization-plan.md),
 a temporary plan that the last of the six branches retires. Nothing it
 describes as new behaviour is built until its branch is merged. Branches
-merged so far: C1 (removing the workshop pages, PR #41) and C2 (UI text
-fixes, PR #42). C3 (rejected users on open events) is implemented on its
-branch, `yardenah/rejected-reopen`, and awaiting review; C4–C6 have not
-started.
+merged so far: C1 (removing the workshop pages, PR #41), C2 (UI text
+fixes, PR #42) and C3 (rejected users on open events, PR #43). C4 (event
+date rules) is implemented and verified on its branch,
+`yardenah/event-date-rules`, but not yet committed, reviewed or merged;
+C5 and C6 have not started.
 
 M1–M10 are complete and merged into
 `yardenah/events-board`: the original assignment's three `must` and two
@@ -60,6 +61,12 @@ confirmed attendee or **restore** a removed one on an `approval` or `invite`
 event (M8), **invite** existing people to an invite-only event or
 **revoke** their invitations (M9), and **share** a published event that has
 not started (M10).
+
+On the C4 branch, not yet merged: a new or moved start must be in the future,
+a draft whose start has passed cannot be published until it is moved, and a
+published event that has started or a cancelled one keeps its dates — the form
+shows them disabled and says why. The rules are in [TASKS.md](../TASKS.md) §4
+"Scheduling".
 
 A cancelled event stays on the board, in a section of its own, and its detail
 page stays readable to whoever could see it before; registering, withdrawing
@@ -285,6 +292,11 @@ Concurrent edits to the same event are last-write-wins: `EventRecord` carries no
 version, so M4 did not attempt optimistic concurrency, and M6 kept that. Named,
 not solved.
 
+The edit form's dates are produced in the server's time zone and read back in
+the browser's. When the two differ, an untouched date on an event whose dates
+may still change is re-sent shifted. C4 keeps it from blocking edits of a
+started or cancelled event — those dates are not sent — but does not fix it.
+
 A request left pending on an event that has been cancelled or has already
 started can no longer be decided by anyone, which is the accepted cost of
 closing decisions the same way registration closes. Likewise, a `going`
@@ -356,6 +368,6 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-10-25 — pre-M11 stabilization in progress: C1 (PR #41) and
-C2 (PR #42) merged, C3 implemented on its branch and awaiting review; M11
-(system redesign) and M12 (application logging) follow it.
+Last updated: 2026-10-25 — pre-M11 stabilization in progress: C1 (PR #41),
+C2 (PR #42) and C3 (PR #43) merged, C4 implemented on its branch and not yet
+merged; M11 (system redesign) and M12 (application logging) follow it.

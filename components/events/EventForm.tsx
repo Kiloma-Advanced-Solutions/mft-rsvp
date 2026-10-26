@@ -16,8 +16,9 @@ import {
   buttonClass,
   useToast,
 } from "@/components/ui";
-import { fetchJson } from "@/lib/api";
-import { UNLIMITED, parseEventForm } from "@/lib/eventInput";
+import { RequestError, fetchJson } from "@/lib/api";
+import { toDateTimeLocalValue } from "@/lib/date";
+import { UNLIMITED, parseEventForm, readFieldErrors } from "@/lib/eventInput";
 import type { EventFieldErrors, EventFormValues } from "@/lib/eventInput";
 import {
   ACCESS_DESCRIPTIONS,
@@ -29,8 +30,14 @@ import {
   LOCATION_KIND_LABELS,
   MANAGE_ACTION_COPY,
   MANAGE_LABELS,
+  scheduleRefusalNote,
 } from "@/lib/labels";
-import type { EventLocation, EventRecord } from "@/lib/types";
+import { isStartInFuture } from "@/lib/permissions";
+import type {
+  EventLocation,
+  EventRecord,
+  ScheduleLockReason,
+} from "@/lib/types";
 
 import styles from "./EventForm.module.css";
 
@@ -55,6 +62,7 @@ export function EventForm({
   mode,
   initialValues,
   goingCount,
+  scheduleLock,
 }: {
   mode: { kind: "create" } | { kind: "edit"; eventId: string };
   /**
@@ -64,6 +72,21 @@ export function EventForm({
   initialValues: EventFormValues;
   /** Only for the capacity hint when editing. */
   goingCount?: number;
+  /**
+   * Set when editing an event whose dates may no longer change, decided on the
+   * server by `getScheduleAvailability()`. The two date inputs are disabled,
+   * say why, and are left out of the request so the stored dates stand.
+   *
+   * Carries the stored timestamps exactly, because those -- not the
+   * minute-rounded `initialValues` -- are what the locked dates are validated
+   * as: a start and end seconds apart in the same minute display identically,
+   * and would otherwise read as an end that is not after the start.
+   */
+  scheduleLock?: {
+    reason: ScheduleLockReason;
+    startsAt: string;
+    endsAt: string;
+  };
 }) {
   const [locationKind, setLocationKind] = useState(initialValues.locationKind);
   const [access, setAccess] = useState(initialValues.access);
@@ -88,10 +111,23 @@ export function EventForm({
   const showsVenue = locationKind === "in_person" || locationKind === "hybrid";
   const showsLink = locationKind === "online" || locationKind === "hybrid";
 
+  const datesLocked = scheduleLock !== undefined;
+  const dateHint = scheduleLock
+    ? scheduleRefusalNote(scheduleLock.reason)
+    : undefined;
+
   async function submit(formEvent: FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
     // Read the DOM synchronously: `currentTarget` is gone after the first await.
     const values = readForm(new FormData(formEvent.currentTarget));
+
+    // A disabled input is not submitted, so locked dates would read as blank.
+    // Validate against the exact stored timestamps instead -- they are not
+    // sent, so the stored dates are what the server keeps.
+    if (scheduleLock) {
+      values.startsAt = scheduleLock.startsAt;
+      values.endsAt = scheduleLock.endsAt;
+    }
 
     const parsed = parseEventForm(values);
     if (!parsed.ok) {
@@ -100,16 +136,35 @@ export function EventForm({
       return;
     }
 
+    // The schedule rule's one check the browser can make on its own: a start
+    // that was changed has to be in the future. The server checks again against
+    // its own clock and the stored event, and its answer is the one that counts.
+    if (
+      !datesLocked &&
+      values.startsAt !== initialValues.startsAt &&
+      !isStartInFuture(parsed.value.startsAt, Date.now())
+    ) {
+      setErrors({ startsAt: scheduleRefusalNote("start_not_future") });
+      setFormError(null);
+      return;
+    }
+
     setErrors({});
     setFormError(null);
     setSubmitting(true);
+
+    const payload: Partial<typeof parsed.value> = { ...parsed.value };
+    if (datesLocked) {
+      delete payload.startsAt;
+      delete payload.endsAt;
+    }
 
     try {
       const { event } = await fetchJson<{ event: EventRecord }>(
         creating ? "/api/events" : `/api/events/${mode.eventId}`,
         {
           method: creating ? "POST" : "PATCH",
-          body: JSON.stringify(parsed.value),
+          body: JSON.stringify(payload),
         },
       );
 
@@ -128,6 +183,11 @@ export function EventForm({
       // Stay here with the input intact -- unlike a registration, a refused
       // save has work in it that a refresh would throw away.
       const message = error instanceof Error ? error.message : undefined;
+      // Put whatever the server named against its field, as the browser's own
+      // checks would; the general message and the toast stay as they were.
+      if (error instanceof RequestError) {
+        setErrors(readFieldErrors(error.details));
+      }
       setFormError(message ?? null);
       toast.error(
         creating
@@ -182,19 +242,36 @@ export function EventForm({
           <Field
             label={EVENT_FORM_LABELS.startsAt}
             required
+            hint={dateHint}
             error={errors.startsAt}
           >
             <Input
               type="datetime-local"
               name="startsAt"
               defaultValue={initialValues.startsAt}
+              disabled={datesLocked}
+              // The earliest start the picker offers, from the browser's clock
+              // at the moment it is used. Set on focus rather than rendered, so
+              // the server's markup never carries a time the client disagrees
+              // with.
+              onFocus={(focused) => {
+                focused.currentTarget.min = toDateTimeLocalValue(
+                  new Date().toISOString(),
+                );
+              }}
             />
           </Field>
-          <Field label={EVENT_FORM_LABELS.endsAt} required error={errors.endsAt}>
+          <Field
+            label={EVENT_FORM_LABELS.endsAt}
+            required
+            hint={dateHint}
+            error={errors.endsAt}
+          >
             <Input
               type="datetime-local"
               name="endsAt"
               defaultValue={initialValues.endsAt}
+              disabled={datesLocked}
             />
           </Field>
         </FieldRow>

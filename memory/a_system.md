@@ -396,7 +396,13 @@ added to the invite list right now, may this person be, may this person's
 invitation be revoked, and may the event be shared right now — called from both
 pages and route handlers so no two callers can drift apart.
 
-Nine of them take something other than (event, viewer). `canCreateEvent()`
+Beside them sit the schedule rules: `getScheduleAvailability()` (may this
+event's dates still change) and `checkEventSchedule()` (may it be written with
+these dates), with `isStartInFuture()` as the one piece the form mirrors. Unlike
+the rest they take `now` from the caller instead of reading the clock, so a
+request decides against a single reading — see "Managing events" below.
+
+Nine of the twelve take something other than (event, viewer). `canCreateEvent()`
 takes only a user: creation is role-based, because there is no event yet to be
 a host of. The other eight take no *actor*: *whether* the actor may decide,
 cancel, remove, restore, invite, revoke or share is `canManageEvent()`, and
@@ -634,10 +640,31 @@ Both are expected-status compare-and-set writes to the event row alone, so of
 two requests that read the same status only one moves it. Cancelling is further
 gated by `getCancellationAvailability()` — published and not yet started — read
 before the write, and `cancelled` is terminal: nothing moves an event out of it.
-A cancelled event can still be edited and deleted, and because `PATCH` cannot
-reach `status`, editing it never changes its status. Cancelling leaves every
+A cancelled event can still be edited and deleted — its dates excepted, which
+stay as they were — and because `PATCH` cannot reach `status`, editing it never
+changes its status. Cancelling leaves every
 registration row as it was; the event's status is what closes registering,
 withdrawing and deciding, through the shared rules that close on it.
+
+**Dates.** Whether a start or end may change is a lifecycle question, so it is
+answered in [lib/permissions.ts](../lib/permissions.ts), not by the parser:
+`checkEventSchedule()` takes the stored event (or none, on create), the dates
+that would be written and the server's `now`, and judges only a date that
+changes — a new start must be later than now, and a published event that has
+started or a cancelled one keeps both dates. `POST` and `PATCH` run it after
+parsing and answer a 400 with field errors; publishing a draft whose start has
+passed is a 409. The rules are in [TASKS.md](../TASKS.md) §4 "Scheduling".
+Before it runs, `parseEventBody` keeps the stored value wherever a `PATCH`
+sends a date in the same minute, since the form cannot express seconds, so
+"unchanged" there is exact and nothing can move a locked date by seconds. The
+detail page asks `getScheduleAvailability()` and passes the answer to the form,
+which disables the two date inputs with the reason as their hint and leaves them
+out of the request; it validates them as the exact stored timestamps, not the
+minute-rounded values the inputs display, so a start and end seconds apart in
+the same minute do not read as an end before the start. The form also refuses a
+changed start that is not in the future against the browser's clock, sets the
+start picker's minimum when it is focused, and shows the server's field errors
+— carried on `RequestError` — beside their fields.
 
 **Accent** is assigned by the server when the event is created and is not
 host-editable. It is a tint on the board card and date block, invisible on the
