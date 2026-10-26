@@ -86,22 +86,30 @@ export const POST = withErrorHandling(
       throw ApiError.conflict(attendeeRemovalClosedNote(availability.reason));
     }
 
-    // No event lock: taking a place back only lowers the `going` count, so it
-    // cannot put the event over capacity. What it must not do is act on a row
-    // that moved after this check -- a second removal, or the person
-    // withdrawing -- so the write is conditional on the row still being `going`,
-    // and one that lost the race affects no rows and is told it changed.
+    // Taking a place back only lowers the `going` count, so it cannot put the
+    // event over capacity and needs no count. What it must not do is act on a
+    // row that moved after this check -- a second removal, or the person
+    // withdrawing -- so the write is conditional on the row still being
+    // `going`, and one that lost the race is `stale` and told it changed. It
+    // takes the event-row lock first, so a delete that committed before it
+    // leaves it `gone`: nothing written, the same 404 as a missing event.
     //
     // Only the status moves. `message`, `decidedBy` and `decidedAt` belong to
     // the request that got them in, and stay as the record of it.
-    const removed = await db.registrations.update(
+    const write = await db.registrations.update(
+      detail.event.id,
       registration.id,
       { status: "removed" },
       "going",
     );
 
-    if (!removed) throw ApiError.conflict(ATTENDEE_ACTION_COPY.stale);
-
-    return jsonOk({ registration: removed });
+    switch (write.outcome) {
+      case "updated":
+        return jsonOk({ registration: write.registration });
+      case "stale":
+        throw ApiError.conflict(ATTENDEE_ACTION_COPY.stale);
+      case "gone":
+        throw ApiError.notFound();
+    }
   },
 );

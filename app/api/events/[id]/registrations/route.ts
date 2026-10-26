@@ -183,18 +183,25 @@ export const DELETE = withErrorHandling(
       throw withdrawRefusal(availability);
     }
 
-    // Compare-and-set on the status this refusal check was based on. Withdrawing
-    // frees a seat rather than taking one, so it needs no event lock -- but a
-    // host approving the same row at the same moment does need to lose cleanly,
-    // and this is what decides that. No rows written means the row moved first.
-    const registration = await db.registrations.update(
+    // Compare-and-set on the status this refusal check was based on, under the
+    // event-row lock. Withdrawing frees a seat rather than taking one, so it
+    // needs no count -- but a host approving the same row at the same moment
+    // must lose cleanly (`stale`), and a delete that committed first must win
+    // (`gone`: nothing written, the same 404 as an event that never existed).
+    const write = await db.registrations.update(
+      detail.event.id,
       existing.id,
       { status: "cancelled" },
       existing.status,
     );
 
-    if (!registration) throw ApiError.conflict(REGISTRATION_ACTION_COPY.stale);
-
-    return jsonOk({ registration });
+    switch (write.outcome) {
+      case "updated":
+        return jsonOk({ registration: write.registration });
+      case "stale":
+        throw ApiError.conflict(REGISTRATION_ACTION_COPY.stale);
+      case "gone":
+        throw ApiError.notFound();
+    }
   },
 );

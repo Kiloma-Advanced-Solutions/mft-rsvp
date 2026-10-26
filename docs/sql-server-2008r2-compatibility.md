@@ -292,7 +292,7 @@ during M6, because there is no access to the real SQL Server 2008 R2 server.
 | **Driver compatibility** | That `mssql`/Tedious can talk to that specific deployment at all. |
 | **Collation** | A case-sensitive or binary collation would affect the lowercase status literals in the `CHECK` constraints. |
 | **Permissions** | Whether the deployment account may create the application's tables. |
-| **Locking / runtime behaviour** | `UPDLOCK` semantics under that server's optimizer, and `@@ROWCOUNT` behaviour in its engine. |
+| **Locking / runtime behaviour** | `UPDLOCK` semantics under that server's optimizer, and `@@ROWCOUNT` behaviour in its engine — including C5's soft delete racing edits, lifecycle transitions, seat claims and the event-locked registration transitions, verified so far only on Azure SQL DEV (see "Soft deletion (C5)"). |
 
 The preflight script (`scripts/check-target-compatibility.mts`, added in the
 connectivity slice) runs these checks against whatever server it is pointed at.
@@ -334,16 +334,24 @@ by default and a stock 2008 R2 does not. The protocol is correct either way —
 `UPDLOCK` is requested explicitly and honoured under both — but the report says
 which engine the evidence came from rather than leaving it assumed.
 
-Transitions that cannot raise the count — withdrawing, rejecting, requesting a
-place on an `approval` event, publishing — take no lock. They are single
-statements made safe by the same expected-status predicate:
+Transitions that cannot raise the count re-run no rule under a lock, and are
+made safe against each other by the same expected-status predicate:
 `UPDATE … WHERE Id = @id AND Status = @expectedStatus`. Zero rows affected means
-somebody else decided first, which the route reports as a conflict.
+somebody else decided first, which the route reports as a conflict. Publishing
+and cancelling are single statements on the event row. Withdrawing, rejecting
+and removing (since C5) are a short transaction that takes the event-row lock
+first — the same `UPDLOCK, ROWLOCK` read, filtered on `DeletedAt IS NULL` —
+and then makes that update, so they are ordered against a soft delete; see
+"Soft deletion (C5)" below. (Requesting a place on an `approval` event is a
+seat claim, not one of these.)
 
-**Lock order is the event side first, always.** `removeEvent` takes the event
-row before deleting the registrations that reference it, for that reason alone —
-without it, a delete and a seat claim hold what the other needs next and
-deadlock. No transaction in this application acquires two event rows.
+**Lock order is the event side first, always.** Every transaction that touches
+an event's registrations, invitations or the event row itself in more than one
+statement takes the event row first: the seat claims, the soft delete,
+inviting and revoking, and withdrawing, rejecting and removing. Without that, a
+writer holding a registration row and one holding the event row could each
+wait for what the other holds. No transaction in this application acquires two
+event rows.
 
 `db:reset` obeys the same rule at table granularity: it clears every event, so
 there is no single row to take, and it opens its transaction with
@@ -355,6 +363,51 @@ remains a destructive development command: the lock removes the known cycle
 between a reset and a seat claim, which is not the same as proving no deadlock
 is possible, and neither is it a reason to run one while an application is
 serving traffic.
+
+### Soft deletion (C5)
+
+Deleting an event stamps a nullable column instead of removing rows. What it
+uses, and how much of it is proven where:
+
+**At the 2008 R2 floor — syntax and features.** All of it predates 2008 R2 and
+passes `check:tsql`:
+
+- `ALTER TABLE dbo.Events_Events ADD DeletedAt datetime2(3) NULL` (migration
+  `0003`) — `datetime2` since 2008, adding a nullable column with no default;
+- the soft delete itself, `UPDATE … SET DeletedAt = @now, UpdatedAt = @now
+  WHERE Id = @id AND DeletedAt IS NULL`, with `@now` bound by the application —
+  no server clock;
+- `DeletedAt IS NULL` in every event read, including the `WITH (UPDLOCK,
+  ROWLOCK)` reads that lock the event row;
+- the registration update's active-parent condition, `AND EXISTS (SELECT 1
+  FROM dbo.Events_Events AS e WHERE e.Id = dbo.Events_Registrations.EventId AND
+  e.DeletedAt IS NULL)`, alongside the existing expected-status predicate and
+  `IF @@ROWCOUNT > 0 SELECT …`;
+- the transaction that takes the event-row lock before updating a registration.
+
+**Verified on Azure SQL DEV only.** That database reports
+`READ_COMMITTED_SNAPSHOT` on and optimized locking on. There, C5 observed:
+
+- a registration `UPDATE` whose only protection was the `EXISTS` **did** write
+  after a delete that committed while the update waited on its own target row —
+  the parent condition was evaluated before the wait and not again after it.
+  A `READCOMMITTEDLOCK` hint on the `EXISTS` did not change that outcome;
+- with the event-row lock taken first, the delete and the registration write
+  serialised on the event row in both orders: a delete committed first left no
+  row to lock (no write, 404), and a write that locked first made the delete
+  wait for it to commit;
+- edits, publishing and cancelling, which update the event row itself, wrote
+  nothing when a delete committed during their wait, and the seat claim's
+  locked read waited for an in-flight delete and then found no event;
+- concurrent transitions on a live event still produced one winner and one
+  conflict, with no deadlock.
+
+**Not verified on a real SQL Server 2008 R2.** None of the above has run there.
+The design rests on `UPDLOCK` and event-first lock order, which 2008 R2
+supports, rather than on row-versioning behaviour, and a stock 2008 R2 has
+neither `READ_COMMITTED_SNAPSHOT` (unless enabled) nor optimized locking — so
+the same outcomes are expected, but expected is all it is until the
+deployment preflight above is run against that server.
 
 ## Shared-database safety rules
 

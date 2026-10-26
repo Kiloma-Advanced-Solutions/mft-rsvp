@@ -141,12 +141,42 @@ Fixtures — 12 events, 5 people, every state covered — are defined once in
 The application reads only their fixed ids and the persona order from that file,
 never the records.
 
+**Deletion is soft (C5).** `dbo.Events_Events.DeletedAt` (`datetime2(3)`,
+nullable, migration `0003`) is `NULL` for a live event and stamped, together
+with `UpdatedAt`, from the application's clock when the event is deleted.
+Nothing else is written: the event's registrations, co-hosts and invitations
+stay exactly as they were. A deleted event is treated as nonexistent at the
+data layer, which is what makes it nonexistent everywhere above it:
+
+- **Every statement that reads an event row filters `DeletedAt IS NULL`** — the
+  board list, the single-event read, the seat claim's locked read and the bare
+  event-row lock, all in [lib/data/events.ts](../lib/data/events.ts). Pages and
+  routes therefore give a deleted event the same 404 as a missing one, admins
+  included; the seat protocol and the invitation writes see it as gone.
+  **A new event read must carry the same filter.** Reads of child rows that are
+  not scoped to one event — the co-host, invite and registration lists the board
+  loads — need none, because their rows are only ever attached to events that
+  came through the filtered read.
+- **`DeletedAt` never reaches `EventRecord`.** There is no "deleted" status and
+  no domain field; a deleted event is simply absent.
+- **Writes refuse a deleted event as well as reads.** `updateEvent` requires
+  `DeletedAt IS NULL` in its predicate; the registration update requires a live
+  parent in the same statement; and every write that touches an event's
+  registrations takes the event-row lock first — see "Seat-taking and
+  concurrency".
+- **Nothing restores or purges.** A development reset still hard-deletes every
+  row, deleted events included.
+
+Cancelling and deleting are different things: a cancelled event is a live
+event in its terminal `cancelled` status, still visible to whoever could see
+it; a deleted event is visible to nobody.
+
 **Read consistency.** An event is assembled from its row plus its co-host and
 invite rows, read by separate statements, and a board is assembled from separate
 event, user and registration reads. Each read sees committed data, but the
 stitched aggregate is **not** a database-wide snapshot, so a concurrent change
 can briefly show a mix of committed moments. The product accepts that for
-rendering. It matters for writes in three different ways:
+rendering. It matters for writes in four different ways:
 
 - **Capacity-sensitive writes** — taking a place, approving one, restoring a
   removed attendee — re-derive their decision inside the seat protocol, under
@@ -154,10 +184,16 @@ rendering. It matters for writes in three different ways:
 - **Invitation writes** — inviting and revoking — are not capacity-sensitive,
   but they re-derive their decision too: under the same event-row lock, from
   the event and invite list re-read there. See "Managing invitations" below.
-- **Every other write** — withdrawing, rejecting, removing an attendee,
-  editing, publishing, cancelling, deleting — authorises from the request's own
-  pre-write read (`getEventDetailForViewer`), and guards the transition itself,
-  where there is one, with an expected-status compare-and-set.
+- **Registration transitions** — withdrawing, rejecting, removing an attendee
+  — authorise from the request's own pre-write read
+  (`getEventDetailForViewer`), then write inside a short transaction that takes
+  the event-row lock first and guards the row with an expected-status
+  compare-and-set. They re-run no rule under the lock: the lock is there to
+  order them against a soft delete of the event (C5).
+- **Every other write** — editing, publishing, cancelling, deleting —
+  authorises from the request's own pre-write read, and guards the transition
+  itself, where there is one, with an expected-status compare-and-set on the
+  event row, which also requires the event not to be deleted.
 
 The mixed-moment window is narrow today. No product route writes co-host rows
 on their own. Invite rows are written one person at a time by the invitation
@@ -541,8 +577,9 @@ goes through `db.registrations.claimSeat`, which asks the same rule again inside
 the seat protocol, and **that** answer is the authoritative one: a request that
 loses the race for the last seat is refused with the same words it would have
 got by arriving a moment later. Withdrawing frees a place rather than taking
-one, so it is an expected-status transition that does not take the event-row
-seat lock.
+one, so it is not a seat claim: it is an expected-status transition that takes
+the event-row lock first only to be ordered against a soft delete — a delete
+that committed first makes it a 404 that writes nothing.
 
 Registering yields `going`, or `pending` where the access mode is `approval` —
 the mode decides, never the caller. A person has at most one registration per
@@ -587,7 +624,7 @@ POST   /api/events               create, always as a draft
 PATCH  /api/events/[id]          the event's editable content
 POST   /api/events/[id]/publish  draft -> published, no request body
 POST   /api/events/[id]/cancel   published -> cancelled, no request body
-DELETE /api/events/[id]          delete, taking its registrations with it
+DELETE /api/events/[id]          soft delete: the event ceases to exist for everyone
 ```
 
 **Where creation and editing live.** A new event is created at its own route,
@@ -646,6 +683,22 @@ changes its status. Cancelling leaves every
 registration row as it was; the event's status is what closes registering,
 withdrawing and deciding, through the shared rules that close on it.
 
+**Deleting is not a lifecycle transition.** It sets no status: it stamps
+`DeletedAt` (see "Data layer"), after which every read treats the event as
+nonexistent — a cancelled event stays visible, a deleted one is visible to
+nobody, admins included. Any event can be deleted, at any status and any date,
+by whoever may manage it. `db.events.remove()` takes the event-row lock first
+and stamps the row only if it is still live, so a second delete is a 404.
+
+**Deleted is 404, stale is 409.** Editing, publishing and cancelling write the
+event row with `DeletedAt IS NULL` in the predicate, so a delete that commits
+between the route's read and its write leaves the update affecting nothing.
+The route then asks `eventExists()` in [lib/events.ts](../lib/events.ts) —
+the ordinary filtered read — and answers 404 if the event is gone and the
+existing 409 if it is still there and its status moved first. These writes
+touch the event row itself, the row the soft delete also writes, so the row's
+own lock orders the two.
+
 **Dates.** Whether a start or end may change is a lifecycle question, so it is
 answered in [lib/permissions.ts](../lib/permissions.ts), not by the parser:
 `checkEventSchedule()` takes the stored event (or none, on create), the dates
@@ -685,10 +738,11 @@ keeps what is stored.
 
 **Registrations survive edits.** Changing access keeps every registration row —
 including when switching to `invite`, which removes visibility for people not on
-the invite list while leaving their rows intact. Deleting is the deliberate
-exception: `db.events.remove()` removes the event's registrations along with it,
-which is why the UI puts a confirmation in front of it that names how many
-confirmed places and pending requests go too. The dialog is an affordance; the
+the invite list while leaving their rows intact. Deleting keeps them too —
+since C5 the rows stay in the database — but takes every one of them out of
+reach with the event, so from the user's side the places and requests are
+lost. That is why the UI puts a confirmation in front of it that names how many
+confirmed places and pending requests go. The dialog is an affordance; the
 `DELETE` handler is what authorises and performs the deletion.
 
 ### Deciding requests — the approval queue
@@ -742,8 +796,9 @@ frees up.
 seat claim performed by a host: the route's check words the refusal, and
 `db.registrations.approve` re-reads the row and re-runs the same decision rule
 inside the seat protocol, which is the answer that counts — two hosts cannot
-approve into one seat. Rejecting cannot raise the count, so it is an
-expected-status transition that does not take the event-row seat lock. The two
+approve into one seat. Rejecting cannot raise the count, so it is not a seat
+claim: it is an expected-status transition that takes the event-row lock first
+only to be ordered against a soft delete, and re-runs no rule under it. The two
 are not symmetric when they race:
 
 - **approve first, reject second** — if reject read `pending` before the
@@ -823,7 +878,8 @@ it may do.
 
 **How the writes are made safe.** Removing lowers the `going` count, so it
 cannot overfill an event: it is an expected-status transition from `going`,
-with no event-row seat lock. Restoring raises the count, so it is the third
+not a seat claim — it takes the event-row lock first only to be ordered against
+a soft delete. Restoring raises the count, so it is the third
 seat claim — `db.registrations.restore` locks the event row, re-counts,
 re-runs `getAttendeeRestoreAvailability()` and writes only if the row is still
 `removed`. Two restores, or a restore and anybody else taking the last seat,
@@ -1029,10 +1085,22 @@ that:
 
 The rest of the rules around it:
 
-- **Writes that cannot raise the count** — withdrawing, rejecting, removing an
-  attendee, publishing, cancelling — do not take the event-row seat lock. They
-  are compare-and-set transitions on the expected status; zero rows written
-  means somebody else moved first, which routes report as a conflict.
+- **Writes that cannot raise the count** are compare-and-set transitions on
+  the expected status, and none re-runs a rule under a lock. Publishing and
+  cancelling write the event row alone. Withdrawing, rejecting and removing an
+  attendee (`transitionRegistration` in
+  [lib/data/registrations.ts](../lib/data/registrations.ts)) take the
+  event-row lock — the same filtered `UPDLOCK` the seat claim takes — before
+  writing their row, for one reason: to be ordered against a soft delete of the
+  event (C5). A delete that committed first leaves no live row to lock, so the
+  transition writes nothing and is `gone` (404); one that locked first makes
+  the delete wait, so the transition is ordered before it. A row already moved
+  is `stale` (409). The registration `UPDATE` also requires a live parent in
+  the same statement, but only as a second line of defence: under
+  `READ_COMMITTED_SNAPSHOT` with optimized locking (Azure SQL) that check is
+  made before the statement waits on its row and is not repeated after the
+  wait, which C5 reproduced as a write landing after a committed delete. Why
+  the lock was chosen: [dec_log.md](dec_log.md).
 - **Invitation writes take the lock without being seat claims.** Inviting and
   revoking write no registration and read no count, but they lock the event row
   before touching an invite row. Every seat claim reads the invite list while it
@@ -1043,12 +1111,16 @@ The rest of the rules around it:
   `db.registrations.update` accepts — cannot express `going`, `eventId` or
   `userId`. That is a type-level restriction, not runtime validation: it keeps
   ordinary callers from being handed a seat-granting or re-parenting write. The
-  wider internal update inside `lib/data/` exists for `seats.ts` alone; a new
+  wider internal update inside `lib/data/` exists for `seats.ts` and for
+  `transitionRegistration`, which only ever receives the narrowed patch; a new
   runtime statement that sets `going` anywhere else breaks the invariant and
   nothing in the database will catch it. Add it to `seats.ts` instead.
 - **Lock order starts from the event side**: deleting an event, inviting and
-  revoking each take its row before touching what references it, and no
-  application transaction takes two event rows.
+  revoking, and withdrawing, rejecting and removing each take its row before
+  touching anything that references it, and no application transaction takes
+  two event rows. Since C5 every runtime registration write takes its event's
+  row first, so no transaction holds a registration row while it waits for
+  that event's row, and the two cannot form a cycle.
 - **The seed and reset tooling is out of band.** It writes the fixtures —
   including registrations already `going` — into an empty or just-cleared
   schema, under its own safety model ([u_environment.md](u_environment.md)).
@@ -1075,6 +1147,8 @@ Why the protocol replaced the race M3 accepted: [dec_log.md](dec_log.md).
 | Identity | [lib/session.ts](../lib/session.ts) — server only |
 | Persistence boundary, ids and timestamps | [lib/db.ts](../lib/db.ts) — server only |
 | SQL and data access | [lib/data/](../lib/data/) — server only; connection string and pool in [lib/data/client.ts](../lib/data/client.ts) |
+| Soft deletion, the `DeletedAt IS NULL` read filter and the event-row lock (`lockEvent`) | [lib/data/events.ts](../lib/data/events.ts) |
+| Withdraw, reject and remove under the event-row lock (`transitionRegistration`) | [lib/data/registrations.ts](../lib/data/registrations.ts) |
 | The seat-claim protocol — the only runtime path that may produce `going` | [lib/data/seats.ts](../lib/data/seats.ts) |
 | Schema | [migrations/](../migrations/) |
 | The SQL Server target, rejected constructs and shared-database rules | [docs/sql-server-2008r2-compatibility.md](../docs/sql-server-2008r2-compatibility.md) — **authoritative** |

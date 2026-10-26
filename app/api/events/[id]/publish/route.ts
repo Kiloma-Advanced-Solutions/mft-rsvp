@@ -20,7 +20,7 @@
 import { ApiError, jsonOk, withErrorHandling } from "@/lib/api";
 import { isPast } from "@/lib/date";
 import { db } from "@/lib/db";
-import { getEventDetailForViewer } from "@/lib/events";
+import { eventExists, getEventDetailForViewer } from "@/lib/events";
 import { MANAGE_ACTION_COPY } from "@/lib/labels";
 import { canManageEvent } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
@@ -76,7 +76,14 @@ export const POST = withErrorHandling(
       { status: "published" },
       "draft",
     );
-    if (!event) throw ApiError.conflict(MANAGE_ACTION_COPY.stale);
+    if (!event) {
+      // Nothing written. Either the event was deleted between the read above
+      // and this write -- the same 404 as an event that never existed -- or it
+      // is still there and the row moved first, which stays a conflict.
+      throw (await eventExists(detail.event.id))
+        ? ApiError.conflict(MANAGE_ACTION_COPY.stale)
+        : ApiError.notFound();
+    }
 
     return jsonOk({ event });
   },

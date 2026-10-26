@@ -71,6 +71,22 @@ The rules a migration must follow are in the runner's header,
 [lib/data/migrate.mts](../lib/data/migrate.mts), and in the compatibility
 document above.
 
+**Migration `0003` (C5)** adds one nullable column,
+`dbo.Events_Events.DeletedAt datetime2(3) NULL`, with no default, index or
+constraint. It changes no data: every existing event reads `NULL` and stays
+live, and nothing is removed from any table. It was applied to the shared Azure
+SQL DEV database on 2026-10-26, from the C5 branch and with explicit approval,
+after a `sys.tables` snapshot before and after showed that only
+`Events_Events` changed. Because the database is shared, a dev server running
+code from before C5 still sees soft-deleted events as live — see
+[s_status.md](s_status.md) "Known limitations".
+
+`npm run db:check` reports the target's isolation flavour. On Azure SQL DEV it
+reports `READ_COMMITTED_SNAPSHOT` on; C5 additionally observed that optimized
+locking is on there (`DATABASEPROPERTYEX(DB_NAME(), 'IsOptimizedLockingOn')`),
+which `db:check` does not report. Concurrency results from DEV are evidence about
+that engine only; nothing has been run against a real SQL Server 2008 R2.
+
 ## Sharing and email
 
 - **Configuration.** [.env.example](../.env.example) is authoritative for the

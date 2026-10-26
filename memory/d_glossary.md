@@ -66,7 +66,18 @@ for the five seeded personas and what each is useful for.
   - `cancelled` — called off, but not deleted. Reached only from `published`,
     and terminal: an event never leaves it. Still visible to whoever could see
     it; registering, withdrawing and deciding requests are closed; its
-    registrations are kept as they were.
+    registrations are kept as they were. Not the same as a registration whose
+    status is `cancelled`, which means its owner withdrew.
+- **deleted** (also **soft-deleted**) — an event a host or admin has deleted.
+  **Not an event status**: the row keeps whatever status it had and gains a
+  `DeletedAt` stamp, and from then on every read treats the event as
+  nonexistent — absent from the board, a 404 on its page and on every route,
+  for everyone, admins included. Its registrations, co-hosts and invitations
+  stay in the database, unreachable. Nothing restores or purges it. Unlike a
+  `cancelled` event, which stays visible, a deleted one is visible to nobody.
+- **missing** / **not visible** — what a 404 means. An event that does not
+  exist, one that has been deleted, and one the viewer may not see all answer
+  the same 404, so a response never confirms which.
 - **started** (also **past**) — the event's start time has passed, by the
   server's clock. An event in progress has started. It closes registering,
   withdrawing, deciding, removing, restoring, cancelling, sharing and inviting,

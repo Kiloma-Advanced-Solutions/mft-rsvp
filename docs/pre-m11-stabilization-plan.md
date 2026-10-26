@@ -151,6 +151,26 @@ fetch, and merged back through its own PR before the next is cut.
   This is a planning direction, not a proven design: C5 must validate it (§7)
   and, if it cannot guarantee the behaviour, stop and reassess rather than
   proceed.
+
+  **Outcome (C5 Slice 2, 2026-10-26): the lock-free direction failed
+  validation and was replaced, with approval.** On Azure SQL DEV
+  (`READ_COMMITTED_SNAPSHOT` and optimized locking both on), a withdraw,
+  reject or remove whose `UPDATE` waited on its registration row while a
+  delete committed resumed and wrote the row — 200 after the delete — because
+  the `EXISTS` was evaluated before the wait and not after it. A
+  `READCOMMITTEDLOCK` hint on the `EXISTS` was tried experimentally and did not
+  prevent it. The approved correction is the fallback named above: the three
+  writes run as a short transaction that takes the event-row lock first
+  (`lockEvent`, the filtered `LOCK_EVENT` with `UPDLOCK, ROWLOCK`) and then
+  makes the unchanged compare-and-set update (`transitionRegistration` in
+  `lib/data/registrations.ts`). A delete committed first leaves nothing to
+  lock — 404, no write; a write that locked first makes the delete wait and is
+  ordered before it; a moved row is 409. The `EXISTS` stays as a second guard.
+  These three routes take 404/409 from the transaction's outcome and do not
+  re-read the event; the re-read (`eventExists` in `lib/events.ts`) serves
+  edit, publish and cancel. Trade-off: these writes now serialise with
+  everything else that locks the same event row. Recorded in `dec_log.md`
+  (2026-10-26).
 - **Out of scope:** restore, purge, admin visibility, delete-dialog copy (its
   wording stays true from the user's point of view).
 
@@ -233,6 +253,12 @@ that implements it.
   plus the active-parent condition, with 404 for a deleted parent and 409 for a
   stale transition. Seat-taking writes are already covered by the event-row
   lock and the filtered `SELECT_EVENT_FOR_UPDATE`.
+  **As implemented in C5:** the parent check in the same statement is kept,
+  but it proved insufficient on its own, and withdraw, reject and remove now
+  take the event-row lock first, like the seat-taking writes — see the C5
+  outcome in §3. The invariant that holds: a registration mutation never
+  commits after a completed delete of its event unless it was ordered before
+  that delete by the event-row lock.
 - **Deleted is 404, stale is 409, on every write.** Any write that affects no
   row because its event was deleted between the handler's read and its write —
   event content edits, publish and cancel as well as the registration writes —
@@ -379,6 +405,21 @@ that, not assume it**:
   is visible, or a 404/409 that cannot be told apart reliably — stop C5 and
   reassess the design (for example, a locked transaction for these three
   writes) with approval, rather than proceeding.
+
+**What C5 found.** Isolation mode: `READ_COMMITTED_SNAPSHOT` on, and —
+which `db:check` does not report — optimized locking on, on Azure SQL DEV.
+The second bullet's failure occurred: a write landed after the delete was
+committed and visible, when the registration `UPDATE` was blocked on its own
+row during the delete (reproduced through the API for withdraw, reject and
+remove, and directly in SQL). The event handlers behaved as expected: their
+`UPDATE` targets the event row, so a delete during their wait left them
+affecting nothing, and they answered 404. C5 stopped, and the locked
+transaction was approved; the outcome is in §3. Retested in both orders after
+the change: no write after a committed delete, the delete waiting on a
+transition that locked first, one winner and one 409 for concurrent
+transitions on a live event, and no deadlock. Lock ordering needs no exception
+any more — the three writes now take the event row first. Not run on a real
+2008 R2.
 
 ### Host participation (C6)
 
