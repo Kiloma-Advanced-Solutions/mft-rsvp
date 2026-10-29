@@ -49,10 +49,13 @@
 }
 
 @media (min-width: 921px) {
-  /* The panel follows a long description down the page. */
+  /*
+    The panel follows a long description down the page. At this width the
+    navigation is a rail at the side, so nothing sits above the content.
+  */
   .aside {
     position: sticky;
-    top: calc(var(--topbar-height) + var(--space-5));
+    top: var(--space-5);
   }
 }
 

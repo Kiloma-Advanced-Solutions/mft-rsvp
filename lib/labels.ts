@@ -78,7 +78,7 @@ export const EVENT_STATUS_LABELS: Record<EventStatus, string> = {
 };
 
 export const EVENT_STATUS_TONES: Record<EventStatus, BadgeTone> = {
-  draft: "neutral",
+  draft: "draft",
   published: "success",
   cancelled: "danger",
 };
@@ -98,8 +98,8 @@ export const REGISTRATION_TONES: Record<RegistrationStatus, BadgeTone> = {
   going: "success",
   pending: "warning",
   rejected: "danger",
-  cancelled: "neutral",
-  waitlisted: "info",
+  cancelled: "draft",
+  waitlisted: "planned",
   removed: "danger",
 };
 
@@ -1294,6 +1294,8 @@ export const APP_LABELS = {
   documentTitleTemplate: "%s · לוח האירועים",
   documentDescription:
     "יצירה, פרסום והרשמה לאירועי החברה — פתוחים, באישור מארח או בהזמנה בלבד.",
+  /** The navigation rail's landmark name. */
+  mainNavigation: "ניווט ראשי",
 };
 
 /** The persona switcher, which stands in for signing in. */
@@ -1303,6 +1305,14 @@ export const PERSONA_LABELS = {
     "אין התחברות בפרויקט הזה. החלפת פרסונה מגדירה עוגייה שהשרת קורא בכל בקשה.",
   switchFailed: "לא הצלחנו להחליף פרסונה",
 };
+
+/**
+ * "החלפת פרסונה, כרגע מיה כהן" — the switcher's accessible name. It says what
+ * the control does as well as who is current, which the avatar alone cannot.
+ */
+export function switchPersonaLabel(name: string): string {
+  return `החלפת פרסונה, כרגע ${name}`;
+}
 
 /** "צופים עכשיו בתור מיה כהן" — the toast after a successful switch. */
 export function nowViewingAsLabel(name: string): string {

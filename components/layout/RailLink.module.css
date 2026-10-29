@@ -1,0 +1,40 @@
+/* An icon over its name, dimmed until it is current, pointed at or focused. */
+.item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  width: calc(var(--rail-width) - var(--space-3));
+  padding: var(--space-2) var(--space-1);
+  border-radius: var(--radius-control);
+  color: var(--color-on-rail);
+  font-size: var(--text-micro);
+  line-height: var(--leading-snug);
+  text-align: center;
+  opacity: 0.6;
+  transition: opacity var(--transition-fast);
+}
+
+.item:hover,
+.item:focus-visible,
+.item[aria-current="page"] {
+  opacity: 1;
+}
+
+/* Keeps its shape when focused, against the global focus rule's radius. */
+.item:focus-visible {
+  border-radius: var(--radius-control);
+}
+
+.icon {
+  display: grid;
+  place-items: center;
+  width: var(--control-height-icon);
+  height: var(--space-8);
+  border-radius: var(--radius-lg);
+  transition: background var(--transition-fast);
+}
+
+.item[aria-current="page"] .icon {
+  background: var(--color-rail-active);
+}

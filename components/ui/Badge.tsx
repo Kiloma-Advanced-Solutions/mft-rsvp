@@ -10,7 +10,9 @@ export type BadgeTone =
   | "success"
   | "warning"
   | "danger"
-  | "info";
+  | "info"
+  | "draft"
+  | "planned";
 
 export type BadgeVariant = "soft" | "outline" | "solid";
 

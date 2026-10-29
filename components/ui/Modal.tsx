@@ -7,7 +7,11 @@ import { cx } from "@/lib/cx";
 import { UI_LABELS } from "@/lib/labels";
 
 import { Button } from "./Button";
+import { Icon } from "./Icon";
 import styles from "./Modal.module.css";
+
+/** Marks the control a dialog focuses when it opens: `data-initial-focus`. */
+const INITIAL_FOCUS = "data-initial-focus";
 
 /**
  * Modal built on the native `<dialog>` element, so focus trapping, the top
@@ -20,6 +24,11 @@ import styles from "./Modal.module.css";
  * The dialog is named by its title and described by its description, when it
  * has one: a visible heading alone does not name a `<dialog>`, so without these
  * a screen reader would announce an unnamed dialog.
+ *
+ * Opening, the platform focuses the first focusable control. A control marked
+ * with `INITIAL_FOCUS` takes it instead, moved in the same task as
+ * `showModal()`, so no key press can land on whatever came first. React's
+ * `autoFocus` cannot do this: it focuses on mount, while the dialog is closed.
  */
 export function Modal({
   open,
@@ -31,17 +40,21 @@ export function Modal({
   size = "md",
   /** Set false for flows where dismissing halfway would lose work. */
   dismissible = true,
+  /** The visible close button. Escape and the backdrop still dismiss without it. */
+  closeButton = true,
 }: {
   open: boolean;
   onClose: () => void;
   title: ReactNode;
   description?: ReactNode;
-  children: ReactNode;
+  children?: ReactNode;
   footer?: ReactNode;
   size?: "sm" | "md" | "lg";
   dismissible?: boolean;
+  closeButton?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const headerRef = useRef<HTMLElement>(null);
   const titleId = useId();
   const descriptionId = useId();
 
@@ -51,6 +64,11 @@ export function Modal({
 
     if (open && !dialog.open) {
       dialog.showModal();
+      // The dialog stays mounted while closed, so a header scrolled last time
+      // would reopen scrolled; every opening starts at the title. Only once it
+      // is shown -- a closed dialog has no layout, and ignores the reset.
+      if (headerRef.current) headerRef.current.scrollTop = 0;
+      dialog.querySelector<HTMLElement>(`[${INITIAL_FOCUS}]`)?.focus();
     } else if (!open && dialog.open) {
       dialog.close();
     }
@@ -74,7 +92,7 @@ export function Modal({
       }}
     >
       <div className={styles.panel}>
-        <header className={styles.header}>
+        <header ref={headerRef} className={styles.header}>
           <div className={styles.titleGroup}>
             <h2 id={titleId} className={styles.title}>
               {title}
@@ -85,19 +103,19 @@ export function Modal({
               </p>
             )}
           </div>
-          {dismissible && (
+          {dismissible && closeButton && (
             <button
               type="button"
               className={styles.close}
               onClick={onClose}
               aria-label={UI_LABELS.close}
             >
-              ✕
+              <Icon name="close" />
             </button>
           )}
         </header>
 
-        <div className={styles.body}>{children}</div>
+        {children && <div className={styles.body}>{children}</div>}
 
         {footer && <footer className={styles.footer}>{footer}</footer>}
       </div>
@@ -108,6 +126,12 @@ export function Modal({
 /**
  * Destructive-action confirmation. Reach for this before deleting anything —
  * "are you sure" is cheap, an accidentally deleted event is not.
+ *
+ * The action leads and the way back follows it, as the design system orders
+ * them, but focus opens on the way back: Enter or Space straight after opening
+ * never confirms. There is no close button; Escape, the backdrop and the
+ * cancel action are the ways out, and none of them while a request is running.
+ * The message is the dialog's description, so it is announced with the title.
  */
 export function ConfirmDialog({
   open,
@@ -135,13 +159,12 @@ export function ConfirmDialog({
       open={open}
       onClose={onCancel}
       title={title}
+      description={message}
       size="sm"
       dismissible={!loading}
+      closeButton={false}
       footer={
-        <>
-          <Button variant="ghost" onClick={onCancel} disabled={loading}>
-            {cancelLabel}
-          </Button>
+        <div className={styles.confirmActions}>
           <Button
             variant={destructive ? "danger" : "primary"}
             onClick={onConfirm}
@@ -149,10 +172,16 @@ export function ConfirmDialog({
           >
             {confirmLabel}
           </Button>
-        </>
+          <Button
+            variant="secondary"
+            onClick={onCancel}
+            disabled={loading}
+            data-initial-focus
+          >
+            {cancelLabel}
+          </Button>
+        </div>
       }
-    >
-      <p className={styles.confirmMessage}>{message}</p>
-    </Modal>
+    />
   );
 }

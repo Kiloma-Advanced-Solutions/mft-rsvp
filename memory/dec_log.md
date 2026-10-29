@@ -1509,3 +1509,38 @@ The behaviour has been observed only on Azure SQL DEV; it has not been run on a
 real SQL Server 2008 R2. This replaces the lock-free design in
 [docs/pre-m11-stabilization-plan.md](../docs/pre-m11-stabilization-plan.md) §3
 "C5" and §6, which record the change.
+
+---
+
+## 2026-10-28 — Navigation returns as a rail: the board and "new event" as destinations, the persona at the top
+
+Context: the entry "The top bar has no separate nav; the brand is its only
+link" (2026-10-22) removed the nav because it held one destination, and said it
+would come back if a second one appeared, in whatever form the M11 redesign
+set. The approved M11 design gives the frame a navy rail at the inline start,
+with the persona at its top and two destinations under it: the board, and
+"new event" for whoever may create.
+
+Decision: the top bar is replaced by that rail, a `<nav>` named "ניווט ראשי"
+inside it. "New event" is listed only when `canCreateEvent` allows it — the
+same rule the board's own button and the route use — so the rail never offers
+what the server would refuse. The current destination is marked with
+`aria-current="page"` by `RailLink`, the one client leaf the navigation needs;
+`AppShell` stays a Server Component. A destination is current on its own path
+only: the board is not current on an event's page. Below 760px the rail
+becomes a 56px bar with the brand at the start and the persona's avatar at the
+end, and the destinations leave it — the board's page header carries "new
+event", as it already did. The persona switcher moved onto the shared `Menu`,
+which supplies the keyboard model and focus handling; the switching itself is
+unchanged. This reverses the 2026-10-22 entry.
+
+Rationale: with "new event" in the frame there are two destinations again,
+which is the case that entry left open. Deriving the item from the shared
+permission rule keeps the frame, the board and the route in agreement.
+Marking the current item in the browser keeps the whole frame server-rendered
+apart from that marker.
+
+Consequences: the frame has a navigation landmark again, and `--topbar-height`
+is gone; the detail page's sticky panel is offset from the top of the viewport
+alone, since nothing sits above the content on a wide screen. On a narrow
+screen the navigation is the brand link and the pages' own actions.

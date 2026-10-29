@@ -1,19 +1,27 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { APP_LABELS } from "@/lib/labels";
+import { Icon } from "@/components/ui";
+import { APP_LABELS, MANAGE_LABELS } from "@/lib/labels";
+import { canCreateEvent } from "@/lib/permissions";
 import { getCurrentUser, listPersonas } from "@/lib/session";
 
 import { PersonaSwitcher } from "./PersonaSwitcher";
+import { RailLink } from "./RailLink";
 import styles from "./AppShell.module.css";
 
 /**
- * The frame every page sits in: sticky top bar, centred content column.
+ * The frame every page sits in: a navigation rail at the inline start and a
+ * centred content column beside it. On a narrow screen the same rail becomes a
+ * bar across the top, with the brand at the start and the persona at the end;
+ * its destinations are left to the pages, whose headers carry "new event".
+ *
+ * The rail is first in the document and the frame is a flex row, so `dir`
+ * alone puts it on the right in Hebrew -- nothing here is mirrored by hand.
  *
  * It is a Server Component so it can read the session and the user list
- * directly. Only the interactive bit below it — the persona switcher — crosses
- * into the client. The brand is the one link: the board is the only top-level
- * destination, so there is no separate nav.
+ * directly, and ask the shared permission rule who may create. Only the
+ * persona switcher and the current-page marker cross into the client.
  */
 export async function AppShell({ children }: { children: ReactNode }) {
   const [currentUser, users] = await Promise.all([
@@ -24,24 +32,31 @@ export async function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className={styles.shell}>
-      <header className={styles.topbar}>
-        <div className={styles.topbarInner}>
-          <Link
-            href="/events"
-            className={styles.brand}
-            aria-label={APP_LABELS.brand}
-          >
-            <span className={styles.brandMark} aria-hidden>
-              E
-            </span>
-            <span className={styles.brandName}>{APP_LABELS.brand}</span>
-          </Link>
+      <header className={styles.rail}>
+        <Link href="/events" className={styles.brand}>
+          <Icon name="board" size="lg" />
+          {APP_LABELS.brand}
+        </Link>
 
-          <PersonaSwitcher currentUser={currentUser} users={users} />
-        </div>
+        <PersonaSwitcher currentUser={currentUser} users={users} />
+
+        <span className={styles.railDivider} aria-hidden />
+
+        <nav className={styles.railNav} aria-label={APP_LABELS.mainNavigation}>
+          <RailLink href="/events" icon="board" label={APP_LABELS.brand} />
+          {canCreateEvent(currentUser) && (
+            <RailLink
+              href="/events/new"
+              icon="plus"
+              label={MANAGE_LABELS.create}
+            />
+          )}
+        </nav>
       </header>
 
-      <main className={styles.main}>{children}</main>
+      <main className={styles.main}>
+        <div className={styles.page}>{children}</div>
+      </main>
     </div>
   );
 }

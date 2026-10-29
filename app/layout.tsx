@@ -1,16 +1,11 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Rubik } from "next/font/google";
+import { Geist_Mono, Rubik } from "next/font/google";
 
 import { AppShell } from "@/components/layout/AppShell";
 import { ToastProvider } from "@/components/ui";
 import { APP_LABELS } from "@/lib/labels";
 
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
@@ -24,6 +19,12 @@ const geistMono = Geist_Mono({
   Both subsets are loaded on purpose: the UI is Hebrew, but Latin survives in
   code spans, joining links and platform names, and a Hebrew-only face would
   have dropped those to a fallback mid-sentence.
+
+  No `weight`: Rubik is a variable font, and its default is the whole weight
+  axis in one file per subset. That axis (300-900) covers the 300-700 the
+  design system uses. The loader's types for Rubik accept single weights or a
+  list of static files, not a sub-range of the axis, and a static list would
+  mean one file per weight.
 */
 const rubik = Rubik({
   variable: "--font-rubik",
@@ -48,7 +49,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="he"
       dir="rtl"
-      className={`${rubik.variable} ${geistSans.variable} ${geistMono.variable}`}
+      className={`${rubik.variable} ${geistMono.variable}`}
     >
       <body>
         {/*

@@ -14,6 +14,7 @@ export { Button, buttonClass } from "./Button";
 export type { ButtonSize, ButtonVariant } from "./Button";
 export { Card, CardBody, CardFooter, CardHeader } from "./Card";
 export { EmptyState } from "./EmptyState";
+export { Icon } from "./Icon";
 export {
   Checkbox,
   Field,
@@ -23,6 +24,7 @@ export {
   Select,
   Textarea,
 } from "./Field";
+export { Menu } from "./Menu";
 export { ConfirmDialog, Modal } from "./Modal";
 export { PageHeader } from "./PageHeader";
 export { SegmentedControl } from "./SegmentedControl";

@@ -5,20 +5,25 @@ progresses — it is current state, not a changelog.
 
 ## Active milestone
 
-**Pre-M11 stabilization — in progress.** Eleven fixes and
-behaviour changes requested after M10 are being delivered before M11 in six
-branches, C1–C6, in a fixed order; two of them (category colours and the
-explanatory-note review) are deferred into M11. The approved requirements,
-branch boundaries, order and decisions H1–H3 are in
+**M11, the system redesign — in progress.** M11 restyles the whole UI to the
+Iron Numbers design system, which has been supplied, and changes presentation
+only: no rule, API, schema or permission changes. It is delivered in four
+sequential PRs. PR 1 — design foundations, the shared UI kit and the
+navigation shell — is implemented. PRs 2–4 (the board; the detail page and
+host management; the forms and the milestone's close-out) have not started.
+[TASKS.md](../TASKS.md) §5 still describes M11 as awaiting its Style Guide; it
+is brought up to date when the milestone closes.
+
+**Pre-M11 stabilization — C1–C5 merged, C6 after M11.** Eleven fixes and
+behaviour changes requested after M10 were planned in six branches, C1–C6; two
+of them (category colours and the explanatory-note review) are deferred into
+M11. The approved requirements, branch boundaries and decisions H1–H3 are in
 [docs/pre-m11-stabilization-plan.md](../docs/pre-m11-stabilization-plan.md),
-a temporary plan that the last of the six branches retires. Nothing it
-describes as new behaviour is built until its branch is merged. Branches
-merged so far: C1 (removing the workshop pages, PR #41), C2 (UI text
-fixes, PR #42), C3 (rejected users on open events, PR #43) and C4 (event
-date rules, PR #44). C5 (soft deletion) is implemented and verified on its
-branch, `yardenah/soft-delete-events`, but not yet committed, reviewed or
-merged; its migration `0003` is already applied to the shared DEV database.
-C6 has not started.
+a temporary plan that C6 retires; its order — C6 before M11 — has since been
+changed, and M11 now comes first. Merged: C1 (removing the workshop pages,
+PR #41), C2 (UI text fixes, PR #42), C3 (rejected users on open events,
+PR #43), C4 (event date rules, PR #44) and C5 (soft deletion, PR #45, with
+migration `0003`). C6 (host participation) has not started.
 
 M1–M10 are complete and merged into
 `yardenah/events-board`: the original assignment's three `must` and two
@@ -30,9 +35,8 @@ shareable event links and email sharing (PR #38). The UI is also
 localized to Hebrew and RTL (PR #25), which changed presentation only; what it
 fixed in place is in [a_system.md](a_system.md).
 
-**After the stabilization, M11 and M12, both future work.** M11 (system
-redesign, against an external Style Guide that has not been supplied yet) and
-M12 (application logging) are specified in [TASKS.md](../TASKS.md) §5. The
+**After M11 and C6, M12 — future work.** M12 (application logging) is
+specified in [TASKS.md](../TASKS.md) §5. The
 rest of the original stretch list — the calendar view first, then the waitlist,
 search, "my events", optimistic UI and a theme toggle — is also unstarted.
 Authoritative requirements for every milestone, extension and stretch goal:
@@ -68,7 +72,7 @@ passed cannot be published until it is moved, and a published event that has
 started or a cancelled one keeps its dates — the form shows them disabled and
 says why. The rules are in [TASKS.md](../TASKS.md) §4 "Scheduling".
 
-On the C5 branch, not yet merged: deleting an event is **soft**. The event row
+Since C5, deleting an event is **soft**. The event row
 stays, stamped with `DeletedAt`, and from then on it does not exist for anyone
 — absent from the board, a 404 on its page and on every route, admins
 included. Its registrations, co-hosts and invitations stay in the database,
@@ -141,7 +145,9 @@ Everything that is not the product was supplied. Do not rebuild it — see
 
 - Design tokens (light and dark) and the `components/ui/` kit.
 - `components/events/` — cards, badges, date blocks, capacity meter.
-- `components/layout/` — app shell, brand link, persona switcher.
+- `components/layout/` — app shell (the navigation rail, or a top bar on a
+  narrow screen) and persona switcher; restyled by M11 PR 1, with the tokens
+  and the `components/ui/` kit.
 - The fixtures — 12 events and 5 people covering every state.
 - `/api/session` (the API house-style example).
 
@@ -175,7 +181,7 @@ The shape of all of it is in [a_system.md](a_system.md).
 Not missing — decided against, for this milestone or for the exercise. A later
 session should not treat any of these as an oversight to fix.
 
-From C5's scope (on its branch) — why each was decided is in
+From C5's scope — why each was decided is in
 [dec_log.md](dec_log.md):
 
 - **No restore and no recycle bin.** A deleted event cannot be brought back
@@ -298,7 +304,7 @@ for one event serialize on its row. See [a_system.md](a_system.md)
 An event read is stitched from several reads of committed data, not one
 snapshot; accepted for rendering. Only capacity-sensitive writes and invitation
 writes re-decide under the event-row lock — see [a_system.md](a_system.md)
-"Data layer". On the C5 branch, withdrawing, rejecting and removing also take
+"Data layer". Since C5, withdrawing, rejecting and removing also take
 that lock, to be ordered against a delete, but they do not re-decide under it.
 
 Migrations are single-operator, and applied migrations are immutable by
@@ -355,8 +361,7 @@ back — re-inviting them, or moving the event off `invite` — after which they
 can withdraw. Once the event has
 started or been cancelled, withdrawing, removing and inviting are all closed
 while revoking stays open, so nothing frees that seat; deleting the event only
-takes it out of reach together with the event — on the C5 branch the row
-itself is kept. The host's list flags the row; nothing resolves it. This is the
+takes it out of reach together with the event — the row itself is kept. The host's list flags the row; nothing resolves it. This is the
 accepted
 cost of keeping invitation and registration independent — see
 [dec_log.md](dec_log.md).
@@ -404,7 +409,6 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-10-26 — pre-M11 stabilization in progress: C1 (PR #41),
-C2 (PR #42), C3 (PR #43) and C4 (PR #44) merged; C5 implemented and verified
-on its branch, not yet merged, with migration `0003` applied to shared DEV; C6
-not started; M11 (system redesign) and M12 (application logging) follow.
+Last updated: 2026-10-28 — M11 in progress: PR 1 (design foundations, UI kit
+and navigation shell) implemented, PRs 2–4 not started. Pre-M11 stabilization
+C1–C5 merged (PRs #41–#45); C6 follows M11; then M12 (application logging).

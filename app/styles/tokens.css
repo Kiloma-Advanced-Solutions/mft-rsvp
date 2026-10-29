@@ -9,53 +9,148 @@
  * unless the document opts out with `data-theme="light"`, and always when the
  * document sets `data-theme="dark"`. That means a theme toggle can be added
  * later by setting one attribute on <html> -- no component changes needed.
+ *
+ * The palette is the Iron Numbers system adopted by M11; dark is its navy-based
+ * interpretation. The existing colour names carry the new values, so every
+ * component takes the new look without being edited. Shape, elevation, spacing
+ * and type are additions alongside the older scales, which stay as they were
+ * until the components using them are redesigned.
  */
 
 :root {
   /* ---- Surfaces & text ------------------------------------------------- */
-  --color-bg: #f5f6f9;
-  --color-bg-subtle: #eef0f5;
-  --color-surface: #ffffff;
-  --color-surface-subtle: #f7f8fb;
-  --color-surface-hover: #f2f4f8;
-  --color-overlay: rgba(14, 17, 24, 0.45);
+  --color-bg: #f6f5fa;
+  --color-bg-subtle: #f1f0f6;
+  --color-surface: #fdfefd;
+  --color-surface-subtle: #f9f8fd;
+  --color-surface-hover: #f9f8fd;
+  --color-overlay: rgba(13, 22, 58, 0.38);
 
-  --color-border: #e3e6ee;
-  --color-border-strong: #ccd1de;
+  --color-border: #f1f0f6;
+  --color-border-strong: #e6e4ee;
+  /* Inputs, chips and the secondary button's hairline. */
+  --color-field-border: #d6e5fc;
+  /* Cards are separated by shadow alone in light, and get an edge in dark. */
+  --color-card-edge: transparent;
 
-  --color-text: #12151d;
-  --color-text-muted: #596174;
-  --color-text-subtle: #868ea0;
-  --color-text-inverse: #ffffff;
+  --color-text: #1e1e1e;
+  --color-text-muted: #6b6b6b;
+  /*
+    The system has two readable text levels, not three. `subtle` takes the
+    muted value rather than the disabled one, which would not be readable
+    where secondary text uses it today.
+  */
+  --color-text-subtle: #6b6b6b;
+  --color-text-disabled: #b9b9be;
+  --color-text-inverse: #fdfefd;
+  --color-disabled-bg: #f7f7f7;
 
   /* ---- Brand ----------------------------------------------------------- */
-  --color-primary: #4f46e5;
-  --color-primary-hover: #4338ca;
-  --color-primary-soft: #ecebfe;
-  --color-primary-soft-hover: #e0defd;
-  --color-primary-text: #3b34b5;
-  --color-primary-contrast: #ffffff;
+  /* The filled primary action. White on it passes AA; white on #047aff does not. */
+  --color-primary: #0059c4;
+  /* The system brightens a filled button on hover rather than darkening it. */
+  --color-primary-hover: #005ece;
+  --color-primary-soft: #e2edfe;
+  --color-primary-soft-hover: #d6e5fc;
+  --color-primary-text: #0059c4;
+  --color-primary-contrast: #fdfefd;
+
+  --color-link: #0059c4;
+  --color-link-hover: #0d163a;
+
+  /* Selected segment and chip. Inverted in dark, so it stays the strong one. */
+  --color-navy: #0d163a;
+  --color-on-navy: #fdfefd;
+
+  /* The navigation rail. Muted text is for the rail only. */
+  --color-rail: #0d163a;
+  --color-on-rail: #fdfefd;
+  --color-on-rail-muted: #8e8e93;
+  --color-rail-line: rgba(255, 255, 255, 0.15);
+  /* White veils over the rail: under the pointer, and behind the current item. */
+  --color-rail-hover: rgba(255, 255, 255, 0.06);
+  --color-rail-active: rgba(255, 255, 255, 0.12);
+
+  --color-segment-track: #ecebf3;
 
   /* ---- Semantic -------------------------------------------------------- */
-  --color-success: #0e9f6e;
-  --color-success-soft: #e4f6ef;
-  --color-success-text: #07684a;
+  --color-success: #28a038;
+  --color-success-soft: #e4f2e6;
+  --color-success-text: #12601a;
 
-  --color-warning: #d97706;
-  --color-warning-soft: #fdf1e0;
-  --color-warning-text: #9a5307;
+  --color-warning: #e0a500;
+  --color-warning-soft: #fdf1cf;
+  --color-warning-text: #7a5200;
 
-  --color-danger: #dc2626;
-  --color-danger-hover: #b91c1c;
-  --color-danger-soft: #fdeceb;
-  --color-danger-text: #b0201d;
+  /*
+    `danger` is the filled destructive colour, chosen for white text at AA in
+    both themes. `danger-border` is the brighter red for outlines, which needs
+    only the 3:1 of a non-text edge.
+  */
+  --color-danger: #c4271e;
+  --color-danger-hover: #ce2920;
+  --color-danger-soft: #fce7e5;
+  --color-danger-text: #c4271e;
+  --color-danger-border: #ff3b30;
+  --color-on-danger: #fdfefd;
 
-  --color-info: #0284c7;
-  --color-info-soft: #e4f2fb;
-  --color-info-text: #075985;
+  --color-info: #047aff;
+  --color-info-soft: #e2edfe;
+  --color-info-text: #08519e;
 
-  --color-neutral-soft: #eef0f5;
-  --color-neutral-text: #4c5566;
+  --color-neutral-soft: #eaedf4;
+  --color-neutral-text: #3f4a63;
+
+  /* ---- Progress -------------------------------------------------------- */
+  --color-progress: #a9d8fa;
+  --color-progress-full: #e0342a;
+  --color-progress-track: #eeeeee;
+
+  /* ---- Tones ----------------------------------------------------------- */
+  /*
+    The tinted scale behind status pills and category colours: background,
+    text and dot for each. The text on its own background passes AA in both
+    themes.
+  */
+  --tone-approved-bg: #e4f2e6;
+  --tone-approved-fg: #12601a;
+  --tone-approved-dot: #28a038;
+  --tone-review-bg: #fdf1cf;
+  --tone-review-fg: #7a5200;
+  --tone-review-dot: #e0a500;
+  --tone-active-bg: #e2edfe;
+  --tone-active-fg: #08519e;
+  --tone-active-dot: #047aff;
+  --tone-planned-bg: #f0e7fc;
+  --tone-planned-fg: #6321ae;
+  --tone-planned-dot: #8a38d8;
+  --tone-blocked-bg: #fce7e5;
+  --tone-blocked-fg: #a81f17;
+  --tone-blocked-dot: #e0342a;
+  --tone-done-bg: #e5e8f1;
+  --tone-done-fg: #0d163a;
+  --tone-done-dot: #3c4a7a;
+  --tone-draft-bg: #efeff2;
+  --tone-draft-fg: #54545a;
+  --tone-draft-dot: #8e8e93;
+  --tone-neutral-bg: #eaedf4;
+  --tone-neutral-fg: #3f4a63;
+  --tone-neutral-dot: #8c97ae;
+  --tone-teal-bg: #ddf3f4;
+  --tone-teal-fg: #0a5e62;
+  --tone-teal-dot: #0daab0;
+  --tone-orange-bg: #feebd2;
+  --tone-orange-fg: #8a4a00;
+  --tone-orange-dot: #fe9908;
+
+  /* ---- Avatars --------------------------------------------------------- */
+  /* Pastel tints with navy initials; the same in both themes. */
+  --color-avatar-1: #a9d8fa;
+  --color-avatar-2: #9faeff;
+  --color-avatar-3: #b7e6e8;
+  --color-avatar-4: #ffd8a8;
+  --color-avatar-5: #c9e8cc;
+  --color-avatar-ink: #0d163a;
 
   /* ---- Event accents --------------------------------------------------- */
   /* Every event carries an `accent` key; cards and detail headers tint from it. */
@@ -67,12 +162,20 @@
   --accent-cyan: #0ba5b7;
 
   /* ---- Focus ----------------------------------------------------------- */
-  --color-focus-ring: rgba(79, 70, 229, 0.4);
+  --color-focus: #047aff;
+  --color-focus-ring: rgba(4, 122, 255, 0.22);
 
   /* ---- Elevation ------------------------------------------------------- */
   --shadow-sm: 0 1px 2px rgba(16, 20, 30, 0.06), 0 1px 1px rgba(16, 20, 30, 0.04);
   --shadow-md: 0 4px 14px rgba(16, 20, 30, 0.08), 0 1px 3px rgba(16, 20, 30, 0.05);
   --shadow-lg: 0 14px 38px rgba(16, 20, 30, 0.13), 0 3px 10px rgba(16, 20, 30, 0.06);
+
+  /* Cards at rest. */
+  --shadow-card: 0 4px 35px -20px rgba(0, 0, 0, 0.25);
+  /* Icon buttons, menus, dialogs, toasts, and a card under the pointer. */
+  --shadow-raised: 0 4px 35px -10px rgba(0, 0, 0, 0.25);
+  --shadow-primary: 0 4px 12px -6px rgba(0, 89, 196, 0.9);
+  --shadow-danger: 0 4px 12px -6px rgba(196, 39, 30, 0.8);
 
   /* ---- Spacing (4px scale) --------------------------------------------- */
   --space-1: 0.25rem;
@@ -86,6 +189,12 @@
   --space-12: 3rem;
   --space-16: 4rem;
 
+  /* The system's own steps that fall between the 4px scale. */
+  --space-card-gap: 1.375rem;
+  --space-card-padding: 1.375rem;
+  --space-card-padding-lg: 1.75rem;
+  --space-section: 1.875rem;
+
   /* ---- Radii ----------------------------------------------------------- */
   --radius-sm: 6px;
   --radius-md: 10px;
@@ -93,14 +202,46 @@
   --radius-xl: 20px;
   --radius-full: 999px;
 
+  --radius-pill: 11px;
+  --radius-control: 16px;
+  --radius-tag: 16.5px;
+  --radius-menu-item: 14px;
+  --radius-card: 20px;
+  --radius-section: 30px;
+  /* The section card's radius at phone width. */
+  --radius-section-compact: 22px;
+
+  /* ---- Controls -------------------------------------------------------- */
+  /* Heights of the system's interactive pieces and pills. */
+  --control-height-pill-compact: 22px;
+  --control-height-pill: 28px;
+  --control-height-sm: 30px;
+  --control-height-segment: 34px;
+  --control-height-md: 36px;
+  --control-height-icon: 40px;
+  --control-height-lg: 44px;
+
+  --control-padding-sm: 0.875rem;
+  --control-padding-md: 1.25rem;
+  --control-padding-lg: 1.375rem;
+
+  --avatar-size-xs: 22px;
+  --avatar-size-sm: 34px;
+  --avatar-size-md: 40px;
+  --avatar-size-lg: 44px;
+
+  --icon-size-md: 18px;
+  --icon-size-lg: 20px;
+
   /* ---- Typography ------------------------------------------------------ */
   /*
     Rubik is the interface font, and renders the Latin in the UI as well as the
-    Hebrew -- it is loaded with both subsets. Geist follows it only as a
-    fallback for glyphs Rubik does not carry. `--font-mono` is unchanged.
+    Hebrew -- it is loaded with both subsets. The system faces after it are only
+    a fallback for glyphs Rubik does not carry. Geist Mono stays for genuinely
+    monospaced text.
   */
-  --font-sans: var(--font-rubik), var(--font-geist-sans), ui-sans-serif,
-    system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-sans: var(--font-rubik), "Segoe UI", system-ui, -apple-system, Roboto,
+    sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, monospace;
 
   --text-xs: 0.75rem;
@@ -112,10 +253,25 @@
   --text-2xl: 1.75rem;
   --text-3xl: 2.25rem;
 
+  /* The system's type scale, by role. */
+  --text-page-title: 2.375rem;
+  --text-page-title-compact: 1.75rem;
+  --text-number: 1.9375rem;
+  --text-subtitle: 1.5625rem;
+  --text-section-title: 1.125rem;
+  --text-body: 1rem;
+  --text-label: 0.875rem;
+  --text-caption: 0.75rem;
+  --text-micro: 0.6875rem;
+  --text-tiny: 0.625rem;
+
   --leading-tight: 1.2;
   --leading-snug: 1.35;
   --leading-normal: 1.55;
+  /* Explanatory paragraphs, such as a dialog's message. */
+  --leading-relaxed: 1.7;
 
+  --weight-light: 300;
   --weight-normal: 400;
   --weight-medium: 500;
   --weight-semibold: 600;
@@ -129,9 +285,12 @@
   --transition-base: 200ms cubic-bezier(0.2, 0, 0.2, 1);
 
   /* ---- Layout ---------------------------------------------------------- */
-  --layout-max: 1180px;
+  --layout-max: 1120px;
   --layout-gutter: var(--space-6);
-  --topbar-height: 60px;
+  /* The navigation rail on wide screens, and the bar that replaces it on narrow ones. */
+  --rail-width: 80px;
+  --shell-bar-height: 56px;
+  --persona-menu-width: 290px;
 }
 
 /*
@@ -143,47 +302,101 @@
   :root:not([data-theme="light"]) {
     color-scheme: dark;
 
-    --color-bg: #0a0c11;
-    --color-bg-subtle: #10131a;
-    --color-surface: #14171f;
-    --color-surface-subtle: #191d26;
-    --color-surface-hover: #1e222c;
-    --color-overlay: rgba(0, 0, 0, 0.6);
+    --color-bg: #0b1027;
+    --color-bg-subtle: #202951;
+    --color-surface: #141b38;
+    --color-surface-subtle: #1a2245;
+    --color-surface-hover: #1a2245;
+    --color-overlay: rgba(0, 0, 0, 0.55);
 
-    --color-border: #262c38;
-    --color-border-strong: #364052;
+    --color-border: #232c52;
+    --color-border-strong: #2a3460;
+    --color-field-border: #36437c;
+    --color-card-edge: #222b50;
 
-    --color-text: #e9ecf3;
-    --color-text-muted: #a2aabb;
-    --color-text-subtle: #737d90;
-    --color-text-inverse: #0a0c11;
+    --color-text: #eceef5;
+    --color-text-muted: #a6adc4;
+    --color-text-subtle: #a6adc4;
+    --color-text-disabled: #5f6886;
+    --color-text-inverse: #0b1027;
+    --color-disabled-bg: #171e3e;
 
-    --color-primary: #7b74f2;
-    --color-primary-hover: #8f89f6;
-    --color-primary-soft: #1d1e33;
-    --color-primary-soft-hover: #262841;
-    --color-primary-text: #b6b1fb;
-    --color-primary-contrast: #0a0c11;
+    --color-primary: #1e66d6;
+    --color-primary-hover: #206be1;
+    --color-primary-soft: rgba(4, 122, 255, 0.2);
+    --color-primary-soft-hover: rgba(4, 122, 255, 0.28);
+    --color-primary-text: #8ab8ff;
+    --color-primary-contrast: #fdfefd;
 
-    --color-success: #10b981;
-    --color-success-soft: #0c241c;
-    --color-success-text: #5fe3b2;
+    --color-link: #8ab8ff;
+    --color-link-hover: #c9ddff;
 
-    --color-warning: #f0a02a;
-    --color-warning-soft: #281c09;
-    --color-warning-text: #fbcf72;
+    --color-navy: #e5e9f7;
+    --color-on-navy: #0d163a;
 
-    --color-danger: #f0524f;
-    --color-danger-hover: #f47472;
-    --color-danger-soft: #2b1315;
-    --color-danger-text: #fca5a3;
+    --color-rail: #060a1c;
+    --color-on-rail: #fdfefd;
+    --color-on-rail-muted: #8e94ad;
+    --color-rail-line: rgba(255, 255, 255, 0.12);
 
-    --color-info: #38bdf8;
-    --color-info-soft: #0b1f2b;
-    --color-info-text: #82d4fa;
+    --color-segment-track: #1a2245;
 
-    --color-neutral-soft: #1e222c;
-    --color-neutral-text: #b3bbcb;
+    --color-success: #3cc150;
+    --color-success-soft: rgba(40, 160, 56, 0.18);
+    --color-success-text: #8fdb98;
+
+    --color-warning: #e0a500;
+    --color-warning-soft: rgba(224, 165, 0, 0.18);
+    --color-warning-text: #f5cf66;
+
+    --color-danger: #c4271e;
+    --color-danger-hover: #ce2920;
+    --color-danger-soft: rgba(224, 52, 42, 0.2);
+    --color-danger-text: #ff8a80;
+    --color-danger-border: #f0524a;
+    --color-on-danger: #fdfefd;
+
+    --color-info: #4d9bff;
+    --color-info-soft: rgba(4, 122, 255, 0.2);
+    --color-info-text: #9cc6ff;
+
+    --color-neutral-soft: rgba(140, 151, 174, 0.18);
+    --color-neutral-text: #bac3d6;
+
+    --color-progress: #5aa7f0;
+    --color-progress-full: #f0524a;
+    --color-progress-track: #252e57;
+
+    --tone-approved-bg: rgba(40, 160, 56, 0.18);
+    --tone-approved-fg: #8fdb98;
+    --tone-approved-dot: #3cc150;
+    --tone-review-bg: rgba(224, 165, 0, 0.18);
+    --tone-review-fg: #f5cf66;
+    --tone-review-dot: #e0a500;
+    --tone-active-bg: rgba(4, 122, 255, 0.2);
+    --tone-active-fg: #9cc6ff;
+    --tone-active-dot: #4d9bff;
+    --tone-planned-bg: rgba(138, 56, 216, 0.26);
+    --tone-planned-fg: #d2b0f7;
+    --tone-planned-dot: #a86ae8;
+    --tone-blocked-bg: rgba(224, 52, 42, 0.2);
+    --tone-blocked-fg: #ffa39c;
+    --tone-blocked-dot: #f0524a;
+    --tone-done-bg: rgba(140, 160, 220, 0.18);
+    --tone-done-fg: #c8d0ea;
+    --tone-done-dot: #8c9ad0;
+    --tone-draft-bg: rgba(142, 142, 147, 0.2);
+    --tone-draft-fg: #c4c4ca;
+    --tone-draft-dot: #8e8e93;
+    --tone-neutral-bg: rgba(140, 151, 174, 0.18);
+    --tone-neutral-fg: #bac3d6;
+    --tone-neutral-dot: #8c97ae;
+    --tone-teal-bg: rgba(13, 170, 176, 0.2);
+    --tone-teal-fg: #7fdde0;
+    --tone-teal-dot: #22c3c9;
+    --tone-orange-bg: rgba(254, 153, 8, 0.18);
+    --tone-orange-fg: #ffc27a;
+    --tone-orange-dot: #fe9908;
 
     --accent-violet: #8d80f8;
     --accent-blue: #5c9bf3;
@@ -192,58 +405,118 @@
     --accent-rose: #ef6d99;
     --accent-cyan: #2cc0d2;
 
-    --color-focus-ring: rgba(123, 116, 242, 0.5);
+    --color-focus: #4d9bff;
+    --color-focus-ring: rgba(77, 155, 255, 0.3);
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.3);
     --shadow-lg: 0 14px 38px rgba(0, 0, 0, 0.55), 0 3px 10px rgba(0, 0, 0, 0.35);
+
+    --shadow-card: 0 6px 30px -18px rgba(0, 0, 0, 0.8);
+    --shadow-raised: 0 8px 34px -10px rgba(0, 0, 0, 0.75);
+    --shadow-primary: 0 4px 12px -6px rgba(30, 102, 214, 0.9);
+    --shadow-danger: 0 4px 12px -6px rgba(196, 39, 30, 0.8);
   }
 }
 
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --color-bg: #0a0c11;
-  --color-bg-subtle: #10131a;
-  --color-surface: #14171f;
-  --color-surface-subtle: #191d26;
-  --color-surface-hover: #1e222c;
-  --color-overlay: rgba(0, 0, 0, 0.6);
+  --color-bg: #0b1027;
+  --color-bg-subtle: #202951;
+  --color-surface: #141b38;
+  --color-surface-subtle: #1a2245;
+  --color-surface-hover: #1a2245;
+  --color-overlay: rgba(0, 0, 0, 0.55);
 
-  --color-border: #262c38;
-  --color-border-strong: #364052;
+  --color-border: #232c52;
+  --color-border-strong: #2a3460;
+  --color-field-border: #36437c;
+  --color-card-edge: #222b50;
 
-  --color-text: #e9ecf3;
-  --color-text-muted: #a2aabb;
-  --color-text-subtle: #737d90;
-  --color-text-inverse: #0a0c11;
+  --color-text: #eceef5;
+  --color-text-muted: #a6adc4;
+  --color-text-subtle: #a6adc4;
+  --color-text-disabled: #5f6886;
+  --color-text-inverse: #0b1027;
+  --color-disabled-bg: #171e3e;
 
-  --color-primary: #7b74f2;
-  --color-primary-hover: #8f89f6;
-  --color-primary-soft: #1d1e33;
-  --color-primary-soft-hover: #262841;
-  --color-primary-text: #b6b1fb;
-  --color-primary-contrast: #0a0c11;
+  --color-primary: #1e66d6;
+  --color-primary-hover: #206be1;
+  --color-primary-soft: rgba(4, 122, 255, 0.2);
+  --color-primary-soft-hover: rgba(4, 122, 255, 0.28);
+  --color-primary-text: #8ab8ff;
+  --color-primary-contrast: #fdfefd;
 
-  --color-success: #10b981;
-  --color-success-soft: #0c241c;
-  --color-success-text: #5fe3b2;
+  --color-link: #8ab8ff;
+  --color-link-hover: #c9ddff;
 
-  --color-warning: #f0a02a;
-  --color-warning-soft: #281c09;
-  --color-warning-text: #fbcf72;
+  --color-navy: #e5e9f7;
+  --color-on-navy: #0d163a;
 
-  --color-danger: #f0524f;
-  --color-danger-hover: #f47472;
-  --color-danger-soft: #2b1315;
-  --color-danger-text: #fca5a3;
+  --color-rail: #060a1c;
+  --color-on-rail: #fdfefd;
+  --color-on-rail-muted: #8e94ad;
+  --color-rail-line: rgba(255, 255, 255, 0.12);
 
-  --color-info: #38bdf8;
-  --color-info-soft: #0b1f2b;
-  --color-info-text: #82d4fa;
+  --color-segment-track: #1a2245;
 
-  --color-neutral-soft: #1e222c;
-  --color-neutral-text: #b3bbcb;
+  --color-success: #3cc150;
+  --color-success-soft: rgba(40, 160, 56, 0.18);
+  --color-success-text: #8fdb98;
+
+  --color-warning: #e0a500;
+  --color-warning-soft: rgba(224, 165, 0, 0.18);
+  --color-warning-text: #f5cf66;
+
+  --color-danger: #c4271e;
+  --color-danger-hover: #ce2920;
+  --color-danger-soft: rgba(224, 52, 42, 0.2);
+  --color-danger-text: #ff8a80;
+  --color-danger-border: #f0524a;
+  --color-on-danger: #fdfefd;
+
+  --color-info: #4d9bff;
+  --color-info-soft: rgba(4, 122, 255, 0.2);
+  --color-info-text: #9cc6ff;
+
+  --color-neutral-soft: rgba(140, 151, 174, 0.18);
+  --color-neutral-text: #bac3d6;
+
+  --color-progress: #5aa7f0;
+  --color-progress-full: #f0524a;
+  --color-progress-track: #252e57;
+
+  --tone-approved-bg: rgba(40, 160, 56, 0.18);
+  --tone-approved-fg: #8fdb98;
+  --tone-approved-dot: #3cc150;
+  --tone-review-bg: rgba(224, 165, 0, 0.18);
+  --tone-review-fg: #f5cf66;
+  --tone-review-dot: #e0a500;
+  --tone-active-bg: rgba(4, 122, 255, 0.2);
+  --tone-active-fg: #9cc6ff;
+  --tone-active-dot: #4d9bff;
+  --tone-planned-bg: rgba(138, 56, 216, 0.26);
+  --tone-planned-fg: #d2b0f7;
+  --tone-planned-dot: #a86ae8;
+  --tone-blocked-bg: rgba(224, 52, 42, 0.2);
+  --tone-blocked-fg: #ffa39c;
+  --tone-blocked-dot: #f0524a;
+  --tone-done-bg: rgba(140, 160, 220, 0.18);
+  --tone-done-fg: #c8d0ea;
+  --tone-done-dot: #8c9ad0;
+  --tone-draft-bg: rgba(142, 142, 147, 0.2);
+  --tone-draft-fg: #c4c4ca;
+  --tone-draft-dot: #8e8e93;
+  --tone-neutral-bg: rgba(140, 151, 174, 0.18);
+  --tone-neutral-fg: #bac3d6;
+  --tone-neutral-dot: #8c97ae;
+  --tone-teal-bg: rgba(13, 170, 176, 0.2);
+  --tone-teal-fg: #7fdde0;
+  --tone-teal-dot: #22c3c9;
+  --tone-orange-bg: rgba(254, 153, 8, 0.18);
+  --tone-orange-fg: #ffc27a;
+  --tone-orange-dot: #fe9908;
 
   --accent-violet: #8d80f8;
   --accent-blue: #5c9bf3;
@@ -252,9 +525,15 @@
   --accent-rose: #ef6d99;
   --accent-cyan: #2cc0d2;
 
-  --color-focus-ring: rgba(123, 116, 242, 0.5);
+  --color-focus: #4d9bff;
+  --color-focus-ring: rgba(77, 155, 255, 0.3);
 
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
   --shadow-md: 0 4px 14px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 14px 38px rgba(0, 0, 0, 0.55), 0 3px 10px rgba(0, 0, 0, 0.35);
+
+  --shadow-card: 0 6px 30px -18px rgba(0, 0, 0, 0.8);
+  --shadow-raised: 0 8px 34px -10px rgba(0, 0, 0, 0.75);
+  --shadow-primary: 0 4px 12px -6px rgba(30, 102, 214, 0.9);
+  --shadow-danger: 0 4px 12px -6px rgba(196, 39, 30, 0.8);
 }
