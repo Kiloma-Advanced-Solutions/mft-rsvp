@@ -144,7 +144,17 @@ export function Menu({
 
   async function choose(id: string) {
     if (busy) return;
-    if (await onSelect(id)) closeToTrigger();
+    if (!(await onSelect(id))) return;
+
+    // A choice can take a while. If the person has left the menu in the
+    // meantime -- Tab, a click elsewhere -- focus is theirs now: close without
+    // taking it back. The root holds the trigger and the popup, so focus on
+    // either still counts as being in the menu.
+    if (rootRef.current?.contains(document.activeElement)) {
+      closeToTrigger();
+    } else {
+      setOpen(false);
+    }
   }
 
   return (
