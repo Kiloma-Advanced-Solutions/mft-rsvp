@@ -1,132 +1,116 @@
+/*
+  A tinted pill: each tone sets a background, a text colour and a dot colour
+  from the tone scale, and the variants decide which of them show.
+*/
 .badge {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+  height: var(--control-height-pill-compact);
   padding: 0 var(--space-2);
-  height: 22px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-full);
-  font-size: var(--text-xs);
+  border-radius: var(--radius-pill);
+  background: var(--badge-bg);
+  color: var(--badge-fg);
+  font-size: var(--text-micro);
   font-weight: var(--weight-medium);
   line-height: 1;
   white-space: nowrap;
 }
 
 .lg {
-  height: 26px;
+  gap: var(--space-2);
+  height: var(--control-height-pill);
   padding: 0 var(--space-3);
-  font-size: var(--text-sm);
+  font-size: var(--text-caption);
 }
 
 .dot {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
   border-radius: var(--radius-full);
-  background: currentColor;
+  background: var(--badge-dot);
   flex: none;
 }
 
-/* ---- soft (default) ----------------------------------------------------- */
-
-.neutral {
-  background: var(--color-neutral-soft);
-  color: var(--color-neutral-text);
+.lg .dot {
+  width: 6px;
+  height: 6px;
 }
 
-.primary {
-  background: var(--color-primary-soft);
-  color: var(--color-primary-text);
+/* ---- tones -------------------------------------------------------------- */
+
+.neutral {
+  --badge-bg: var(--tone-neutral-bg);
+  --badge-fg: var(--tone-neutral-fg);
+  --badge-dot: var(--tone-neutral-dot);
+}
+
+.primary,
+.info {
+  --badge-bg: var(--tone-active-bg);
+  --badge-fg: var(--tone-active-fg);
+  --badge-dot: var(--tone-active-dot);
 }
 
 .success {
-  background: var(--color-success-soft);
-  color: var(--color-success-text);
+  --badge-bg: var(--tone-approved-bg);
+  --badge-fg: var(--tone-approved-fg);
+  --badge-dot: var(--tone-approved-dot);
 }
 
 .warning {
-  background: var(--color-warning-soft);
-  color: var(--color-warning-text);
+  --badge-bg: var(--tone-review-bg);
+  --badge-fg: var(--tone-review-fg);
+  --badge-dot: var(--tone-review-dot);
 }
 
 .danger {
-  background: var(--color-danger-soft);
-  color: var(--color-danger-text);
+  --badge-bg: var(--tone-blocked-bg);
+  --badge-fg: var(--tone-blocked-fg);
+  --badge-dot: var(--tone-blocked-dot);
 }
 
-.info {
-  background: var(--color-info-soft);
-  color: var(--color-info-text);
+.draft {
+  --badge-bg: var(--tone-draft-bg);
+  --badge-fg: var(--tone-draft-fg);
+  --badge-dot: var(--tone-draft-dot);
+}
+
+.planned {
+  --badge-bg: var(--tone-planned-bg);
+  --badge-fg: var(--tone-planned-fg);
+  --badge-dot: var(--tone-planned-dot);
 }
 
 /* ---- outline ------------------------------------------------------------ */
 
+/* The system's neutral chip: the surface, a hairline, and plain text. */
 .outline {
-  background: transparent;
-  border-color: var(--color-border-strong);
-}
-
-.outline.neutral {
-  color: var(--color-text-muted);
-}
-
-.outline.primary {
-  color: var(--color-primary-text);
-  border-color: var(--color-primary);
-}
-
-.outline.success {
-  color: var(--color-success-text);
-  border-color: var(--color-success);
-}
-
-.outline.warning {
-  color: var(--color-warning-text);
-  border-color: var(--color-warning);
-}
-
-.outline.danger {
-  color: var(--color-danger-text);
-  border-color: var(--color-danger);
-}
-
-.outline.info {
-  color: var(--color-info-text);
-  border-color: var(--color-info);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: inset 0 0 0 1px var(--color-field-border);
 }
 
 /* ---- solid -------------------------------------------------------------- */
 
+/*
+  Filled with the tone's text colour, which is dark in light and pale in dark,
+  so the surface colour reads on it in either theme.
+*/
 .solid {
-  color: #fff;
+  background: var(--badge-fg);
+  color: var(--color-surface);
 }
 
-.solid.neutral {
-  background: var(--color-text-muted);
-}
-
-.solid.primary {
-  background: var(--color-primary);
-  color: var(--color-primary-contrast);
-}
-
-.solid.success {
-  background: var(--color-success);
-}
-
-.solid.warning {
-  background: var(--color-warning);
+.solid .dot {
+  background: currentColor;
 }
 
 /*
-  White on the dark theme's brighter danger fill is only ~3.5:1, so the text
-  follows the palette's on-fill contrast colour instead -- white in the light
-  theme, near-black in the dark one -- the same pairing `.solid.primary` uses.
+  A cancelled event's badge: the destructive red, with white text at AA in
+  both themes.
 */
 .solid.danger {
   background: var(--color-danger);
-  color: var(--color-primary-contrast);
-}
-
-.solid.info {
-  background: var(--color-info);
+  color: var(--color-on-danger);
 }

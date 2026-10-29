@@ -2,7 +2,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--space-card-gap);
 }
 
 .back {
@@ -10,20 +10,20 @@
   align-items: center;
   gap: var(--space-1);
   align-self: flex-start;
-  font-size: var(--text-sm);
-  color: var(--color-text-muted);
+  font-size: var(--text-label);
+  color: var(--color-link);
   transition: color var(--transition-fast);
 }
 
 .back:hover {
-  color: var(--color-text);
+  color: var(--color-link-hover);
 }
 
 .row {
   display: flex;
-  align-items: flex-start;
+  align-items: flex-end;
   justify-content: space-between;
-  gap: var(--space-6);
+  gap: var(--space-4) var(--space-6);
   flex-wrap: wrap;
 }
 
@@ -37,7 +37,7 @@
 .titleGroup {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
+  gap: var(--space-3);
   min-width: 0;
   flex: 1 1 50%;
 }
@@ -56,14 +56,16 @@
   letting it widen the page; both still show in full.
 */
 .title {
-  font-size: var(--text-2xl);
-  font-weight: var(--weight-bold);
+  font-size: var(--text-page-title);
+  font-weight: var(--weight-normal);
+  line-height: var(--leading-tight);
   overflow-wrap: anywhere;
 }
 
 .description {
   max-width: 62ch;
-  font-size: var(--text-base);
+  font-size: var(--text-body);
+  font-weight: var(--weight-light);
   color: var(--color-text-muted);
   overflow-wrap: anywhere;
 }
@@ -71,6 +73,12 @@
 .actions {
   display: flex;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
   flex-wrap: wrap;
+}
+
+@media (max-width: 760px) {
+  .title {
+    font-size: var(--text-page-title-compact);
+  }
 }

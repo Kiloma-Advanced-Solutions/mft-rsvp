@@ -12,6 +12,7 @@ import type { ReactNode } from "react";
 import { cx } from "@/lib/cx";
 import { UI_LABELS } from "@/lib/labels";
 
+import { Icon } from "./Icon";
 import styles from "./Toast.module.css";
 
 /**
@@ -82,6 +83,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             className={cx(styles.toast, styles[item.tone])}
             role={item.tone === "error" ? "alert" : "status"}
           >
+            <span className={styles.dot} aria-hidden />
             <div className={styles.content}>
               <p className={styles.title}>{item.title}</p>
               {item.description && (
@@ -94,7 +96,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
               onClick={() => dismiss(item.id)}
               aria-label={UI_LABELS.dismissNotification}
             >
-              ✕
+              <Icon name="close" />
             </button>
           </div>
         ))}

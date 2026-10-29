@@ -111,7 +111,8 @@ through the organization's real mail service has not been verified — see
 
 There is no authentication, and that is deliberate: the exercise is about
 authorisation, not login screens. You "sign in" by picking a persona from the
-switcher in the top right, which writes the `eb_persona` cookie that the server
+switcher at the top of the navigation rail — the avatar in the top bar on a
+narrow screen — which writes the `eb_persona` cookie that the server
 reads on every request. `getCurrentUser()` in
 [lib/session.ts](../lib/session.ts) resolves it, falls back to a default persona
 when the cookie is missing, and never returns null.

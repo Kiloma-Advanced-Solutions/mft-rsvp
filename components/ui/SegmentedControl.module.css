@@ -1,28 +1,35 @@
+/* The system's segmented control: a tinted track, with the choice as a navy pill. */
 .group {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 3px;
-  background: var(--color-bg-subtle);
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius-md);
+  gap: var(--space-1);
+  max-width: 100%;
+  padding: var(--space-1);
+  background: var(--color-segment-track);
+  border-radius: calc(var(--radius-lg) + var(--space-1));
+  overflow-x: auto;
+  scrollbar-width: none;
 }
 
 .option {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  height: 30px;
-  padding: 0 var(--space-3);
-  border-radius: calc(var(--radius-md) - 3px);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
+  flex: none;
+  height: var(--control-height-segment);
+  padding: 0 var(--space-4);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-label);
   color: var(--color-text-muted);
   white-space: nowrap;
   transition:
     background var(--transition-fast),
-    color var(--transition-fast),
-    box-shadow var(--transition-fast);
+    color var(--transition-fast);
+}
+
+/* Keeps its shape when focused; see the same rule in Button.module.css. */
+.option:focus-visible {
+  border-radius: var(--radius-lg);
 }
 
 .option:hover:not(.selected) {
@@ -30,28 +37,29 @@
 }
 
 .selected {
-  background: var(--color-surface);
-  color: var(--color-text);
-  box-shadow: var(--shadow-sm);
+  background: var(--color-navy);
+  color: var(--color-on-navy);
 }
 
 .count {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: var(--radius-full);
-  background: var(--color-neutral-soft);
-  color: var(--color-neutral-text);
-  font-size: 10px;
-  font-weight: var(--weight-semibold);
+  min-width: var(--control-height-pill-compact);
+  height: var(--control-height-pill-compact);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-subtle);
+  color: var(--color-text-muted);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
 }
 
+/* Inverted inside the navy pill, so the count stays legible on it. */
 .selected .count {
-  background: var(--color-primary-soft);
-  color: var(--color-primary-text);
+  background: var(--color-on-navy);
+  color: var(--color-navy);
 }
 
 .fullWidth {

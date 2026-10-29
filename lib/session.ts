@@ -3,7 +3,8 @@
  *
  * There is no real authentication here and there should not be — the exercise
  * is about authorisation rules, not about login screens. You "sign in" by
- * picking a persona from the switcher in the top bar, which writes a cookie.
+ * picking a persona from the switcher at the top of the navigation rail — the
+ * avatar in the top bar on a narrow screen — which writes a cookie.
  *
  * Treat `getCurrentUser()` as the trusted source of identity on the server.
  * Never let the client tell an API route who it is via the request body.

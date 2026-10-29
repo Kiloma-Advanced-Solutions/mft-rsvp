@@ -3,22 +3,35 @@
   align-items: center;
   justify-content: center;
   gap: var(--space-2);
-  border: 1px solid transparent;
-  border-radius: var(--radius-md);
-  font-weight: var(--weight-medium);
+  border: 0;
+  border-radius: var(--button-radius, var(--radius-control));
+  font-weight: var(--weight-normal);
   line-height: 1;
   white-space: nowrap;
   text-decoration: none;
   transition:
+    filter var(--transition-fast),
     background var(--transition-fast),
-    border-color var(--transition-fast),
     color var(--transition-fast),
     box-shadow var(--transition-fast),
     transform var(--transition-fast);
 }
 
-.button:active:not(:disabled) {
-  transform: translateY(0.5px);
+/*
+  The global focus rule rounds the outline to a small radius, and the kit's
+  styles load before it. Restated here so a focused button keeps its own shape.
+*/
+.button:focus-visible {
+  border-radius: var(--button-radius, var(--radius-control));
+}
+
+/* The system brightens a filled button under the pointer and dims it pressed. */
+.button:hover:not(:disabled):not([aria-disabled="true"]) {
+  filter: brightness(1.05);
+}
+
+.button:active:not(:disabled):not([aria-disabled="true"]) {
+  filter: brightness(0.94);
 }
 
 .button:disabled,
@@ -30,21 +43,23 @@
 /* ---- sizes -------------------------------------------------------------- */
 
 .sm {
-  height: 30px;
-  padding: 0 var(--space-3);
+  height: var(--control-height-sm);
+  padding: 0 var(--control-padding-sm);
+  --button-radius: var(--radius-lg);
   font-size: var(--text-sm);
 }
 
 .md {
-  height: 38px;
-  padding: 0 var(--space-4);
-  font-size: var(--text-base);
+  height: var(--control-height-md);
+  padding: 0 var(--control-padding-md);
+  font-size: var(--text-label);
 }
 
 .lg {
-  height: 46px;
-  padding: 0 var(--space-6);
-  font-size: var(--text-md);
+  height: var(--control-height-lg);
+  padding: 0 var(--control-padding-lg);
+  font-size: var(--text-body);
+  font-weight: var(--weight-medium);
 }
 
 /* ---- variants ----------------------------------------------------------- */
@@ -52,62 +67,52 @@
 .primary {
   background: var(--color-primary);
   color: var(--color-primary-contrast);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-primary);
 }
 
-.primary:hover:not(:disabled) {
-  background: var(--color-primary-hover);
-}
-
+/* A surface button with a hairline, lifted like a card. */
 .secondary {
   background: var(--color-surface);
-  border-color: var(--color-border-strong);
   color: var(--color-text);
-  box-shadow: var(--shadow-sm);
+  box-shadow:
+    var(--shadow-card),
+    inset 0 0 0 0.5px var(--color-field-border);
 }
 
-.secondary:hover:not(:disabled) {
-  background: var(--color-surface-hover);
-}
-
+/* Not in the system's set; kept for its existing use, in the blue tint. */
 .soft {
   background: var(--color-primary-soft);
   color: var(--color-primary-text);
 }
 
-.soft:hover:not(:disabled) {
-  background: var(--color-primary-soft-hover);
-}
-
+/* Reads as a link: the link colour, almost no padding, no fill. */
 .ghost {
   background: transparent;
-  color: var(--color-text-muted);
+  color: var(--color-link);
+  padding-inline: var(--space-2);
 }
 
 .ghost:hover:not(:disabled) {
-  background: var(--color-surface-hover);
-  color: var(--color-text);
+  color: var(--color-link-hover);
 }
 
+/* The darker red, so white text on it passes AA in both themes. */
 .danger {
   background: var(--color-danger);
-  color: #fff;
-  box-shadow: var(--shadow-sm);
-}
-
-.danger:hover:not(:disabled) {
-  background: var(--color-danger-hover);
+  color: var(--color-on-danger);
+  box-shadow: var(--shadow-danger);
 }
 
 .dangerGhost {
   background: transparent;
-  border-color: var(--color-border);
   color: var(--color-danger-text);
+  padding-inline: var(--space-3);
 }
 
+/* A tint rather than a brightness change, which a transparent fill would not show. */
 .dangerGhost:hover:not(:disabled) {
   background: var(--color-danger-soft);
-  border-color: var(--color-danger);
+  filter: none;
 }
 
 /* ---- modifiers ---------------------------------------------------------- */
@@ -116,9 +121,26 @@
   width: 100%;
 }
 
+/*
+  The system has one icon button: a 40px raised circle on the surface. It
+  replaces the variant's own colours, because an icon on a filled circle is
+  not part of the system.
+*/
 .iconOnly {
+  width: var(--control-height-icon);
+  height: var(--control-height-icon);
   padding: 0;
-  aspect-ratio: 1;
+  --button-radius: var(--radius-full);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow:
+    var(--shadow-raised),
+    inset 0 0 0 1px var(--color-card-edge);
+}
+
+.iconOnly:hover:not(:disabled) {
+  filter: none;
+  transform: translateY(-2px);
 }
 
 .spinner {

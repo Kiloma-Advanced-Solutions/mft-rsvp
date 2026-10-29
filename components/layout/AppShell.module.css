@@ -1,75 +1,93 @@
+/* A row: the rail, then the content. In RTL the rail is therefore on the right. */
 .shell {
   display: flex;
-  flex-direction: column;
   flex: 1;
   min-height: 100%;
 }
 
-/* ---- top bar ------------------------------------------------------------ */
+/* ---- rail --------------------------------------------------------------- */
 
-.topbar {
+/* Full height and pinned while the content scrolls beside it. */
+.rail {
   position: sticky;
   top: 0;
   z-index: 20;
-  height: var(--topbar-height);
-  background: color-mix(in srgb, var(--color-surface) 88%, transparent);
-  backdrop-filter: saturate(180%) blur(10px);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.topbarInner {
+  flex: none;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: var(--space-6);
-  height: 100%;
-  max-width: var(--layout-max);
-  margin: 0 auto;
-  padding: 0 var(--layout-gutter);
+  gap: var(--space-card-gap);
+  width: var(--rail-width);
+  height: 100dvh;
+  padding: var(--space-card-gap) 0;
+  background: var(--color-rail);
+  color: var(--color-on-rail);
 }
 
+/* The brand stands in for the destinations on a narrow screen only. */
 .brand {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-tight);
-  white-space: nowrap;
-  /* Pushes the persona switcher to the far end of the bar. */
-  margin-inline-end: auto;
+  display: none;
 }
 
-.brandMark {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: var(--radius-sm);
-  background: linear-gradient(140deg, var(--accent-violet), var(--accent-blue));
-  color: #fff;
-  font-size: 13px;
-  font-weight: var(--weight-bold);
+.railDivider {
+  flex: none;
+  width: var(--control-height-lg);
+  height: 1px;
+  background: var(--color-rail-line);
+}
+
+.railNav {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-4);
 }
 
 /* ---- main --------------------------------------------------------------- */
 
 .main {
   flex: 1;
-  width: 100%;
-  max-width: var(--layout-max);
-  margin: 0 auto;
-  padding: var(--space-8) var(--layout-gutter) var(--space-16);
+  min-width: 0;
+  padding: calc(var(--space-8) + var(--space-1)) var(--space-12) var(--space-16);
 }
 
-@media (max-width: 640px) {
-  .topbarInner {
-    gap: var(--space-3);
+.page {
+  max-width: var(--layout-max);
+  margin: 0 auto;
+}
+
+/* ---- narrow: the rail becomes a bar across the top ---------------------- */
+
+@media (max-width: 760px) {
+  .shell {
+    flex-direction: column;
   }
 
-  .brandName {
+  .rail {
+    flex-direction: row;
+    justify-content: space-between;
+    gap: var(--space-3);
+    width: 100%;
+    height: var(--shell-bar-height);
+    padding: 0 var(--space-4);
+  }
+
+  .brand {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-3);
+    color: var(--color-on-rail);
+    font-size: var(--text-body);
+    font-weight: var(--weight-medium);
+    white-space: nowrap;
+  }
+
+  .railDivider,
+  .railNav {
     display: none;
   }
 
   .main {
-    padding-top: var(--space-6);
+    padding: var(--space-card-gap) var(--space-4) var(--space-12);
   }
 }

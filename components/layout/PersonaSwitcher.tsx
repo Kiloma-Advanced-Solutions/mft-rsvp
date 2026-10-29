@@ -1,12 +1,16 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
-import { Avatar, Badge, useToast } from "@/components/ui";
+import { Avatar, Badge, Menu, useToast } from "@/components/ui";
 import { fetchJson } from "@/lib/api";
-import { cx } from "@/lib/cx";
-import { PERSONA_LABELS, ROLE_LABELS, nowViewingAsLabel } from "@/lib/labels";
+import {
+  PERSONA_LABELS,
+  ROLE_LABELS,
+  nowViewingAsLabel,
+  switchPersonaLabel,
+} from "@/lib/labels";
 import type { User } from "@/lib/types";
 
 import styles from "./PersonaSwitcher.module.css";
@@ -20,6 +24,10 @@ import styles from "./PersonaSwitcher.module.css";
  *
  * `router.refresh()` after the switch re-runs every Server Component with the
  * new cookie. Without it the page would keep showing the previous persona's view.
+ *
+ * It sits at the top of the navigation rail, and at the end of the bar that
+ * replaces the rail on a narrow screen, where only the avatar shows. A switch
+ * that fails leaves the menu open for another try.
  */
 export function PersonaSwitcher({
   currentUser,
@@ -28,35 +36,13 @@ export function PersonaSwitcher({
   currentUser: User;
   users: User[];
 }) {
-  const [open, setOpen] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
-  const wrapperRef = useRef<HTMLDivElement>(null);
   const router = useRouter();
   const toast = useToast();
 
-  useEffect(() => {
-    if (!open) return;
-
-    function onPointerDown(event: PointerEvent) {
-      if (!wrapperRef.current?.contains(event.target as Node)) setOpen(false);
-    }
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") setOpen(false);
-    }
-
-    document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
-
-  async function switchTo(user: User) {
-    if (user.id === currentUser.id) {
-      setOpen(false);
-      return;
-    }
+  async function switchTo(userId: string): Promise<boolean> {
+    const user = users.find((candidate) => candidate.id === userId);
+    if (!user || user.id === currentUser.id) return true;
 
     setPendingId(user.id);
     try {
@@ -64,79 +50,65 @@ export function PersonaSwitcher({
         method: "POST",
         body: JSON.stringify({ userId: user.id }),
       });
-      setOpen(false);
       router.refresh();
       toast.info(nowViewingAsLabel(user.name), user.title);
+      return true;
     } catch (error) {
       toast.error(
         PERSONA_LABELS.switchFailed,
         error instanceof Error ? error.message : undefined,
       );
+      return false;
     } finally {
       setPendingId(null);
     }
   }
 
   return (
-    <div className={styles.wrapper} ref={wrapperRef}>
-      <button
-        type="button"
-        className={styles.trigger}
-        onClick={() => setOpen((value) => !value)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-      >
-        <Avatar user={currentUser} size="sm" />
-        <span className={styles.triggerText}>
-          <span className={styles.triggerName} dir="auto">
-            {currentUser.name}
+    <Menu
+      className={styles.root}
+      triggerClassName={styles.trigger}
+      popupClassName={styles.popup}
+      triggerLabel={switchPersonaLabel(currentUser.name)}
+      trigger={
+        <>
+          <Avatar user={currentUser} size="lg" className={styles.avatar} />
+          <span className={styles.triggerText}>
+            <span dir="auto">{currentUser.name}</span>
+            <span className={styles.triggerRole}>
+              {ROLE_LABELS[currentUser.role]}
+            </span>
           </span>
-          <span className={styles.triggerRole}>{ROLE_LABELS[currentUser.role]}</span>
-        </span>
-        <span className={styles.caret} aria-hidden>
-          ▼
-        </span>
-      </button>
-
-      {open && (
-        <div className={styles.menu} role="menu">
-          <p className={styles.menuLabel}>{PERSONA_LABELS.menuLabel}</p>
-
-          {users.map((user) => {
-            const active = user.id === currentUser.id;
-            return (
-              <button
-                key={user.id}
-                type="button"
-                role="menuitem"
-                className={cx(styles.option, active && styles.optionActive)}
-                onClick={() => switchTo(user)}
-                disabled={pendingId !== null}
-              >
-                <Avatar user={user} size="sm" />
-                <span className={styles.optionText}>
-                  <span className={styles.optionName} dir="auto">
-                    {user.name}
-                  </span>
-                  <span className={styles.optionMeta} dir="auto">
-                    {user.title}
-                  </span>
+        </>
+      }
+      label={PERSONA_LABELS.menuLabel}
+      heading={PERSONA_LABELS.menuLabel}
+      note={PERSONA_LABELS.footnote}
+      busy={pendingId !== null}
+      onSelect={switchTo}
+      options={users.map((user) => {
+        const active = user.id === currentUser.id;
+        return {
+          id: user.id,
+          checked: active,
+          content: (
+            <>
+              <Avatar user={user} size="sm" />
+              <span className={styles.optionText}>
+                <span className={styles.optionName} dir="auto">
+                  {user.name}
                 </span>
-                <Badge tone={active ? "primary" : "neutral"}>
-                  {ROLE_LABELS[user.role]}
-                </Badge>
-                {active && (
-                  <span className={styles.check} aria-hidden>
-                    ✓
-                  </span>
-                )}
-              </button>
-            );
-          })}
-
-          <p className={styles.footnote}>{PERSONA_LABELS.footnote}</p>
-        </div>
-      )}
-    </div>
+                <span className={styles.optionMeta} dir="auto">
+                  {user.title}
+                </span>
+              </span>
+              <Badge tone={active ? "primary" : "neutral"}>
+                {ROLE_LABELS[user.role]}
+              </Badge>
+            </>
+          ),
+        };
+      })}
+    />
   );
 }

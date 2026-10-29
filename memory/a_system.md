@@ -75,8 +75,10 @@ boundary pushed down to the leaf that needs it — [CLAUDE.md](../CLAUDE.md) sta
 the rule. `/events` is the board, `/events/[id]` the detail screen — which is
 also where hosts manage and edit — and `/events/new` the one route that exists
 because there is nothing yet to edit in place. `/` has no page of its own: it
-redirects to `/events`. The top bar has no separate nav: its brand link, the only
-link in it, leads to `/events` too. Placement rules: [CLAUDE.md](../CLAUDE.md).
+redirects to `/events`. The frame's navigation is a rail at the inline start —
+the board, and `/events/new` for whoever may create — which becomes a top bar
+with the brand and the persona on a narrow screen; see
+[dec_log.md](dec_log.md). Placement rules: [CLAUDE.md](../CLAUDE.md).
 
 ### Identity boundary — `lib/session.ts`
 
@@ -241,7 +243,8 @@ logic that lives in the route is turning that answer into a status code. See
   `ShareEventActions`, `ShareEmailPicker`, and the
   `EventMeta` family (`DateBlock`, `AccessBadge`, `EventStatusBadge`,
   `RegistrationBadge`, `EventMetaLine`, `EventMetaDetails`, `CapacityMeter`).
-- `layout/` — the app frame: `AppShell` (with the brand link) and `PersonaSwitcher`.
+- `layout/` — the app frame: `AppShell` (the navigation rail, or the top bar on a
+  narrow screen), `RailLink` and `PersonaSwitcher`.
 
 `EventCard` renders only what it is passed — deriving counts, attendees and the
 viewer's own status is the caller's job. Check these three directories before
@@ -269,8 +272,9 @@ it is a separate rendering target that declares its own direction — see
 "Email" below.
 
 Rubik is the interface font, loaded through `next/font` with the Hebrew *and*
-Latin subsets and placed in front of Geist in `--font-sans`, so Latin inside a
-Hebrew sentence keeps the same face.
+Latin subsets and first in `--font-sans`, with only system faces behind it, so
+Latin inside a Hebrew sentence keeps the same face. Geist Mono is loaded for
+monospaced text alone.
 
 The seeded fixtures in [lib/seed.ts](../lib/seed.ts) are deliberately not
 translated — their titles, names and venues are still English. That is what
