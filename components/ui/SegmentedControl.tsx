@@ -14,6 +14,11 @@ export type SegmentOption<T extends string> = {
 
 /** One option of a segmented control that navigates. */
 export type SegmentLink = {
+  /**
+   * Identifies the option across renders. Not its `href`: that changes with
+   * the rest of the URL, and a new key would replace the option's element.
+   */
+  value: string;
   href: string;
   label: ReactNode;
   /** Whether this option is the one the current URL shows. */
@@ -67,7 +72,7 @@ export function SegmentedControl<T extends string>(
       <div className={groupClass} role="group" aria-label={label}>
         {props.links.map((link) => (
           <Link
-            key={link.href}
+            key={link.value}
             href={link.href}
             replace
             scroll={false}

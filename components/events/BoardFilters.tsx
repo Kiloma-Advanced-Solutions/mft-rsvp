@@ -33,11 +33,13 @@ export function BoardFilters({ state }: { state: BoardState }) {
 
   const accessLinks: SegmentLink[] = [
     {
+      value: "all",
       href: boardHref({ ...state, access: null }),
       label: BOARD_LABELS.allAccess,
       current: access === null,
     },
     ...ACCESS_ORDER.map((value) => ({
+      value,
       href: boardHref({ ...state, access: value }),
       label: (
         <>

@@ -19,6 +19,9 @@ const PENDING_LIMIT_MS = 10_000;
  * navigation committed and the links were re-rendered from the new state --
  * the next held click is replayed on its link, whose `href` is now current.
  * The URLs, the history entries and the scroll behaviour stay the links' own.
+ * A link that stays on the page must therefore keep its element across
+ * renders: key it by what it stands for, never by its `href`, which changes
+ * with the URL and would replace the element the held click refers to.
  *
  * A held link may no longer exist after the page changes (one inside an empty
  * state, say). It is then replayed through a link that is still there with the

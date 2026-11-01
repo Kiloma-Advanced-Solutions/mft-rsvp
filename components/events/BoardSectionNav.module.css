@@ -86,5 +86,10 @@
   .link {
     padding: 0 var(--space-2);
     font-size: var(--text-base);
+    /*
+      Here the shell's bar is pinned to the top. When focus is restored to a
+      link above the screen, this keeps the link and its focus ring below it.
+    */
+    scroll-margin-block-start: calc(var(--shell-bar-height) + var(--space-2));
   }
 }
