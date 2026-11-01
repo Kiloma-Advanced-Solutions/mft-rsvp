@@ -9,8 +9,10 @@ progresses — it is current state, not a changelog.
 Iron Numbers design system, which has been supplied, and changes presentation
 only: no rule, API, schema or permission changes. It is delivered in four
 sequential PRs. PR 1 — design foundations, the shared UI kit and the
-navigation shell — is implemented. PRs 2–4 (the board; the detail page and
-host management; the forms and the milestone's close-out) have not started.
+navigation shell — is merged (PR #46). PR 2 — the Events Board: its cards and
+badges, filters and section navigation — is implemented on its branch and not
+yet merged. PRs 3 and 4 (the detail page and host management; the forms and
+the milestone's close-out) have not started.
 [TASKS.md](../TASKS.md) §5 still describes M11 as awaiting its Style Guide; it
 is brought up to date when the milestone closes.
 
@@ -48,8 +50,10 @@ Both screens are server-rendered end to end, and the controls on them act — fo
 attendees since M3, and for hosts since M4, M5, M7, M8, M9 and M10.
 
 `/events` resolves the viewer, loads only the events that viewer may see, and
-then filters, sorts and groups them; the category and access filters live in the
-URL. Whoever may create an event gets a **New event** action here.
+then filters them and sorts them into three sections — upcoming, cancelled and
+past — shown one at a time, each with its count. The category and access
+filters and the section live in the URL. Whoever may create an event gets a
+**New event** action here.
 
 `/events/[id]` shows one event to whoever may see it. An event that does not
 exist and an event the viewer may not see produce the same 404, so the page
@@ -144,7 +148,8 @@ Everything that is not the product was supplied. Do not rebuild it — see
 [TASKS.md](../TASKS.md) §3 for the full inventory.
 
 - Design tokens (light and dark) and the `components/ui/` kit.
-- `components/events/` — cards, badges, date blocks, capacity meter.
+- `components/events/` — cards, badges, date blocks, capacity meter; the
+  board's cards, badges and date blocks restyled by M11 PR 2.
 - `components/layout/` — app shell (the navigation rail, or a top bar on a
   narrow screen) and persona switcher; restyled by M11 PR 1, with the tokens
   and the `components/ui/` kit.
@@ -409,6 +414,7 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-10-28 — M11 in progress: PR 1 (design foundations, UI kit
-and navigation shell) implemented, PRs 2–4 not started. Pre-M11 stabilization
+Last updated: 2026-10-29 — M11 in progress: PR 1 (design foundations, UI kit
+and navigation shell) merged (PR #46); PR 2 (the Events Board) implemented on
+its branch, not yet merged; PRs 3–4 not started. Pre-M11 stabilization
 C1–C5 merged (PRs #41–#45); C6 follows M11; then M12 (application logging).
