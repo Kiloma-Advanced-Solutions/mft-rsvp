@@ -61,3 +61,18 @@ export function boardHref({ category, access, section }: BoardState): string {
   const query = params.toString();
   return query ? `/events?${query}` : "/events";
 }
+
+/*
+  The `data-nav-intent` of the board's links that can disappear when the board
+  changes -- a jump out of an empty section, a clear link -- and of the lasting
+  links they correspond to. `QueuedNavigation` uses it to replay a held click
+  whose own link is gone: a section intent through that section's link, which
+  is always there; a clear intent through any clear link still shown, and not
+  at all once no filters are left to clear.
+*/
+
+export function sectionIntent(section: BoardSection): string {
+  return `section:${section}`;
+}
+
+export const CLEAR_FILTERS_INTENT = "clear-filters";

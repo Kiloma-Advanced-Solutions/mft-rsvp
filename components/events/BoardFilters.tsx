@@ -2,7 +2,7 @@ import Link from "next/link";
 
 import { Chip, Icon, SegmentedControl } from "@/components/ui";
 import type { SegmentLink } from "@/components/ui";
-import { boardHref } from "@/lib/board";
+import { CLEAR_FILTERS_INTENT, boardHref } from "@/lib/board";
 import type { BoardState } from "@/lib/board";
 import { cx } from "@/lib/cx";
 import {
@@ -95,6 +95,7 @@ export function BoardFilters({ state }: { state: BoardState }) {
             href={boardHref({ ...state, category: null, access: null })}
             replace
             scroll={false}
+            data-nav-intent={CLEAR_FILTERS_INTENT}
             className={styles.clear}
           >
             {BOARD_LABELS.clearFilters}

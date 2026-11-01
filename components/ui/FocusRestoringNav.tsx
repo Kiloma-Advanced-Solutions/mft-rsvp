@@ -19,6 +19,11 @@ import type { ReactNode } from "react";
  * still on something -- a link that survived the navigation keeps it. The
  * links themselves stay ordinary links rendered by the server; this only owns
  * the `<nav>` element around them.
+ *
+ * It does not undo the links' `scroll={false}`: a plain `focus()` would scroll
+ * the link to the middle of the screen. The page moves only if the link is
+ * out of view, and then only as far as it takes to show it -- on an ordinary
+ * screen the nav is already visible and nothing moves.
  */
 export function FocusRestoringNav({
   location,
@@ -45,9 +50,12 @@ export function FocusRestoringNav({
     const active = document.activeElement;
     if (active !== null && active !== document.body) return;
 
-    navRef.current
-      ?.querySelector<HTMLElement>('[aria-current="page"]')
-      ?.focus();
+    const current = navRef.current?.querySelector<HTMLElement>(
+      '[aria-current="page"]',
+    );
+    if (!current) return;
+    current.focus({ preventScroll: true });
+    current.scrollIntoView({ block: "nearest", inline: "nearest" });
   }, [location]);
 
   return (

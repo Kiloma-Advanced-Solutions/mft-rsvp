@@ -3,13 +3,21 @@ import Link from "next/link";
 import { BoardFilters } from "@/components/events/BoardFilters";
 import { BoardSectionNav } from "@/components/events/BoardSectionNav";
 import { EventCard, EventGrid } from "@/components/events/EventCard";
-import { EmptyState, Icon, PageHeader, buttonClass } from "@/components/ui";
+import {
+  EmptyState,
+  Icon,
+  PageHeader,
+  QueuedNavigation,
+  buttonClass,
+} from "@/components/ui";
 import {
   BOARD_SECTIONS,
+  CLEAR_FILTERS_INTENT,
   boardHref,
   parseAccess,
   parseCategory,
   parseSection,
+  sectionIntent,
 } from "@/lib/board";
 import type { BoardSection, BoardState } from "@/lib/board";
 import { isPast } from "@/lib/date";
@@ -49,9 +57,12 @@ const SECTION_HEADING_ID = "board-section-heading";
  * The filters and the section live in the URL and are applied here, over the
  * already-authorised set. The filters and the section navigation are links to
  * the URLs of other board states, which `lib/board.ts` reads and writes, so no
- * board data and no filtering reach client code. The one client piece is the
- * section navigation's `<nav>`, which only restores keyboard focus when a
- * navigation removes the link that had it -- see `BoardSectionNav`.
+ * board data and no filtering reach client code. Two small client pieces
+ * handle navigation only: `QueuedNavigation`, around the board's controls,
+ * holds a click made while an earlier one is still loading and replays it on
+ * the refreshed links, so a quick second choice keeps the first; and the
+ * section navigation's `<nav>` restores keyboard focus when a navigation
+ * removes the link that had it -- see `BoardSectionNav`.
  */
 export default async function BoardPage({ searchParams }: PageProps<"/events">) {
   const [viewer, query] = await Promise.all([getCurrentUser(), searchParams]);
@@ -119,37 +130,39 @@ export default async function BoardPage({ searchParams }: PageProps<"/events">) 
         }
       />
 
-      <BoardFilters state={state} />
+      <QueuedNavigation location={boardHref(state)}>
+        <BoardFilters state={state} />
 
-      <BoardSectionNav state={state} counts={counts} />
+        <BoardSectionNav state={state} counts={counts} />
 
-      <section aria-labelledby={SECTION_HEADING_ID}>
-        <h2 id={SECTION_HEADING_ID} className="srOnly">
-          {BOARD_SECTION_LABELS[section].heading}
-        </h2>
+        <section aria-labelledby={SECTION_HEADING_ID}>
+          <h2 id={SECTION_HEADING_ID} className="srOnly">
+            {BOARD_SECTION_LABELS[section].heading}
+          </h2>
 
-        {matching.length === 0 ? (
-          <BoardEmptyState state={state} filtering={filtering} />
-        ) : items.length === 0 ? (
-          <SectionEmptyState
-            state={state}
-            filtering={filtering}
-            counts={counts}
-          />
-        ) : (
-          <EventGrid>
-            {items.map(({ event, hosts, goingCount, viewerRegistration }) => (
-              <EventCard
-                key={event.id}
-                event={event}
-                goingCount={goingCount}
-                viewerStatus={viewerRegistration?.status ?? null}
-                hostName={hosts[0]?.name}
-              />
-            ))}
-          </EventGrid>
-        )}
-      </section>
+          {matching.length === 0 ? (
+            <BoardEmptyState state={state} filtering={filtering} />
+          ) : items.length === 0 ? (
+            <SectionEmptyState
+              state={state}
+              filtering={filtering}
+              counts={counts}
+            />
+          ) : (
+            <EventGrid>
+              {items.map(({ event, hosts, goingCount, viewerRegistration }) => (
+                <EventCard
+                  key={event.id}
+                  event={event}
+                  goingCount={goingCount}
+                  viewerStatus={viewerRegistration?.status ?? null}
+                  hostName={hosts[0]?.name}
+                />
+              ))}
+            </EventGrid>
+          )}
+        </section>
+      </QueuedNavigation>
     </div>
   );
 }
@@ -168,13 +181,19 @@ function startedMostRecentFirst(items: EventWithContext[]): EventWithContext[] {
     .sort((a, b) => b.event.startsAt.localeCompare(a.event.startsAt));
 }
 
-/** A link styled as a small button, to another state of the board. */
+/**
+ * A link styled as a small button, to another state of the board. `intent` is
+ * its `data-nav-intent`, so a click held by `QueuedNavigation` can still be
+ * replayed after the empty state it sits in has gone.
+ */
 function BoardLink({
   href,
+  intent,
   variant,
   children,
 }: {
   href: string;
+  intent: string;
   variant: "secondary" | "ghost";
   children: string;
 }) {
@@ -183,6 +202,7 @@ function BoardLink({
       href={href}
       replace
       scroll={false}
+      data-nav-intent={intent}
       className={buttonClass({ variant, size: "sm" })}
     >
       {children}
@@ -212,6 +232,7 @@ function BoardEmptyState({
             href={boardHref({ ...state, category: null, access: null })}
             replace
             scroll={false}
+            data-nav-intent={CLEAR_FILTERS_INTENT}
             className={buttonClass({ variant: "secondary" })}
           >
             {BOARD_LABELS.clearFilters}
@@ -262,6 +283,7 @@ function SectionEmptyState({
               <BoardLink
                 key={other}
                 href={boardHref({ ...state, section: other })}
+                intent={sectionIntent(other)}
                 variant="secondary"
               >
                 {sectionJumpLabel(other, counts[other])}
@@ -269,6 +291,7 @@ function SectionEmptyState({
             ))}
             <BoardLink
               href={boardHref({ ...state, category: null, access: null })}
+              intent={CLEAR_FILTERS_INTENT}
               variant="ghost"
             >
               {BOARD_LABELS.clearFilters}
@@ -288,6 +311,7 @@ function SectionEmptyState({
         offersUpcoming ? (
           <BoardLink
             href={boardHref({ ...state, section: "upcoming" })}
+            intent={sectionIntent("upcoming")}
             variant="secondary"
           >
             {BOARD_LABELS.toUpcoming}

@@ -1,7 +1,7 @@
 import Link from "next/link";
 
 import { FocusRestoringNav } from "@/components/ui";
-import { BOARD_SECTIONS, boardHref } from "@/lib/board";
+import { BOARD_SECTIONS, boardHref, sectionIntent } from "@/lib/board";
 import type { BoardSection, BoardState } from "@/lib/board";
 import { cx } from "@/lib/cx";
 import { BOARD_LABELS, BOARD_SECTION_LABELS } from "@/lib/labels";
@@ -21,10 +21,12 @@ import styles from "./BoardSectionNav.module.css";
  * The counts are the caller's, computed on the server over the events this
  * viewer may see, so no count can reveal an event they cannot.
  *
- * The `<nav>` is `FocusRestoringNav`, the board's one piece of client code. A
- * link in an empty state, or the filters' clear link, can navigate to a board
- * on which it no longer exists; focus then comes here, to the current
- * section, instead of being dropped.
+ * The `<nav>` is `FocusRestoringNav`, one of the board's two client pieces
+ * (the other is the page's `QueuedNavigation`). A link in an empty state, or
+ * the filters' clear link, can navigate to a board on which it no longer
+ * exists; focus then comes here, to the current section, instead of being
+ * dropped. Each link's `data-nav-intent` lets a held click on a vanished jump
+ * link be replayed through the matching section link here.
  */
 export function BoardSectionNav({
   state,
@@ -48,6 +50,7 @@ export function BoardSectionNav({
             replace
             scroll={false}
             aria-current={current ? "page" : undefined}
+            data-nav-intent={sectionIntent(section)}
             className={cx(styles.link, current && styles.current)}
           >
             {/*
