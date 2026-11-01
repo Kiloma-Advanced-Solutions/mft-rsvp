@@ -2,6 +2,16 @@
   flex: none;
 }
 
+.xs {
+  width: var(--icon-size-xs);
+  height: var(--icon-size-xs);
+}
+
+.sm {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+}
+
 .md {
   width: var(--icon-size-md);
   height: var(--icon-size-md);

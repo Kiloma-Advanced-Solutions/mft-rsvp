@@ -1,5 +1,4 @@
-"use client";
-
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { cx } from "@/lib/cx";
@@ -13,35 +12,82 @@ export type SegmentOption<T extends string> = {
   count?: number;
 };
 
-/**
- * Single-choice switch: list vs calendar, or a row of filter tabs.
- *
- * Rendered as a real radio group so arrow keys work and screen readers
- * announce it correctly. Generic over the value type, so `onChange` hands you
- * back your own union rather than a bare string.
- */
-export function SegmentedControl<T extends string>({
-  options,
-  value,
-  onChange,
-  label,
-  fullWidth = false,
-  className,
-}: {
-  options: Array<SegmentOption<T>>;
-  value: T;
-  onChange: (value: T) => void;
+/** One option of a segmented control that navigates. */
+export type SegmentLink = {
+  href: string;
+  label: ReactNode;
+  /** Whether this option is the one the current URL shows. */
+  current: boolean;
+  count?: number;
+};
+
+type CommonProps = {
   /** Describes the group for screen readers, e.g. "View mode". */
   label: string;
   fullWidth?: boolean;
   className?: string;
-}) {
+};
+
+type RadioProps<T extends string> = CommonProps & {
+  options: Array<SegmentOption<T>>;
+  value: T;
+  onChange: (value: T) => void;
+};
+
+type LinkProps = CommonProps & {
+  links: SegmentLink[];
+};
+
+/**
+ * Single-choice switch: list vs calendar, or a row of filter tabs. Two modes,
+ * one look:
+ *
+ * - **Links** (`links`): each option is a link and the choice lives in the
+ *   URL. For a choice that changes what a server-rendered page shows, such as
+ *   a filter. The links replace the history entry rather than adding one and
+ *   keep the scroll position, so trying several options is not a string of
+ *   Back presses and the page does not jump. The current option is marked
+ *   with `aria-current`; each option is an ordinary tab stop, as links are.
+ * - **Radio** (`options`, `value`, `onChange`): a real radio group of
+ *   buttons, for a choice held in client state. Generic over the value type,
+ *   so `onChange` hands you back your own union rather than a bare string.
+ *
+ * The file has no `"use client"`: the link mode needs no client code, so a
+ * Server Component can render it directly. The radio mode takes a handler, so
+ * it can only be rendered from a Client Component, which makes it one.
+ */
+export function SegmentedControl<T extends string>(
+  props: RadioProps<T> | LinkProps,
+) {
+  const { label, fullWidth = false, className } = props;
+  const groupClass = cx(styles.group, fullWidth && styles.fullWidth, className);
+
+  if ("links" in props) {
+    return (
+      <div className={groupClass} role="group" aria-label={label}>
+        {props.links.map((link) => (
+          <Link
+            key={link.href}
+            href={link.href}
+            replace
+            scroll={false}
+            aria-current={link.current ? "true" : undefined}
+            className={cx(styles.option, link.current && styles.selected)}
+          >
+            {link.label}
+            {link.count !== undefined && (
+              <span className={styles.count}>{link.count}</span>
+            )}
+          </Link>
+        ))}
+      </div>
+    );
+  }
+
+  const { options, value, onChange } = props;
+
   return (
-    <div
-      className={cx(styles.group, fullWidth && styles.fullWidth, className)}
-      role="radiogroup"
-      aria-label={label}
-    >
+    <div className={groupClass} role="radiogroup" aria-label={label}>
       {options.map((option) => {
         const selected = option.value === value;
         return (

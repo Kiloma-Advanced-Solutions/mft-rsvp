@@ -54,9 +54,9 @@ import styles from "./EventForm.module.css";
  * the field that caused it. The refusal that matters happens on the server,
  * which validates again and does not trust this having passed.
  *
- * Values are uncontrolled and read from the DOM at submit, the way
- * `BoardFilters` reads its form. The three pieces of state below are the ones
- * that change what is on screen rather than merely what will be sent.
+ * Values are uncontrolled and read from the DOM at submit. The three pieces of
+ * state below are the ones that change what is on screen rather than merely
+ * what will be sent.
  */
 export function EventForm({
   mode,

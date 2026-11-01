@@ -1,0 +1,90 @@
+/*
+  Underlined links on a hairline: the current one is in full-strength text with
+  a navy bar under it and a navy count. Zero counts are not faded -- a faded
+  count would fall below AA, and a zero is information too.
+*/
+.nav {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  border-bottom: 1px solid var(--color-border-strong);
+}
+
+.link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  height: var(--control-height-tab);
+  padding: 0 var(--control-padding-md);
+  border-start-start-radius: var(--radius-menu-item);
+  border-start-end-radius: var(--radius-menu-item);
+  font-size: var(--text-body);
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.link:hover:not(.current) {
+  background: var(--color-surface-subtle);
+  color: var(--color-text);
+}
+
+/* Keeps its shape when focused; see the same rule in Button.module.css. */
+.link:focus-visible {
+  border-radius: var(--radius-menu-item);
+}
+
+.current {
+  color: var(--color-text);
+  font-weight: var(--weight-medium);
+}
+
+/* The bar sits on the nav's hairline, so the current link reads as attached. */
+.current::after {
+  content: "";
+  position: absolute;
+  inset-inline: var(--space-3);
+  bottom: -1px;
+  height: var(--tab-indicator-height);
+  border-start-start-radius: var(--tab-indicator-height);
+  border-start-end-radius: var(--tab-indicator-height);
+  background: var(--color-navy);
+}
+
+.count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: var(--control-height-pill-compact);
+  height: var(--control-height-pill-compact);
+  padding: 0 var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-subtle);
+  color: var(--color-text-muted);
+  font-size: var(--text-caption);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.current .count {
+  background: var(--color-navy);
+  color: var(--color-on-navy);
+}
+
+/* On a phone the three share the row equally, so none is ever off-screen. */
+@media (max-width: 760px) {
+  .nav {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+  }
+
+  .link {
+    padding: 0 var(--space-2);
+    font-size: var(--text-base);
+  }
+}
