@@ -552,7 +552,10 @@ the server as before.
   before the first navigation commits would follow an outdated link and undo
   the first choice. While a navigation to `/events` is pending it holds
   further board-link clicks, in order, and replays each on its link once the
-  page has re-rendered, when that `href` is current. A held link that is gone
+  page has re-rendered, when that `href` is current. That needs a lasting link
+  to keep its element across the navigation, so board links are keyed by what
+  they stand for — an access option by its value, a chip by its category, a
+  section by its name — never by their `href`. A held link that is gone
   by then — a jump out of an empty section, a clear link — is replayed through
   a remaining link with the same `data-nav-intent` (`lib/board.ts`): a section
   through that section's link, a clear through any clear link still shown, or
@@ -565,8 +568,11 @@ the server as before.
   drop focus to the document body. After the board's URL changes, and only if
   focus was dropped, it moves focus to the current section's link — without
   the browser's default scroll, then scrolling only as far as it takes to
-  bring the link into view if it is off-screen. It holds no state and never
-  takes focus on first render or from an element that still has it.
+  bring the link into view if it is off-screen. On a narrow screen, where the
+  shell's bar is pinned to the top, the section links' `scroll-margin` of the
+  bar's height plus `--space-2` keeps the link and its focus ring below the
+  bar. It holds no state and never takes focus on first render or from an
+  element that still has it.
 
 Why the board works this way: [dec_log.md](dec_log.md).
 

@@ -1649,4 +1649,12 @@ a phone the four access options sit two by two, so none is ever hidden off the
 edge of a scrolling row. A quick sequence of choices costs one round trip per
 choice, in order, rather than one combined navigation. A board link that can
 disappear must carry a `data-nav-intent` matching a link that stays, or one
-whose absence means the action no longer applies.
+whose absence means the action no longer applies. A board link that stays must
+keep its element across navigations, since a held click refers to that
+element: its React key is what it stands for, never its `href`, which changes
+with the rest of the URL. `SegmentLink` therefore has a required `value`, as
+`SegmentOption` does; keying the access options by `href` had replaced them on
+every category or section change and dropped an access click held behind one.
+On a narrow screen the shell's bar is pinned to the top, so the section links
+have a `scroll-margin` of the bar's height plus `--space-2`; without it,
+restoring focus to a link above the screen left it under the bar.
