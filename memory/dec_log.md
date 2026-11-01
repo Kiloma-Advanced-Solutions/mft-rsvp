@@ -1610,19 +1610,33 @@ do have matches. Because some of those links — a jump from an empty section,
 a clear link shown only while filtering — navigate to a board on which they
 no longer exist, the section navigation's `<nav>` is a client component,
 `FocusRestoringNav`: when a navigation leaves focus on the document body, it
-moves focus to the current section's link. It holds no state, never takes
-focus on first render or from an element that still has it, and changes
-nothing about the links or the URL.
+moves focus to the current section's link, scrolling only if that link is out
+of view and then only as far as it takes to show it. It holds no state, never
+takes focus on first render or from an element that still has it, and changes
+nothing about the links or the URL. And because every link's `href` is the
+state the page was rendered with, a second click made before the first
+navigation commits would follow an outdated link and undo the first choice;
+`QueuedNavigation`, around the board's controls, holds such clicks in order
+and replays each on its re-rendered link once the page has updated. A held
+link that has disappeared by then is replayed through a remaining link with
+the same `data-nav-intent` — a section through that section's link, a clear
+through any clear link left, or not at all when no filters remain.
 
 Rationale: the 2026-08-24 reasons all still hold — filtering after
 authorisation means the URL can only narrow, and a filtered board is
 shareable — and the section follows them: it is server state, so a count can
 never reveal a hidden event, and Back from an event returns to the section it
 was opened from. With every control a link there is nothing left for client
-code to do except keyboard focus: a removed link drops focus to the document
-body, where a keyboard or screen-reader user is left with nothing focused,
-and no server-rendered markup can prevent that — Next.js moves no focus when a
-link does not scroll. A section that shows only cancelled, or only past, events no
+code to do except navigation timing and keyboard focus, neither of which
+server-rendered markup can handle. A removed link drops focus to the document
+body, where a keyboard or screen-reader user is left with nothing focused —
+Next.js moves no focus when a link does not scroll — and the browser's own
+focus scrolling would undo the links' `scroll={false}`, so the scroll is kept
+to the minimum that shows the focused link. A server-rendered link cannot know
+about a navigation still in flight; the filters' old client leaf read both
+selects for exactly this reason. Holding and replaying the click, rather than
+merging URLs in the browser, keeps every navigation an ordinary link to a
+server-built URL and keeps "clear the filters" exact. A section that shows only cancelled, or only past, events no
 longer needs dimming to set them apart, which was how the board met
 [TASKS.md](../TASKS.md) M1's "past events are separate and de-emphasised";
 separation now does it, and the pills say the state.
@@ -1632,4 +1646,7 @@ to keep filters in the URL and apply them on the server stands. The canonical
 URL of a board state is whatever `boardHref()` returns. `SegmentedControl`
 gained a link mode for the access filter, and `Chip` was added to the kit. On
 a phone the four access options sit two by two, so none is ever hidden off the
-edge of a scrolling row.
+edge of a scrolling row. A quick sequence of choices costs one round trip per
+choice, in order, rather than one combined navigation. A board link that can
+disappear must carry a `data-nav-intent` matching a link that stays, or one
+whose absence means the action no longer applies.

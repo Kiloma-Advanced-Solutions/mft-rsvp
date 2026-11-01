@@ -533,7 +533,8 @@ order, defaults omitted, so the unfiltered upcoming board is plain `/events`.
 the section navigation are links built from the whole current state, so
 changing a filter keeps the section, changing the section keeps the filters,
 and clearing the filters keeps the section. Every one of these links replaces
-the history entry and keeps the scroll position.
+the history entry and keeps the scroll position; only restoring focus (below)
+may move it, and only on a screen too short to show the section navigation.
 
 An empty section explains itself: under filters, it offers the other sections
 that have matches, with their counts, and clearing the filters; without
@@ -541,16 +542,33 @@ filters, an empty cancelled or past section offers the way back to upcoming
 when upcoming has events. When nothing matches in any section — or the viewer
 can see nothing at all — one board-level empty state replaces them.
 
-**The one client piece is keyboard focus.** Those empty-state links, and the
-filters' clear link, navigate to a board on which they no longer exist, which
-would drop focus to the document body. The section navigation's `<nav>` is
-therefore
-[components/ui/FocusRestoringNav.tsx](../components/ui/FocusRestoringNav.tsx),
-a client component that, after the board's URL changes and only if focus was
-dropped, moves focus to the current section's link. It holds no state and
-never takes focus on first render or from an element that still has it; the
-links inside it are rendered by the server as before. Why the board works this
-way: [dec_log.md](dec_log.md).
+**Two client pieces, for navigation only.** Neither filters, fetches nor
+decides anything about the board's data; the links inside both are rendered by
+the server as before.
+
+- [components/ui/QueuedNavigation.tsx](../components/ui/QueuedNavigation.tsx)
+  wraps the filters, the section navigation and the section. Each link's
+  `href` is built from the state the page was rendered with, so a second click
+  before the first navigation commits would follow an outdated link and undo
+  the first choice. While a navigation to `/events` is pending it holds
+  further board-link clicks, in order, and replays each on its link once the
+  page has re-rendered, when that `href` is current. A held link that is gone
+  by then — a jump out of an empty section, a clear link — is replayed through
+  a remaining link with the same `data-nav-intent` (`lib/board.ts`): a section
+  through that section's link, a clear through any clear link still shown, or
+  not at all once no filters are left. Event cards and other routes are not
+  held, and a navigation that has not committed after ten seconds no longer
+  holds anything.
+- [components/ui/FocusRestoringNav.tsx](../components/ui/FocusRestoringNav.tsx)
+  is the section navigation's `<nav>`. Those empty-state links and the filters'
+  clear link navigate to a board on which they no longer exist, which would
+  drop focus to the document body. After the board's URL changes, and only if
+  focus was dropped, it moves focus to the current section's link — without
+  the browser's default scroll, then scrolling only as far as it takes to
+  bring the link into view if it is off-screen. It holds no state and never
+  takes focus on first render or from an element that still has it.
+
+Why the board works this way: [dec_log.md](dec_log.md).
 
 ### The detail screen — `/events/[id]`
 
