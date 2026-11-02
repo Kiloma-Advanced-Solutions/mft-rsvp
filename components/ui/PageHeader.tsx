@@ -27,6 +27,7 @@ export function PageHeader({
   meta,
   actions,
   alignActions = "end",
+  centerTitle = false,
   breadcrumbs,
   backHref,
   backLabel = UI_LABELS.back,
@@ -44,6 +45,13 @@ export function PageHeader({
    * title, summary and badges.
    */
   alignActions?: "start" | "end";
+  /**
+   * Centres the title and the description under it on the whole header --
+   * only those two; the eyebrow and the meta keep the start. The actions move
+   * up to the eyebrow's line, at its end, so they never take width from the
+   * title; `alignActions` does not apply.
+   */
+  centerTitle?: boolean;
   /** Replaces the back link when given. */
   breadcrumbs?: Breadcrumb[];
   backHref?: string;
@@ -61,7 +69,12 @@ export function PageHeader({
       )}
 
       <div
-        className={cx(styles.row, alignActions === "start" && styles.rowTop)}
+        className={cx(
+          styles.row,
+          centerTitle
+            ? styles.centered
+            : alignActions === "start" && styles.rowTop,
+        )}
       >
         <div className={styles.titleGroup}>
           {eyebrow && <p className={styles.eyebrow}>{eyebrow}</p>}

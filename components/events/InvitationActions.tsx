@@ -55,9 +55,13 @@ type Candidate = { id: string; name: string; title: string };
 /**
  * Tick several people and invite them with one click.
  *
- * The people are picked in a dialog, so the page holds one button, a count and
- * the send button however many candidates there are. Ticking applies at once;
- * closing the dialog keeps the ticks, and inviting happens from the page.
+ * The people are picked, counted and invited in one dialog, so the page holds a
+ * single button however many candidates there are -- the same shape as the
+ * share-email dialog. Ticking applies at once, and closing the dialog without
+ * inviting keeps the ticks for the next opening. When every invitation went
+ * through, the dialog closes; when any was refused, it stays open with only
+ * the refused people still ticked. It cannot be dismissed while a batch is
+ * going out.
  *
  * Each person is still one invitation: the button walks the selection **one
  * request at a time** through the same per-person route a single invitation
@@ -159,7 +163,7 @@ export function InvitePicker({
   }
 
   async function invite() {
-    if (chosen.length === 0) return;
+    if (chosen.length === 0 || busy) return;
     setSubmitting(true);
 
     const invited = new Set<string>();
@@ -197,6 +201,7 @@ export function InvitePicker({
       // the refresh shows they can no longer be invited, `chosen` drops them.
       setSelected((current) => current.filter((id) => !invited.has(id)));
       setSubmitting(false);
+      if (failures.length === 0) closePicker();
       startTransition(() => router.refresh());
     }
   }
@@ -226,43 +231,50 @@ export function InvitePicker({
       <Button
         variant="secondary"
         onClick={() => setPickerOpen(true)}
-        disabled={busy}
+        // Not while the list refreshes after a batch: the dialog closes as
+        // that refresh starts and hands focus back to this button, which a
+        // disabled button cannot take. Inviting stays disabled until it lands.
+        disabled={submitting}
         aria-haspopup="dialog"
       >
         {INVITATION_LABELS.choosePeople}
       </Button>
 
-      <div className={styles.pickerFooter}>
-        <p className={styles.note} aria-live="polite">
-          {selectedCountLabel(chosen.length)}
-        </p>
-        <Button
-          onClick={invite}
-          loading={submitting}
-          disabled={chosen.length === 0 || busy}
-        >
-          {chosen.length === 0
-            ? INVITATION_LABELS.invite
-            : inviteSelectedLabel(chosen.length)}
-        </Button>
-      </div>
-
       {/*
         The shared `Modal`: the native dialog gives focus trapping, Escape, the
         backdrop and focus returning to the button above. Its body scrolls, so
-        a long list stays inside it rather than lengthening the page.
+        a long list stays inside it rather than lengthening the page. Inviting
+        happens from its footer, and nothing dismisses it mid-batch.
       */}
       <Modal
         open={pickerOpen}
         onClose={closePicker}
         title={INVITATION_LABELS.pickerTitle}
         description={INVITATION_LABELS.pickerDescription}
+        dismissible={!submitting}
         footer={
           <>
+            <div className={styles.dialogActions}>
+              <Button
+                onClick={invite}
+                loading={submitting}
+                disabled={chosen.length === 0 || busy}
+              >
+                {chosen.length === 0
+                  ? INVITATION_LABELS.invite
+                  : inviteSelectedLabel(chosen.length)}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={closePicker}
+                disabled={submitting}
+              >
+                {INVITATION_LABELS.done}
+              </Button>
+            </div>
             <p className={styles.dialogCount} aria-live="polite">
               {selectedCountLabel(chosen.length)}
             </p>
-            <Button onClick={closePicker}>{INVITATION_LABELS.done}</Button>
           </>
         }
       >
@@ -298,6 +310,7 @@ export function InvitePicker({
                 key={candidate.id}
                 checked={selected.includes(candidate.id)}
                 onChange={(event) => toggle(candidate.id, event.target.checked)}
+                disabled={submitting}
                 label={<span dir="auto">{candidate.name}</span>}
                 hint={<span dir="auto">{candidate.title}</span>}
               />

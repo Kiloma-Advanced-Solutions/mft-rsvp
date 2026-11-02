@@ -128,6 +128,63 @@
   overflow-wrap: anywhere;
 }
 
+/*
+  The title and description centred on the whole header, not on the space the
+  actions leave beside them. The row becomes a grid and the title group's box
+  steps aside (`display: contents`), so its parts are placed one by one: the
+  eyebrow at the start of the first line with the actions at its end -- level
+  with the top, where `rowTop` would have put them -- and the title, the
+  description and the meta each across both columns below. Nothing the actions
+  are has to be known or measured, and the title can never run under them.
+
+  An item that is not there leaves no row behind: only the first line is
+  placed by hand, and the rest flow into rows of their own in source order.
+
+  Each text keeps its own `dir="auto"` for bidi, so a Latin title still orders
+  its words left to right; centring makes the alignment the same for either
+  language, and wrapped lines stay centred. The description keeps its 62ch
+  measure, with the box itself centred.
+*/
+.centered {
+  display: grid;
+  grid-template-columns: minmax(min-content, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3) var(--space-6);
+}
+
+.centered .titleGroup {
+  display: contents;
+}
+
+.centered .eyebrow {
+  grid-row: 1;
+  grid-column: 1;
+  /* Kept against the title, the group's usual gap away from it, when the
+     actions make the first line taller than the eyebrow. */
+  align-self: end;
+}
+
+.centered .title,
+.centered .description,
+.centered .meta {
+  grid-column: 1 / -1;
+}
+
+.centered .title {
+  text-align: center;
+}
+
+.centered .description {
+  margin-inline: auto;
+  text-align: center;
+}
+
+.centered .actions {
+  grid-row: 1;
+  grid-column: 2;
+  justify-content: flex-end;
+}
+
 .meta {
   display: flex;
   flex-wrap: wrap;
@@ -145,5 +202,17 @@
 @media (max-width: 760px) {
   .title {
     font-size: var(--text-page-title-compact);
+  }
+
+  /* On a phone the actions take a line of their own after the meta, as the
+     wrapping row puts them, rather than squeezing the eyebrow. */
+  .centered .eyebrow,
+  .centered .actions {
+    grid-row: auto;
+    grid-column: 1 / -1;
+  }
+
+  .centered .actions {
+    justify-content: flex-start;
   }
 }

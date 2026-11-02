@@ -140,6 +140,7 @@ export default async function EventDetailPage({
           ) : undefined
         }
         alignActions="start"
+        centerTitle
         meta={
           <>
             {/* A cancellation leads, as on the board's card. */}

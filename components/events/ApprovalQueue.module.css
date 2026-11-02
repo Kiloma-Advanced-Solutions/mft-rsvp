@@ -1,22 +1,35 @@
-/* Matches the detail page's own section heading, so the queue reads as one of
-   its sections rather than as a panel dropped into the column. */
+/* One of the detail page's section cards: its title and count, and who else
+   sees it, then the requests. */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
 .head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-3);
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
 }
 
 .title {
-  font-size: var(--text-lg);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-tight);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-section-title);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
 }
 
-.description {
-  margin-top: var(--space-1);
-  margin-bottom: var(--space-4);
-  font-size: var(--text-sm);
-  color: var(--color-text-subtle);
+/* "Only you and the other hosts see this", with the eye beside it. */
+.private {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-caption);
+  color: var(--color-text-muted);
 }
 
 .rows {
@@ -26,36 +39,58 @@
 }
 
 .groupTitle {
-  margin-top: var(--space-6);
-  margin-bottom: var(--space-3);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
+  margin-top: var(--space-1);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
   color: var(--color-text-muted);
 }
 
 /* ---- one request -------------------------------------------------------- */
 
-.row {
+/* An inner card: a tinted block with the smaller radius and a hairline. */
+.request {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
   align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-card);
+  background: var(--color-surface-subtle);
+  box-shadow: inset 0 0 0 1px var(--color-border);
+  min-width: 0;
+}
+
+/* The person at the start and, on a turned-down request, its badge at the
+   end; the badge wraps under the person rather than squeezing the name. */
+.requestTop {
+  align-self: stretch;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-3);
+  min-width: 0;
 }
 
 /* Quoted, so the requester's own words are visibly theirs and not ours. */
 .message {
   margin: 0;
   padding-inline-start: var(--space-4);
-  border-inline-start: 2px solid var(--color-border-strong);
-  font-size: var(--text-sm);
+  border-inline-start: 3px solid var(--color-border-strong);
+  font-size: var(--text-base);
+  font-weight: var(--weight-light);
   line-height: var(--leading-normal);
-  color: var(--color-text-muted);
   /*
     The message is somebody else's text, so it can hold an unbroken run — a URL,
     a pasted identifier — with nowhere to wrap. Without this the blockquote is
     sized to that run and takes the whole page into horizontal scroll with it.
   */
   overflow-wrap: anywhere;
+}
+
+.when {
+  font-size: var(--text-caption);
+  color: var(--color-text-muted);
 }
 
 .warning {
@@ -70,8 +105,9 @@
   color: var(--color-text-subtle);
 }
 
+/* Used by `RequestDecisionActions`. */
 .actions {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--space-2);
+  gap: var(--space-3);
 }

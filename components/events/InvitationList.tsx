@@ -40,61 +40,66 @@ export function InvitationList({
   if (!active && invitees.length === 0) return null;
 
   return (
-    <section>
-      <div className={styles.head}>
-        <h2 className={styles.title}>{INVITATION_LABELS.title}</h2>
-        {invitees.length > 0 && <Badge tone="neutral">{invitees.length}</Badge>}
-      </div>
-      <p className={styles.description}>
-        {active
-          ? INVITATION_LABELS.description
-          : INVITATION_LABELS.dormantDescription}
-      </p>
-
-      {invitees.length === 0 ? (
-        <EmptyState
-          compact
-          icon="✉"
-          title={INVITATION_LABELS.emptyTitle}
-          description={INVITATION_LABELS.emptyDescription}
-        />
-      ) : (
-        <div className={styles.rows}>
-          {invitees.map((person) => (
-            <InviteeRow
-              key={person.invitee.id}
-              eventId={eventId}
-              person={person}
-              reinviteClosed={inviting.state === "closed"}
-            />
-          ))}
-        </div>
-      )}
-
-      {/*
-        Adding people. A dormant list says why it is inactive above and offers
-        nothing here; an active one either offers the picker, says nobody is
-        left to invite, or says why the list is closed to additions.
-      */}
-      {active && (
-        <div className={styles.adding}>
-          {inviting.state === "closed" ? (
-            <p className={styles.note}>{invitationClosedNote(inviting.reason)}</p>
-          ) : candidates.length === 0 ? (
-            <p className={styles.note}>{INVITATION_LABELS.noCandidates}</p>
-          ) : (
-            <InvitePicker
-              eventId={eventId}
-              candidates={candidates.map((user) => ({
-                id: user.id,
-                name: user.name,
-                title: user.title,
-              }))}
-            />
+    <Card>
+      <section>
+        <div className={styles.head}>
+          <h2 className={styles.title}>{INVITATION_LABELS.title}</h2>
+          {invitees.length > 0 && (
+            <Badge tone="neutral">{invitees.length}</Badge>
           )}
         </div>
-      )}
-    </section>
+        <p className={styles.description}>
+          {active
+            ? INVITATION_LABELS.description
+            : INVITATION_LABELS.dormantDescription}
+        </p>
+
+        {invitees.length === 0 ? (
+          <EmptyState
+            compact
+            title={INVITATION_LABELS.emptyTitle}
+            description={INVITATION_LABELS.emptyDescription}
+          />
+        ) : (
+          <div className={styles.rows}>
+            {invitees.map((person) => (
+              <InviteeRow
+                key={person.invitee.id}
+                eventId={eventId}
+                person={person}
+                reinviteClosed={inviting.state === "closed"}
+              />
+            ))}
+          </div>
+        )}
+
+        {/*
+          Adding people. A dormant list says why it is inactive above and offers
+          nothing here; an active one either offers the picker, says nobody is
+          left to invite, or says why the list is closed to additions.
+        */}
+        {active && (
+          <div className={styles.adding}>
+            {inviting.state === "closed" ? (
+              <p className={styles.note}>
+                {invitationClosedNote(inviting.reason)}
+              </p>
+            ) : candidates.length === 0 ? (
+              <p className={styles.note}>{INVITATION_LABELS.noCandidates}</p>
+            ) : (
+              <InvitePicker
+                eventId={eventId}
+                candidates={candidates.map((user) => ({
+                  id: user.id,
+                  name: user.name,
+                  title: user.title,
+                }))}
+              />
+            )}
+          </div>
+        )}
+      </section>
+    </Card>
   );
 }
 
@@ -115,27 +120,25 @@ function InviteeRow({
   const { invitee, registrationStatus, revocation } = person;
 
   return (
-    <Card subtle elevation="flat" padding="sm">
-      <div className={styles.row}>
-        <Person user={invitee} size="sm" />
-        <div className={styles.rowEnd}>
-          {registrationStatus === null ? (
-            <Badge tone="neutral" variant="outline">
-              {INVITATION_LABELS.notRegistered}
-            </Badge>
-          ) : (
-            <RegistrationBadge status={registrationStatus} />
-          )}
-          {revocation.state === "open" && (
-            <RevokeInvitationButton
-              eventId={eventId}
-              userId={invitee.id}
-              inviteeName={invitee.name}
-              reinviteClosed={reinviteClosed}
-            />
-          )}
-        </div>
+    <div className={styles.row}>
+      <Person user={invitee} />
+      <div className={styles.rowEnd}>
+        {registrationStatus === null ? (
+          <Badge tone="neutral" variant="outline">
+            {INVITATION_LABELS.notRegistered}
+          </Badge>
+        ) : (
+          <RegistrationBadge status={registrationStatus} />
+        )}
+        {revocation.state === "open" && (
+          <RevokeInvitationButton
+            eventId={eventId}
+            userId={invitee.id}
+            inviteeName={invitee.name}
+            reinviteClosed={reinviteClosed}
+          />
+        )}
       </div>
-    </Card>
+    </div>
   );
 }

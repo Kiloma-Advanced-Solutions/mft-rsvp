@@ -1,4 +1,4 @@
-import { Badge, Card, EmptyState, Person } from "@/components/ui";
+import { Badge, Card, EmptyState, Icon, Person } from "@/components/ui";
 import { formatRelativeDay } from "@/lib/date";
 import {
   QUEUE_LABELS,
@@ -8,6 +8,7 @@ import {
 import { requestCanBeApproved, requestCanBeRejected } from "@/lib/permissions";
 import type { EventRecord, EventRequest } from "@/lib/types";
 
+import { RegistrationBadge } from "./EventMeta";
 import { RequestDecisionActions } from "./RequestDecisionActions";
 import styles from "./ApprovalQueue.module.css";
 
@@ -47,44 +48,31 @@ export function ApprovalQueue({
   );
 
   return (
-    <section>
-      <div className={styles.head}>
-        <h2 className={styles.title}>{QUEUE_LABELS.title}</h2>
-        {pending.length > 0 && (
-          <Badge tone="warning">{pending.length}</Badge>
-        )}
-      </div>
-      <p className={styles.description}>{QUEUE_LABELS.description}</p>
-
-      {pending.length === 0 ? (
-        <EmptyState
-          compact
-          icon="◷"
-          title={QUEUE_LABELS.emptyTitle}
-          description={QUEUE_LABELS.emptyDescription}
-        />
-      ) : (
-        <div className={styles.rows}>
-          {pending.map((request) => (
-            <RequestRow
-              key={request.registration.id}
-              eventId={event.id}
-              request={request}
-            />
-          ))}
+    <Card>
+      <section className={styles.section}>
+        <div className={styles.head}>
+          <h2 className={styles.title}>
+            {QUEUE_LABELS.title}
+            {pending.length > 0 && (
+              <Badge tone="warning">{pending.length}</Badge>
+            )}
+          </h2>
+          {/* Who else can see this section: the host's own reassurance. */}
+          <p className={styles.private}>
+            <Icon name="eye" size="sm" />
+            {QUEUE_LABELS.description}
+          </p>
         </div>
-      )}
 
-      {/*
-        Kept separate rather than mixed in: `TASKS.md` section 4 says a rejected
-        person may not ask again but a host may still approve them, so these
-        rows have to stay reachable without looking like they are still waiting.
-      */}
-      {rejected.length > 0 && (
-        <>
-          <h3 className={styles.groupTitle}>{QUEUE_LABELS.rejectedTitle}</h3>
+        {pending.length === 0 ? (
+          <EmptyState
+            compact
+            title={QUEUE_LABELS.emptyTitle}
+            description={QUEUE_LABELS.emptyDescription}
+          />
+        ) : (
           <div className={styles.rows}>
-            {rejected.map((request) => (
+            {pending.map((request) => (
               <RequestRow
                 key={request.registration.id}
                 eventId={event.id}
@@ -92,9 +80,29 @@ export function ApprovalQueue({
               />
             ))}
           </div>
-        </>
-      )}
-    </section>
+        )}
+
+        {/*
+          Kept separate rather than mixed in: `TASKS.md` section 4 says a rejected
+          person may not ask again but a host may still approve them, so these
+          rows have to stay reachable without looking like they are still waiting.
+        */}
+        {rejected.length > 0 && (
+          <>
+            <h3 className={styles.groupTitle}>{QUEUE_LABELS.rejectedTitle}</h3>
+            <div className={styles.rows}>
+              {rejected.map((request) => (
+                <RequestRow
+                  key={request.registration.id}
+                  eventId={event.id}
+                  request={request}
+                />
+              ))}
+            </div>
+          </>
+        )}
+      </section>
+    </Card>
   );
 }
 
@@ -130,42 +138,46 @@ function RequestRow({
       : registration.createdAt;
 
   return (
-    <Card subtle elevation="flat" padding="sm">
-      <div className={styles.row}>
-        <Person
-          user={requester}
-          size="sm"
-          meta={requestTimelineLabel(
-            formatRelativeDay(requestedAt),
-            registration.decidedAt
-              ? formatRelativeDay(registration.decidedAt)
-              : null,
-          )}
-        />
-
-        {registration.message && (
-          <blockquote className={styles.message} dir="auto">
-            {registration.message}
-          </blockquote>
+    <div className={styles.request}>
+      <div className={styles.requestTop}>
+        <Person user={requester} />
+        {/* A turned-down request says so on the row, not only by its group. */}
+        {registration.status === "rejected" && (
+          <RegistrationBadge status="rejected" />
         )}
-
-        {!requesterCanView && (
-          <p className={styles.warning}>{QUEUE_LABELS.requesterCannotView}</p>
-        )}
-
-        {/* Nothing left to decide: the note is the whole row's answer. */}
-        {(canApprove || canReject) && (
-          <RequestDecisionActions
-            eventId={eventId}
-            registrationId={registration.id}
-            requesterName={requester.name}
-            canApprove={canApprove}
-            canReject={canReject}
-          />
-        )}
-
-        {note && <p className={styles.note}>{note}</p>}
       </div>
-    </Card>
+
+      {registration.message && (
+        <blockquote className={styles.message} dir="auto">
+          {registration.message}
+        </blockquote>
+      )}
+
+      <p className={styles.when}>
+        {requestTimelineLabel(
+          formatRelativeDay(requestedAt),
+          registration.decidedAt
+            ? formatRelativeDay(registration.decidedAt)
+            : null,
+        )}
+      </p>
+
+      {!requesterCanView && (
+        <p className={styles.warning}>{QUEUE_LABELS.requesterCannotView}</p>
+      )}
+
+      {/* Nothing left to decide: the note is the whole row's answer. */}
+      {(canApprove || canReject) && (
+        <RequestDecisionActions
+          eventId={eventId}
+          registrationId={registration.id}
+          requesterName={requester.name}
+          canApprove={canApprove}
+          canReject={canReject}
+        />
+      )}
+
+      {note && <p className={styles.note}>{note}</p>}
+    </div>
   );
 }

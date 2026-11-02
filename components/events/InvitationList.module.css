@@ -1,5 +1,5 @@
-/* Matches the detail page's own section heading, so the list reads as one of
-   its sections, as the approval queue and the attendee list do. */
+/* Matches the detail page's own section cards, so the list reads as one of
+   them, as the approval queue and the attendee list do. */
 .head {
   display: flex;
   align-items: center;
@@ -7,35 +7,49 @@
 }
 
 .title {
-  font-size: var(--text-lg);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-tight);
+  font-size: var(--text-section-title);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
 }
 
 .description {
-  margin-top: var(--space-1);
+  margin-top: var(--space-2);
   margin-bottom: var(--space-4);
   font-size: var(--text-sm);
   line-height: var(--leading-snug);
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
 }
 
 .rows {
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
 }
 
 /* ---- one invitee -------------------------------------------------------- */
 
-/* The person at the start, the status and the action at the end; on a narrow
-   screen the end wraps under the person rather than squeezing the name. */
+/*
+  One person per row, like the host's attendee list: the person at the start,
+  the status and the action at the end, a hairline between rows and a tint
+  under the pointer. On a narrow screen the end wraps under the person rather
+  than squeezing the name.
+*/
 .row {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2) var(--space-4);
+  padding: var(--space-3);
+  border-radius: var(--radius-menu-item);
+  transition: background var(--transition-fast);
+}
+
+.row + .row {
+  border-top: 1px solid var(--color-border);
+}
+
+.row:hover {
+  background: var(--color-surface-hover);
 }
 
 .rowEnd {
@@ -49,11 +63,13 @@
 
 .adding {
   margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--color-border);
 }
 
-/* The page's part of the picker: a label, the button that opens the dialog,
-   then the count and the send button. Its height does not depend on how many
-   people could be invited -- they are listed in the dialog. */
+/* The page's part of the picker: a label and the button that opens the
+   dialog, where the people are picked and invited. Its height does not depend
+   on how many people could be invited. */
 .picker {
   display: flex;
   flex-direction: column;
@@ -66,17 +82,6 @@
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
   color: var(--color-text);
-}
-
-/* How many are ticked, and the one button that sends them. */
-.pickerFooter {
-  align-self: stretch;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
-  margin-top: var(--space-1);
 }
 
 /* ---- the picker dialog -------------------------------------------------- */
@@ -97,9 +102,19 @@
   gap: var(--space-1);
 }
 
-/* The dialog footer ends with "סיום"; the count takes the other end. */
-.dialogCount {
+/* Invite, then "סיום", at the start of the footer, as in the share-email
+   dialog; the count takes the end. */
+.dialogActions {
+  display: flex;
+  flex: none;
+  gap: var(--space-3);
   margin-inline-end: auto;
+}
+
+/* On a phone the footer is narrow: the buttons keep their row, and the count
+   wraps beside them instead. */
+.dialogCount {
+  min-width: 0;
   font-size: var(--text-sm);
   color: var(--color-text-subtle);
 }
