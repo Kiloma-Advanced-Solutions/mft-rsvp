@@ -6,8 +6,10 @@ import { AttendeeList } from "@/components/events/AttendeeList";
 import { EventForm } from "@/components/events/EventForm";
 import {
   AccessBadge,
+  CategoryLabel,
   EventMetaDetails,
   EventStatusBadge,
+  RegistrationBadge,
 } from "@/components/events/EventMeta";
 import { HostEventActions } from "@/components/events/HostEventActions";
 import { InvitationList } from "@/components/events/InvitationList";
@@ -24,10 +26,11 @@ import {
   Person,
   buttonClass,
 } from "@/components/ui";
+import type { Breadcrumb } from "@/components/ui";
 import { getEventDetailForViewer } from "@/lib/events";
 import { toFormValues } from "@/lib/eventInput";
 import {
-  CATEGORY_LABELS,
+  BOARD_LABELS,
   DETAIL_LABELS,
   MANAGE_LABELS,
   SHARE_LABELS,
@@ -104,21 +107,32 @@ export default async function EventDetailPage({
   */
   const editing = viewerCanManage && isEditing(query.edit);
 
+  const eventHref = `/events/${event.id}`;
+  /*
+    The trail replaces the old back link. In edit mode the event is a step of
+    its own, linked without `?edit=1`, so leaving the form for the event --
+    rather than for the board -- stays one click away, as the back link was.
+  */
+  const breadcrumbs: Breadcrumb[] = editing
+    ? [
+        { label: BOARD_LABELS.title, href: "/events" },
+        { label: event.title, href: eventHref },
+        { label: MANAGE_LABELS.editTitle },
+      ]
+    : [
+        { label: BOARD_LABELS.title, href: "/events" },
+        { label: event.title },
+      ];
+
   return (
     <div>
       <PageHeader
-        /*
-          In edit mode the back action leaves edit mode rather than the event,
-          so it cannot be mistaken for a way out of the form and quietly
-          discard unsaved changes. Outside edit mode it is the board, as before.
-        */
-        backHref={editing ? `/events/${event.id}` : "/events"}
-        backLabel={editing ? MANAGE_LABELS.backToEvent : DETAIL_LABELS.back}
-        eyebrow={CATEGORY_LABELS[event.category]}
+        breadcrumbs={breadcrumbs}
+        eyebrow={<CategoryLabel category={event.category} />}
         title={editing ? MANAGE_LABELS.editTitle : event.title}
         description={editing ? MANAGE_LABELS.editDescription : event.summary}
-        actions={
-          <div className={styles.headerBadges}>
+        meta={
+          <>
             {/* A cancellation leads, as on the board's card. */}
             {event.status === "cancelled" && (
               <EventStatusBadge event={event} size="lg" />
@@ -127,24 +141,29 @@ export default async function EventDetailPage({
             {event.status !== "cancelled" && (
               <EventStatusBadge event={event} size="lg" />
             )}
-          </div>
+            {viewerRegistration && (
+              <RegistrationBadge status={viewerRegistration.status} size="lg" />
+            )}
+          </>
         }
       />
 
       {/*
         Above both columns, so it is the first thing under the title on every
-        screen width -- the registration panel's note stacks below the whole
-        main column on a narrow one. It stays in edit mode too: editing a
-        cancelled event never restores it.
+        screen width. It stays in edit mode too: editing a cancelled event
+        never restores it.
       */}
       {event.status === "cancelled" && (
         <div className={styles.cancelledNotice}>
-          <p className={styles.cancelledNoticeTitle}>
-            {DETAIL_LABELS.cancelledNoticeTitle}
-          </p>
-          <p className={styles.cancelledNoticeText}>
-            {DETAIL_LABELS.cancelledNoticeText}
-          </p>
+          <span className={styles.cancelledNoticeDot} aria-hidden />
+          <div>
+            <p className={styles.cancelledNoticeTitle}>
+              {DETAIL_LABELS.cancelledNoticeTitle}
+            </p>
+            <p className={styles.cancelledNoticeText}>
+              {DETAIL_LABELS.cancelledNoticeText}
+            </p>
+          </div>
         </div>
       )}
 
@@ -161,24 +180,63 @@ export default async function EventDetailPage({
         </Card>
       ) : (
         <div className={styles.layout}>
+          {/*
+            First in the document, so on a narrow screen -- one column, in
+            source order -- the panel comes straight after the header (and the
+            cancelled notice), and keyboard order matches what is seen. On a
+            wide screen the grid places it in the side column instead.
+          */}
+          <aside className={styles.aside}>
+            <RegistrationPanel
+              event={event}
+              availability={availability}
+              goingCount={goingCount}
+              viewerRegistration={viewerRegistration}
+            />
+
+            {/*
+              Host tools exist only for whoever `canManageEvent()` allows, and are
+              absent from the markup for everyone else — hiding them in CSS would
+              still ship them to a member.
+            */}
+            {viewerCanManage && (
+              <HostTools
+                event={event}
+                pendingCount={pendingCount}
+                goingCount={goingCount}
+                // Built only for a manager, so never `null` here.
+                shareRecipients={shareRecipients ?? []}
+              />
+            )}
+          </aside>
+
           <div className={styles.main}>
             <Card>
-              <EventMetaDetails event={event} />
+              <section>
+                <h2 className={styles.sectionTitle}>
+                  {DETAIL_LABELS.whenWhere}
+                </h2>
+                <EventMetaDetails event={event} />
+              </section>
             </Card>
 
-            <section>
-              <h2 className={styles.sectionTitle}>{DETAIL_LABELS.about}</h2>
-              <Description text={event.description} />
-            </section>
+            <Card>
+              <section>
+                <h2 className={styles.sectionTitle}>{DETAIL_LABELS.about}</h2>
+                <Description text={event.description} />
+              </section>
+            </Card>
 
-            <section>
-              <h2 className={styles.sectionTitle}>{DETAIL_LABELS.hosts}</h2>
-              <div className={styles.people}>
-                {hosts.map((host) => (
-                  <Person key={host.id} user={host} />
-                ))}
-              </div>
-            </section>
+            <Card>
+              <section>
+                <h2 className={styles.sectionTitle}>{DETAIL_LABELS.hosts}</h2>
+                <div className={styles.people}>
+                  {hosts.map((host) => (
+                    <Person key={host.id} user={host} />
+                  ))}
+                </div>
+              </section>
+            </Card>
 
             {/*
               The host's queue sits above the attendee list: it is the part of
@@ -216,30 +274,6 @@ export default async function EventDetailPage({
               <InvitationList eventId={event.id} invitations={invitations} />
             )}
           </div>
-
-          <aside className={styles.aside}>
-            <RegistrationPanel
-              event={event}
-              availability={availability}
-              goingCount={goingCount}
-              viewerRegistration={viewerRegistration}
-            />
-
-            {/*
-              Host tools exist only for whoever `canManageEvent()` allows, and are
-              absent from the markup for everyone else — hiding them in CSS would
-              still ship them to a member.
-            */}
-            {viewerCanManage && (
-              <HostTools
-                event={event}
-                pendingCount={pendingCount}
-                goingCount={goingCount}
-                // Built only for a manager, so never `null` here.
-                shareRecipients={shareRecipients ?? []}
-              />
-            )}
-          </aside>
         </div>
       )}
     </div>

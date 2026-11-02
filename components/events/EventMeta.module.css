@@ -132,27 +132,35 @@
   min-width: 0;
 }
 
-.metaIcon {
-  flex: none;
-  opacity: 0.7;
-  font-size: var(--text-xs);
-}
-
 .metaText {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.metaStack {
+/* ---- detail facts ------------------------------------------------------- */
+
+.facts {
   display: flex;
   flex-direction: column;
+  gap: var(--space-4);
+}
+
+.fact {
+  display: flex;
+  align-items: flex-start;
   gap: var(--space-3);
 }
 
-.metaStack .metaItem {
-  align-items: flex-start;
-  font-size: var(--text-base);
+.factIcon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--control-height-icon);
+  height: var(--control-height-icon);
+  border-radius: var(--radius-lg);
+  background: var(--color-surface-subtle);
+  box-shadow: inset 0 0 0 1px var(--color-border);
   color: var(--color-text);
 }
 
@@ -161,23 +169,56 @@
   so a line shorter than its neighbour still begins at the icon instead of
   drifting to the far edge of a box sized by the longer one.
 */
-.metaStack .metaText {
+.factText {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  white-space: normal;
+  gap: var(--space-1);
+  min-width: 0;
+  font-size: var(--text-body);
+  color: var(--color-text);
 }
 
-.metaSub {
+.factSub {
   display: block;
-  font-size: var(--text-sm);
-  color: var(--color-text-subtle);
+  font-size: var(--text-label);
+  color: var(--color-text-muted);
 }
 
-.metaLink {
-  color: var(--color-primary-text);
+/*
+  Underlined, not only coloured: on a hybrid event the link shares its line
+  with the venue, and the link colour alone is under 3:1 against the text
+  beside it in both themes.
+*/
+.factLink {
+  color: var(--color-link);
   text-decoration: underline;
   text-underline-offset: 2px;
+  transition: color var(--transition-fast);
+}
+
+.factLink:hover {
+  color: var(--color-link-hover);
+}
+
+/* ---- category label ----------------------------------------------------- */
+
+.categoryLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-label);
+  font-weight: var(--weight-medium);
+  color: var(--category-fg);
+}
+
+.categoryLabel::before {
+  content: "";
+  flex: none;
+  width: var(--dot-size);
+  height: var(--dot-size);
+  border-radius: var(--radius-full);
+  background: var(--category-dot);
 }
 
 /* ---- capacity ----------------------------------------------------------- */
@@ -185,47 +226,47 @@
 .capacity {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  min-width: 140px;
+  gap: var(--space-3);
 }
 
 .capacityRow {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: var(--space-2);
-  font-size: var(--text-sm);
+  gap: var(--space-3);
+  font-size: var(--text-label);
 }
 
 .capacityCount {
-  font-weight: var(--weight-semibold);
+  font-size: var(--text-body);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
   color: var(--color-text);
 }
 
 .capacityRemaining {
-  font-size: var(--text-xs);
-  color: var(--color-text-subtle);
+  color: var(--color-text-muted);
 }
 
 .capacityFull {
-  color: var(--color-warning-text);
+  color: var(--tone-blocked-fg);
   font-weight: var(--weight-medium);
 }
 
 .capacityTrack {
-  height: 6px;
+  height: var(--bar-height-lg);
   border-radius: var(--radius-full);
-  background: var(--color-bg-subtle);
+  background: var(--color-progress-track);
   overflow: hidden;
 }
 
 .capacityFill {
   height: 100%;
   border-radius: var(--radius-full);
-  background: var(--color-primary);
+  background: var(--color-progress);
   transition: width var(--transition-base);
 }
 
 .capacityFill[data-full="true"] {
-  background: var(--color-warning);
+  background: var(--color-progress-full);
 }

@@ -14,6 +14,7 @@ import {
 import {
   ACCESS_LABELS,
   CAPACITY_LABELS,
+  CATEGORY_LABELS,
   EVENT_STATUS_LABELS,
   EVENT_STATUS_TONES,
   LOCATION_KIND_LABELS,
@@ -49,6 +50,18 @@ import styles from "./EventMeta.module.css";
  */
 export function categoryToneClass(category: EventCategory): string {
   return styles[category];
+}
+
+/**
+ * The event's category as a label in its own tint, with the category's dot --
+ * the detail page's eyebrow. The board's card has its own, smaller one.
+ */
+export function CategoryLabel({ category }: { category: EventCategory }) {
+  return (
+    <span className={cx(styles.categoryLabel, styles[category])}>
+      {CATEGORY_LABELS[category]}
+    </span>
+  );
 }
 
 /** Calendar-tile date, e.g. AUG / 24 / Sat, tinted by the event's category. */
@@ -190,8 +203,9 @@ export function EventMetaLine({
 }
 
 /**
- * Expanded when/where/duration block for the detail page. A cancelled event's
- * date is struck through, the same as its date block on the board.
+ * Expanded when/where/duration block for the detail page: each fact beside its
+ * icon in a small tile. A cancelled event's date is struck through, the same
+ * as its date block on the board.
  */
 export function EventMetaDetails({
   event,
@@ -201,18 +215,18 @@ export function EventMetaDetails({
   className?: string;
 }) {
   return (
-    <div className={cx(styles.metaStack, className)}>
-      <div className={styles.metaItem}>
-        <span className={styles.metaIcon} aria-hidden>
-          ◷
+    <div className={cx(styles.facts, className)}>
+      <div className={styles.fact}>
+        <span className={styles.factIcon}>
+          <Icon name="calendar" />
         </span>
-        <span className={styles.metaText}>
+        <span className={styles.factText}>
           <span
             className={event.status === "cancelled" ? styles.struck : undefined}
           >
             {formatDateLong(event.startsAt)}
           </span>
-          <span className={styles.metaSub}>
+          <span className={styles.factSub}>
             {formatTimeRange(event.startsAt, event.endsAt)} ·{" "}
             {formatDuration(event.startsAt, event.endsAt)} ·{" "}
             {formatRelativeDay(event.startsAt)}
@@ -220,9 +234,9 @@ export function EventMetaDetails({
         </span>
       </div>
 
-      <div className={styles.metaItem}>
-        <span className={styles.metaIcon} aria-hidden>
-          ⌖
+      <div className={styles.fact}>
+        <span className={styles.factIcon}>
+          <Icon name="pin" />
         </span>
         <LocationDetails location={event.location} />
       </div>
@@ -241,13 +255,13 @@ function LocationDetails({ location }: { location: EventLocation }) {
     own direction while the block stays in the document's.
   */
   return (
-    <span className={styles.metaText}>
+    <span className={styles.factText}>
       <span dir="auto">
         {showsVenue ? (location.venue ?? LOCATION_KIND_LABELS[location.kind]) : null}
         {showsVenue && showsLink ? " · " : null}
         {showsLink && location.url ? (
           <a
-            className={styles.metaLink}
+            className={styles.factLink}
             href={location.url}
             target="_blank"
             rel="noreferrer"
@@ -257,7 +271,7 @@ function LocationDetails({ location }: { location: EventLocation }) {
         ) : null}
       </span>
       {location.address && (
-        <span className={styles.metaSub} dir="auto">
+        <span className={styles.factSub} dir="auto">
           {location.address}
         </span>
       )}
@@ -306,7 +320,8 @@ export function CapacityMeter({
           {full ? CAPACITY_LABELS.full : placesLeftLabel(capacity - going)}
         </span>
       </div>
-      <div className={styles.capacityTrack}>
+      {/* The row above says it in words, so the bar is decorative. */}
+      <div className={styles.capacityTrack} aria-hidden>
         <div
           className={styles.capacityFill}
           data-full={full}

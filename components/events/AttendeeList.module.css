@@ -1,5 +1,5 @@
-/* Matches the detail page's own section heading, so the list reads as one of
-   its sections, as the approval queue does. */
+/* Matches the detail page's own section cards, so the list reads as one of
+   them. */
 .head {
   display: flex;
   align-items: center;
@@ -8,9 +8,16 @@
 }
 
 .title {
-  font-size: var(--text-lg);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-tight);
+  font-size: var(--text-section-title);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+}
+
+/* The member's list: the same grid as the page's hosts. */
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--layout-person-min)), 1fr));
+  gap: var(--space-4) var(--space-card-gap);
 }
 
 .people {

@@ -46,6 +46,17 @@ const SHAPES = {
       <path d="M15 17.5l2 2 4-4.2" />
     </>
   ),
+  calendar: (
+    <>
+      <rect x="3.5" y="5" width="17" height="15.5" rx="3" />
+      <path d="M3.5 10h17M8.5 3v4M15.5 3v4" />
+    </>
+  ),
+  /*
+    Drawn pointing left, which is "forward" in the right-to-left interface: a
+    directional glyph is authored for the reading direction, not mirrored.
+  */
+  chevronLeft: <path d="M14.5 6l-6 6 6 6" />,
   lock: (
     <>
       <rect x="5" y="10.5" width="14" height="10" rx="2.5" />

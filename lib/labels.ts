@@ -244,9 +244,13 @@ function eventCount(n: number): string {
 /** The event detail screen's own words: its sections and its host tools. */
 export const DETAIL_LABELS = {
   back: "חזרה ללוח",
+  /** The title of the card holding the date, time and place. */
+  whenWhere: "מתי ואיפה",
   about: "על האירוע",
   hosts: "מארחים",
   attendees: "מי מגיע",
+  /** The title of the registration panel. */
+  registration: "הרשמה",
   noAttendees: "אף אחד עוד לא נרשם.",
   hostTools: "כלי מארח",
   hostToolsDescription: "רק אתם והמארחים האחרים רואים את זה.",
@@ -1375,6 +1379,8 @@ export function nowViewingAsLabel(name: string): string {
  */
 export const UI_LABELS = {
   back: "חזרה",
+  /** The accessible name of a page's breadcrumb trail. */
+  breadcrumbs: "פירורי לחם",
   close: "סגירה",
   confirm: "אישור",
   cancel: "ביטול",

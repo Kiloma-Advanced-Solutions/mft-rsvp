@@ -1,51 +1,67 @@
-.headerBadges {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-}
-
 /* ---- cancelled notice --------------------------------------------------- */
 
+/* A tinted block in the cancelled tone, its dot level with the first line. */
 .cancelledNotice {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin-bottom: var(--space-6);
+  align-items: flex-start;
+  gap: var(--space-3);
+  margin-bottom: var(--space-card-gap);
   padding: var(--space-4) var(--space-5);
-  border: 1px solid var(--color-danger);
-  border-radius: var(--radius-lg);
-  background: var(--color-danger-soft);
-  color: var(--color-danger-text);
+  border-radius: var(--radius-card);
+  background: var(--tone-blocked-bg);
+  color: var(--tone-blocked-fg);
+}
+
+.cancelledNoticeDot {
+  flex: none;
+  width: var(--dot-size-lg);
+  height: var(--dot-size-lg);
+  margin-top: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--tone-blocked-dot);
 }
 
 .cancelledNoticeTitle {
-  font-weight: var(--weight-semibold);
+  font-weight: var(--weight-medium);
 }
 
 .cancelledNoticeText {
-  font-size: var(--text-sm);
+  margin-top: var(--space-1);
+  font-size: var(--text-label);
 }
 
 /* ---- layout ------------------------------------------------------------- */
 
+/*
+  The registration panel comes first in the document and the main sections
+  after it. On a wide screen both sit in row 1 of a two-column grid: the main
+  column at the start, the panel in the side column at the end. On a narrow
+  one the grid is a single column in source order, so the panel follows the
+  header directly -- with no CSS reordering, keyboard order is visual order.
+*/
 .layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr) var(--layout-aside-width);
   align-items: start;
-  gap: var(--space-8);
+  gap: var(--space-card-gap);
 }
 
 .main {
+  grid-column: 1;
+  grid-row: 1;
   display: flex;
   flex-direction: column;
-  gap: var(--space-8);
+  gap: var(--space-card-gap);
   min-width: 0;
 }
 
 .aside {
+  grid-column: 2;
+  grid-row: 1;
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-card-gap);
+  min-width: 0;
 }
 
 @media (min-width: 921px) {
@@ -62,16 +78,21 @@
 @media (max-width: 920px) {
   .layout {
     grid-template-columns: minmax(0, 1fr);
-    gap: var(--space-6);
+  }
+
+  .main,
+  .aside {
+    grid-column: auto;
+    grid-row: auto;
   }
 }
 
 /* ---- sections ----------------------------------------------------------- */
 
 .sectionTitle {
-  font-size: var(--text-lg);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-tight);
+  font-size: var(--text-section-title);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
   margin-bottom: var(--space-4);
 }
 
@@ -81,18 +102,23 @@
   gap: var(--space-4);
 }
 
-/* Breaks a word wider than the column rather than widening the page. */
+/* Breaks a word wider than the column rather than widening the page. The
+   measure is capped, and the box kept at its own start edge as the header's
+   summary is, so an English paragraph starts at the left. */
 .paragraph {
-  color: var(--color-text-muted);
-  line-height: var(--leading-normal);
+  max-width: 68ch;
+  margin-inline-end: auto;
+  font-size: var(--text-body);
+  font-weight: var(--weight-light);
+  line-height: var(--leading-relaxed);
   white-space: pre-line;
   overflow-wrap: anywhere;
 }
 
 .people {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-4) var(--space-6);
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--layout-person-min)), 1fr));
+  gap: var(--space-4) var(--space-card-gap);
 }
 
 /* ---- host tools --------------------------------------------------------- */

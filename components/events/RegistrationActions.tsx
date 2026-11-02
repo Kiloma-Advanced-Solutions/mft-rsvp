@@ -73,6 +73,7 @@ export function RegistrationActions({
   return (
     <Button
       variant={withdrawing ? "secondary" : "primary"}
+      size="lg"
       fullWidth
       loading={busy}
       onClick={submit}

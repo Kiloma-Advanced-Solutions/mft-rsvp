@@ -49,31 +49,36 @@ export function AttendeeList({
       : DETAIL_LABELS.noAttendees;
 
   return (
-    <section>
-      <div className={styles.head}>
-        <h2 className={styles.title}>{DETAIL_LABELS.attendees}</h2>
-        {goingCount > 0 && <Badge tone="neutral">{goingCount}</Badge>}
-      </div>
+    <Card>
+      <section>
+        <div className={styles.head}>
+          <h2 className={styles.title}>{DETAIL_LABELS.attendees}</h2>
+          {goingCount > 0 && <Badge tone="neutral">{goingCount}</Badge>}
+        </div>
 
-      {managed === null ? (
-        <People attendees={attendees} empty={empty} />
-      ) : (
-        <ManagedPeople event={event} managed={managed} empty={empty} />
-      )}
-    </section>
+        {managed === null ? (
+          <People attendees={attendees} empty={empty} />
+        ) : (
+          <ManagedPeople event={event} managed={managed} empty={empty} />
+        )}
+      </section>
+    </Card>
   );
 }
 
-/** The list everybody but a host sees, unchanged from before M8. */
+/**
+ * The list everybody but a host sees, unchanged from before M8 apart from its
+ * layout: a grid of people, as the page's hosts are shown.
+ */
 function People({ attendees, empty }: { attendees: User[]; empty: string }) {
   if (attendees.length === 0) {
     return <p className={styles.muted}>{empty}</p>;
   }
 
   return (
-    <div className={styles.people}>
+    <div className={styles.grid}>
       {attendees.map((attendee) => (
-        <Person key={attendee.id} user={attendee} size="sm" />
+        <Person key={attendee.id} user={attendee} />
       ))}
     </div>
   );

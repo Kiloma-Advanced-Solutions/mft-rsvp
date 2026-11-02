@@ -30,6 +30,7 @@ export {
 export { Menu } from "./Menu";
 export { ConfirmDialog, Modal } from "./Modal";
 export { PageHeader } from "./PageHeader";
+export type { Breadcrumb } from "./PageHeader";
 export { QueuedNavigation } from "./QueuedNavigation";
 export { SegmentedControl } from "./SegmentedControl";
 export type { SegmentLink, SegmentOption } from "./SegmentedControl";

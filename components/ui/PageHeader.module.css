@@ -19,6 +19,53 @@
   color: var(--color-link-hover);
 }
 
+/* ---- breadcrumbs -------------------------------------------------------- */
+
+.breadcrumbs {
+  min-width: 0;
+}
+
+.trail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-label);
+}
+
+.step {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.crumb {
+  color: var(--color-link);
+  transition: color var(--transition-fast);
+}
+
+.crumb:hover {
+  color: var(--color-link-hover);
+}
+
+.current {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text);
+}
+
+.separator {
+  color: var(--color-text-muted);
+}
+
 .row {
   display: flex;
   align-items: flex-end;
@@ -62,12 +109,26 @@
   overflow-wrap: anywhere;
 }
 
+/*
+  Capped at 62ch and pushed to its own start edge by `margin-inline-end:
+  auto`, which follows the element's own `dir="auto"` direction: an English
+  summary's box sits at the left with its text, instead of a left-aligned line
+  floating in a box parked at the right.
+*/
 .description {
   max-width: 62ch;
+  margin-inline-end: auto;
   font-size: var(--text-body);
   font-weight: var(--weight-light);
   color: var(--color-text-muted);
   overflow-wrap: anywhere;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .actions {
