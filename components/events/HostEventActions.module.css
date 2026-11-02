@@ -1,13 +1,11 @@
-/**
- * Publish sits with the other host actions; delete is separated from them, so
- * the destructive control is never the one next to a mis-click.
- */
-.danger {
+/*
+  The header's host actions in one row: Publish and Edit with their labels,
+  then the Share and More icon buttons. Wraps onto a second line, still from
+  the start edge, when the header is too narrow for them.
+*/
+.actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--color-border);
+  gap: var(--space-3);
 }

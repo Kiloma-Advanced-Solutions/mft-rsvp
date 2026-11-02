@@ -74,6 +74,10 @@
   flex-wrap: wrap;
 }
 
+.rowTop {
+  align-items: flex-start;
+}
+
 /*
   A basis of half the row, not the text's own width: with `auto`, a long title
   or summary asked for its whole one-line width and pushed the actions onto a

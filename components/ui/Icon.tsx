@@ -57,6 +57,47 @@ const SHAPES = {
     directional glyph is authored for the reading direction, not mirrored.
   */
   chevronLeft: <path d="M14.5 6l-6 6 6 6" />,
+  edit: (
+    <>
+      <path d="M4 20h4L18.5 9.5l-4-4L4 16v4z" />
+      <path d="M13 7l4 4" />
+    </>
+  ),
+  share: (
+    <>
+      <circle cx="18" cy="5.5" r="2.6" />
+      <circle cx="6" cy="12" r="2.6" />
+      <circle cx="18" cy="18.5" r="2.6" />
+      <path d="M8.4 13.3l7.2 3.9M15.6 6.8L8.4 10.7" />
+    </>
+  ),
+  more: (
+    <>
+      <circle cx="6" cy="12" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="12" cy="12" r="1.5" fill="currentColor" stroke="none" />
+      <circle cx="18" cy="12" r="1.5" fill="currentColor" stroke="none" />
+    </>
+  ),
+  link: (
+    <>
+      <path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1" />
+      <path d="M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1" />
+    </>
+  ),
+  mail: (
+    <>
+      <rect x="3.5" y="5.5" width="17" height="13" rx="2.5" />
+      <path d="M4 7.5l8 6 8-6" />
+    </>
+  ),
+  ban: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M6 6l12 12" />
+    </>
+  ),
+  trash: <path d="M4 7h16M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13" />,
+  arrowUp: <path d="M12 19V6M6.5 11.5L12 6l5.5 5.5" />,
   lock: (
     <>
       <rect x="5" y="10.5" width="14" height="10" rx="2.5" />

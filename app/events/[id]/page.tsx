@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ApprovalQueue } from "@/components/events/ApprovalQueue";
@@ -14,18 +13,8 @@ import {
 import { HostEventActions } from "@/components/events/HostEventActions";
 import { InvitationList } from "@/components/events/InvitationList";
 import { RegistrationPanel } from "@/components/events/RegistrationPanel";
-import {
-  ShareEmailPicker,
-  ShareEventActions,
-} from "@/components/events/ShareEventActions";
-import {
-  Card,
-  CardBody,
-  CardHeader,
-  PageHeader,
-  Person,
-  buttonClass,
-} from "@/components/ui";
+import type { ShareState } from "@/components/events/ShareEventActions";
+import { Card, PageHeader, Person } from "@/components/ui";
 import type { Breadcrumb } from "@/components/ui";
 import { getEventDetailForViewer } from "@/lib/events";
 import { toFormValues } from "@/lib/eventInput";
@@ -131,6 +120,26 @@ export default async function EventDetailPage({
         eyebrow={<CategoryLabel category={event.category} />}
         title={editing ? MANAGE_LABELS.editTitle : event.title}
         description={editing ? MANAGE_LABELS.editDescription : event.summary}
+        /*
+          The host's actions -- Publish, Edit, Share, More -- for whoever
+          `canManageEvent()` allows, and absent from the markup for everyone
+          else: hiding them in CSS would still ship them to a member. Not in
+          edit mode, where the form is the page.
+        */
+        actions={
+          viewerCanManage && !editing ? (
+            <HostEventActions
+              eventId={event.id}
+              isDraft={event.status === "draft"}
+              canCancel={getCancellationAvailability(event).state === "open"}
+              goingCount={goingCount}
+              pendingCount={pendingCount}
+              // Built only for a manager, so never `null` here.
+              share={shareState(event, shareRecipients ?? [])}
+            />
+          ) : undefined
+        }
+        alignActions="start"
         meta={
           <>
             {/* A cancellation leads, as on the board's card. */}
@@ -193,21 +202,6 @@ export default async function EventDetailPage({
               goingCount={goingCount}
               viewerRegistration={viewerRegistration}
             />
-
-            {/*
-              Host tools exist only for whoever `canManageEvent()` allows, and are
-              absent from the markup for everyone else — hiding them in CSS would
-              still ship them to a member.
-            */}
-            {viewerCanManage && (
-              <HostTools
-                event={event}
-                pendingCount={pendingCount}
-                goingCount={goingCount}
-                // Built only for a manager, so never `null` here.
-                shareRecipients={shareRecipients ?? []}
-              />
-            )}
           </aside>
 
           <div className={styles.main}>
@@ -328,107 +322,29 @@ function Description({ text }: { text: string }) {
 }
 
 /**
- * The host's half of the screen — there is no separate edit screen, so this is
- * where management lives.
+ * Sharing, for the header's Share menu, decided here on the server: whether
+ * it is open comes from `getSharingAvailability()`, the URL from
+ * `buildEventShareUrl()`, and the client leaf is handed a finished string or
+ * the sentence saying why not. A base URL that is not configured costs the
+ * host this one menu, not the page, and nothing falls back to the request's
+ * own host.
  *
- * Edit is a `<Link>` because it navigates rather than acts: it turns on the
- * `?edit=1` mode this same page renders. Publish, cancel and delete do act, so
- * they live in a client leaf. Whether cancelling is on offer comes from the
- * same rule the cancel route applies, so the button and the API agree. Sharing
- * sits between Edit and those actions, in `ShareTool` below.
- * Deciding requests is the approval queue's job, and it lives in the main
- * column where there is room for what people wrote; managing who is invited is
- * the invitation list's, in the main column for the same reason, and it carries
- * its own count.
- */
-function HostTools({
-  event,
-  pendingCount,
-  goingCount,
-  shareRecipients,
-}: {
-  event: EventRecord;
-  pendingCount: number;
-  goingCount: number;
-  shareRecipients: User[];
-}) {
-  return (
-    <Card padding="none">
-      <CardHeader
-        title={DETAIL_LABELS.hostTools}
-        description={DETAIL_LABELS.hostToolsDescription}
-      />
-
-      <CardBody>
-        <div className={styles.hostActions}>
-          <Link
-            href={`/events/${event.id}?edit=1`}
-            className={buttonClass({ variant: "secondary", size: "sm" })}
-          >
-            {DETAIL_LABELS.edit}
-          </Link>
-        </div>
-
-        <ShareTool event={event} recipients={shareRecipients} />
-
-        <HostEventActions
-          eventId={event.id}
-          isDraft={event.status === "draft"}
-          canCancel={getCancellationAvailability(event).state === "open"}
-          goingCount={goingCount}
-          pendingCount={pendingCount}
-        />
-      </CardBody>
-    </Card>
-  );
-}
-
-/**
- * Sharing, inside the host tools: the copy action while there is something
- * worth sharing, and otherwise a sentence saying why not -- the way the
- * invitation list explains a closed picker rather than leaving a gap.
- *
- * Every decision is made here, on the server: whether sharing is open comes
- * from `getSharingAvailability()`, the URL from `buildEventShareUrl()`, and the
- * client leaf is handed a finished string. A base URL that is not configured
- * costs the host this one tool, not the page, and nothing falls back to the
- * request's own host.
- *
- * Emailing the link sits under copying it, in the same open state: both need
- * the same link. The picker gets ids, names and job titles only -- never an
- * email address, which the route reads on the server. It is shown whether or
+ * The recipients are ids, names and job titles only -- never an email
+ * address, which the route reads on the server. They are offered whether or
  * not this server can send mail; a send that cannot go says so when tried.
  */
-function ShareTool({
-  event,
-  recipients,
-}: {
-  event: EventRecord;
-  recipients: User[];
-}) {
+function shareState(event: EventRecord, recipients: User[]): ShareState {
   const sharing = getSharingAvailability(event);
-  const eventUrl =
-    sharing.state === "open" ? buildEventShareUrl(event.id) : null;
+  if (sharing.state === "closed") {
+    return { state: "closed", note: sharingClosedNote(sharing.reason) };
+  }
 
-  return (
-    <div className={styles.shareTool}>
-      {sharing.state === "closed" ? (
-        <p className={styles.hostNote}>{sharingClosedNote(sharing.reason)}</p>
-      ) : eventUrl === null ? (
-        <p className={styles.hostNote}>{SHARE_LABELS.unavailable}</p>
-      ) : (
-        <>
-          <ShareEventActions eventUrl={eventUrl} />
-          <ShareEmailPicker
-            eventId={event.id}
-            recipients={recipients.map(({ id, name, title }) => ({
-              id,
-              name,
-              title,
-            }))}
-          />
-        </>
-      )}
-    </div>
-  );
+  const url = buildEventShareUrl(event.id);
+  if (url === null) return { state: "closed", note: SHARE_LABELS.unavailable };
+
+  return {
+    state: "open",
+    url,
+    recipients: recipients.map(({ id, name, title }) => ({ id, name, title })),
+  };
 }

@@ -26,6 +26,7 @@ export function PageHeader({
   eyebrow,
   meta,
   actions,
+  alignActions = "end",
   breadcrumbs,
   backHref,
   backLabel = UI_LABELS.back,
@@ -37,6 +38,12 @@ export function PageHeader({
   /** Shown under the description, inside the title's column. */
   meta?: ReactNode;
   actions?: ReactNode;
+  /**
+   * Where the actions sit against the title's column: level with its last
+   * line (the default), or with its top, as the event page's do beside a
+   * title, summary and badges.
+   */
+  alignActions?: "start" | "end";
   /** Replaces the back link when given. */
   breadcrumbs?: Breadcrumb[];
   backHref?: string;
@@ -53,7 +60,9 @@ export function PageHeader({
         </Link>
       )}
 
-      <div className={styles.row}>
+      <div
+        className={cx(styles.row, alignActions === "start" && styles.rowTop)}
+      >
         <div className={styles.titleGroup}>
           {eyebrow && <p className={styles.eyebrow}>{eyebrow}</p>}
           {/*

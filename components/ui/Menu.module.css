@@ -14,6 +14,8 @@
   inset-inline-end: 0;
   z-index: 30;
   min-width: 250px;
+  /* Never wider than a phone's screen, less a gutter on either side. */
+  max-width: calc(100vw - var(--space-8));
   padding: var(--space-2);
   background: var(--color-surface);
   border-radius: var(--radius-card);
@@ -61,6 +63,95 @@
 
 .item[aria-disabled="true"] {
   cursor: progress;
+}
+
+/* ---- action menu -------------------------------------------------------- */
+
+/* Lined up with the trigger's start edge, so it grows towards the end. */
+.popupToEnd {
+  inset-inline-end: auto;
+  inset-inline-start: 0;
+}
+
+/* The round icon trigger carries its tooltip, so it positions it. */
+.iconTrigger {
+  position: relative;
+}
+
+/*
+  The trigger's name, shown on hover and keyboard focus, and hidden while the
+  menu it opens is in the same place. Centred under the button, which is not
+  a direction-sensitive placement, so it uses physical `left`.
+*/
+.tooltip {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 50%;
+  z-index: 20;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-rail);
+  color: var(--color-on-rail);
+  font-size: var(--text-caption);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity var(--transition-fast);
+}
+
+.iconTrigger:hover .tooltip,
+.iconTrigger:focus-visible .tooltip {
+  opacity: 1;
+}
+
+.iconTrigger[aria-expanded="true"] .tooltip {
+  opacity: 0;
+}
+
+/*
+  A hover affordance, so none on a touch screen: there a tap leaves the
+  trigger "hovered" and the tooltip would linger, and a trigger wrapped to the
+  edge of a phone would clip it. The trigger's `aria-label` still names it.
+*/
+@media (hover: none) {
+  .tooltip {
+    display: none;
+  }
+}
+
+/* An action and, under it, the line that says why it cannot be used. */
+.actionItem {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.actionRow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.itemNote {
+  max-width: 280px;
+  font-size: var(--text-caption);
+  line-height: var(--leading-normal);
+  color: var(--color-text-muted);
+}
+
+.danger {
+  color: var(--color-danger-text);
+}
+
+/* Still focusable, so its note is announced; it just does not look live. */
+.actionItem.disabled {
+  color: var(--color-text-disabled);
+  cursor: default;
+}
+
+.actionItem.disabled:hover {
+  background: transparent;
 }
 
 .separator {
