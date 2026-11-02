@@ -143,6 +143,30 @@
   --tone-orange-fg: #8a4a00;
   --tone-orange-dot: #fe9908;
 
+  /* ---- Categories ------------------------------------------------------ */
+  /*
+    Each event category takes one tone from the scale above. Declared once:
+    the tones they point at change with the theme, so these follow.
+  */
+  --category-engineering-bg: var(--tone-active-bg);
+  --category-engineering-fg: var(--tone-active-fg);
+  --category-engineering-dot: var(--tone-active-dot);
+  --category-design-bg: var(--tone-planned-bg);
+  --category-design-fg: var(--tone-planned-fg);
+  --category-design-dot: var(--tone-planned-dot);
+  --category-product-bg: var(--tone-teal-bg);
+  --category-product-fg: var(--tone-teal-fg);
+  --category-product-dot: var(--tone-teal-dot);
+  --category-learning-bg: var(--tone-review-bg);
+  --category-learning-fg: var(--tone-review-fg);
+  --category-learning-dot: var(--tone-review-dot);
+  --category-social-bg: var(--tone-orange-bg);
+  --category-social-fg: var(--tone-orange-fg);
+  --category-social-dot: var(--tone-orange-dot);
+  --category-company-bg: var(--tone-done-bg);
+  --category-company-fg: var(--tone-done-fg);
+  --category-company-dot: var(--tone-done-dot);
+
   /* ---- Avatars --------------------------------------------------------- */
   /* Pastel tints with navy initials; the same in both themes. */
   --color-avatar-1: #a9d8fa;
@@ -153,7 +177,11 @@
   --color-avatar-ink: #0d163a;
 
   /* ---- Event accents --------------------------------------------------- */
-  /* Every event carries an `accent` key; cards and detail headers tint from it. */
+  /*
+    Every event still carries a stored `accent` key, but since M11 nothing
+    renders it: an event's colour comes from its category (see "Categories"
+    above). Kept until M11's close-out decides what happens to the field.
+  */
   --accent-violet: #6d5cf5;
   --accent-blue: #2f7fed;
   --accent-emerald: #0ea472;
@@ -216,10 +244,14 @@
   --control-height-pill-compact: 22px;
   --control-height-pill: 28px;
   --control-height-sm: 30px;
+  --control-height-chip: 32px;
   --control-height-segment: 34px;
   --control-height-md: 36px;
   --control-height-icon: 40px;
   --control-height-lg: 44px;
+  /* An underlined navigation link, and the underline marking the current one. */
+  --control-height-tab: 48px;
+  --tab-indicator-height: 3px;
 
   --control-padding-sm: 0.875rem;
   --control-padding-md: 1.25rem;
@@ -230,8 +262,19 @@
   --avatar-size-md: 40px;
   --avatar-size-lg: 44px;
 
+  --icon-size-xs: 12px;
+  --icon-size-sm: 14px;
   --icon-size-md: 18px;
   --icon-size-lg: 20px;
+
+  /* A status or category dot, and the thin capacity bar on an event card. */
+  --dot-size: 6px;
+  /* The larger dot, on a filter chip. */
+  --dot-size-lg: 8px;
+  --bar-height: 6px;
+
+  /* The calendar tile at the start of an event card. */
+  --date-tile-width: 58px;
 
   /* ---- Typography ------------------------------------------------------ */
   /*
@@ -287,6 +330,8 @@
   /* ---- Layout ---------------------------------------------------------- */
   --layout-max: 1120px;
   --layout-gutter: var(--space-6);
+  /* The narrowest an event card gets before the grid drops a column. */
+  --layout-card-min: 300px;
   /* The navigation rail on wide screens, and the bar that replaces it on narrow ones. */
   --rail-width: 80px;
   --shell-bar-height: 56px;

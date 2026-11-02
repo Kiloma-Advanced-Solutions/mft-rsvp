@@ -18,6 +18,7 @@ import {
   EventMetaLine,
   EventStatusBadge,
   RegistrationBadge,
+  categoryToneClass,
 } from "./EventMeta";
 import styles from "./EventCard.module.css";
 
@@ -51,26 +52,23 @@ export function EventCard({
 }) {
   const going = goingCount ?? attendees.length;
   const cancelled = event.status === "cancelled";
-  // Cancelled or already started: nobody can join it any more. It is dimmed,
-  // its attendance line is a plain headcount, and it is never "full" -- the
-  // full styling would suggest it is only a lack of room.
+  // Cancelled or already started: nobody can join it any more. Its attendance
+  // line is a plain headcount with no capacity bar, and it is never "full" --
+  // the full styling would suggest it is only a lack of room. It is not
+  // dimmed: its pills already say what state it is in.
   const closed = cancelled || isPast(event.startsAt);
   const full = !closed && event.capacity !== null && going >= event.capacity;
+  const showsCapacity = !closed && event.capacity !== null;
 
   return (
     <Link
       href={href ?? `/events/${event.id}`}
-      className={cx(
-        styles.card,
-        styles[event.accent],
-        closed && styles.dimmed,
-        cancelled && styles.cancelled,
-      )}
+      className={cx(styles.card, categoryToneClass(event.category))}
     >
       <div className={styles.head}>
         <DateBlock
           iso={event.startsAt}
-          accent={event.accent}
+          category={event.category}
           cancelled={cancelled}
         />
         <div className={styles.headText}>
@@ -89,9 +87,7 @@ export function EventCard({
         </div>
       </div>
 
-      <div className={styles.meta}>
-        <EventMetaLine event={event} />
-      </div>
+      <EventMetaLine event={event} />
 
       <div className={styles.badges}>
         {/*
@@ -106,22 +102,43 @@ export function EventCard({
       </div>
 
       <div className={styles.footer}>
-        <span className={styles.attendance}>
-          {attendees.length > 0 && <AvatarStack users={attendees} max={4} size="xs" />}
-          <span className={cx(styles.attendanceText, full && styles.full)}>
-            {closed
-              ? closedAttendanceLabel(going)
-              : attendanceLabel(going, event.capacity, full)}
-          </span>
-        </span>
-        {hostName && (
-          <span className={styles.host} title={hostedByLabel(hostName)}>
-            {hostedByLabel(hostName)}
-          </span>
+        {showsCapacity && (
+          /*
+            Decorative: the attendance text beside it says the same in words,
+            so the bar is hidden from assistive technology rather than given a
+            second, competing description.
+          */
+          <div className={styles.capacityTrack} aria-hidden>
+            <div
+              className={cx(styles.capacityFill, full && styles.capacityFull)}
+              style={{ width: `${capacityPercent(going, event.capacity)}%` }}
+            />
+          </div>
         )}
+        <div className={styles.footerRow}>
+          <span className={styles.attendance}>
+            {attendees.length > 0 && <AvatarStack users={attendees} max={4} size="xs" />}
+            <span className={cx(styles.attendanceText, full && styles.full)}>
+              {closed
+                ? closedAttendanceLabel(going)
+                : attendanceLabel(going, event.capacity, full)}
+            </span>
+          </span>
+          {hostName && (
+            <span className={styles.host} title={hostedByLabel(hostName)}>
+              {hostedByLabel(hostName)}
+            </span>
+          )}
+        </div>
       </div>
     </Link>
   );
+}
+
+/** How much of the capacity is taken, capped at a full bar. */
+function capacityPercent(going: number, capacity: number | null): number {
+  if (capacity === null || capacity <= 0) return 100;
+  return Math.min(100, Math.round((going / capacity) * 100));
 }
 
 /** Responsive grid for a page of `EventCard`s. */

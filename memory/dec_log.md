@@ -1544,3 +1544,117 @@ Consequences: the frame has a navigation landmark again, and `--topbar-height`
 is gone; the detail page's sticky panel is offset from the top of the viewport
 alone, since nothing sits above the content on a wide screen. On a narrow
 screen the navigation is the brand link and the pages' own actions.
+
+---
+
+## 2026-10-29 — An event's colour is its category's, and the accent is no longer rendered
+
+Context: the entry "An event's accent is assigned by the server" (2026-09-01)
+made the accent a decoration that encodes nothing, and [TASKS.md](../TASKS.md)
+§5 M11 asked instead for one consistent colour per category on the board,
+chosen once the Style Guide had been reviewed. The approved M11 design names
+them: engineering blue, design purple, product teal, learning amber, social
+orange, company navy. It also reserves colour for states — registration,
+draft, cancelled, past — so access stops being coloured.
+
+Decision: each category maps to one tone of the system's tinted scale, in
+`tokens.css` as `--category-<category>-bg|fg|dot`, applied through
+`categoryToneClass()` in `EventMeta.tsx`. It tints the card's date tile and
+category label, and the category filter's dots. A cancelled event's date tile
+takes the cancelled tone instead, with its day struck through. Access is a
+neutral chip with an icon (globe, user-check, lock), on the card and on the
+detail page's header. The cancelled pill is tinted like every other state
+rather than filled, and the card's accent bar is gone. `EventRecord.accent` is
+left as it is — still stored, still assigned on creation — but nothing renders
+it. This supersedes the 2026-09-01 entry's premise that colour on the board
+encodes nothing.
+
+Rationale: a colour that means something is worth more than one that only
+varies, and a category is what a reader scans the board for. Mapping the
+categories onto the existing tone scale, rather than adding colours, keeps
+every tint's text at AA in both themes — the old accent text on the card did
+not pass. Keeping colour off access keeps the coloured pills readable as
+states. Leaving the accent field alone keeps M11 a presentation change: no
+schema, API or data change.
+
+Consequences: the `--accent-*` tokens and the field have no reader in the
+interface; whether to remove them is for M11's close-out, and removing the
+field would be a schema change. A new category needs a tone in `tokens.css`
+and a class in `EventMeta.module.css`.
+
+---
+
+## 2026-10-29 — The board shows one section at a time, and every board control is a link
+
+Context: the board stacked upcoming, cancelled and past one under another,
+with past and cancelled cards dimmed, and its filters were two selects in a
+client leaf that navigated on change (2026-08-24, "Board filters in the URL,
+applied on the server, with no `/api/events`"). The approved M11 design has
+access as a segmented control and category as chips, and below them a
+navigation between the three sections, only one of which is shown.
+
+Decision: the section is URL state beside the filters — `section=cancelled` or
+`section=past`, with upcoming the default and never written — and the page
+renders the selected section alone. All three options are always shown, each
+with its count, zero included; the counts are computed on the server from the
+filtered, authorised set. The options are links with `aria-current="page"`,
+not an ARIA tab widget, because they navigate. The filters became links too,
+built like the section's from the whole current state by `boardHref()` in
+`lib/board.ts`, which also holds the parsing: changing a filter keeps the
+section, changing the section keeps the filters, and clearing the filters
+keeps the section. Every link replaces the history entry and keeps the scroll
+position, as the selects did. The filters' client leaf is gone: no board data,
+filtering or URL state is handled in the browser. Cards are no longer dimmed
+in their own section. An empty section says why, and offers the sections that
+do have matches. Because some of those links — a jump from an empty section,
+a clear link shown only while filtering — navigate to a board on which they
+no longer exist, the section navigation's `<nav>` is a client component,
+`FocusRestoringNav`: when a navigation leaves focus on the document body, it
+moves focus to the current section's link, scrolling only if that link is out
+of view and then only as far as it takes to show it. It holds no state, never
+takes focus on first render or from an element that still has it, and changes
+nothing about the links or the URL. And because every link's `href` is the
+state the page was rendered with, a second click made before the first
+navigation commits would follow an outdated link and undo the first choice;
+`QueuedNavigation`, around the board's controls, holds such clicks in order
+and replays each on its re-rendered link once the page has updated. A held
+link that has disappeared by then is replayed through a remaining link with
+the same `data-nav-intent` — a section through that section's link, a clear
+through any clear link left, or not at all when no filters remain.
+
+Rationale: the 2026-08-24 reasons all still hold — filtering after
+authorisation means the URL can only narrow, and a filtered board is
+shareable — and the section follows them: it is server state, so a count can
+never reveal a hidden event, and Back from an event returns to the section it
+was opened from. With every control a link there is nothing left for client
+code to do except navigation timing and keyboard focus, neither of which
+server-rendered markup can handle. A removed link drops focus to the document
+body, where a keyboard or screen-reader user is left with nothing focused —
+Next.js moves no focus when a link does not scroll — and the browser's own
+focus scrolling would undo the links' `scroll={false}`, so the scroll is kept
+to the minimum that shows the focused link. A server-rendered link cannot know
+about a navigation still in flight; the filters' old client leaf read both
+selects for exactly this reason. Holding and replaying the click, rather than
+merging URLs in the browser, keeps every navigation an ordinary link to a
+server-built URL and keeps "clear the filters" exact. A section that shows only cancelled, or only past, events no
+longer needs dimming to set them apart, which was how the board met
+[TASKS.md](../TASKS.md) M1's "past events are separate and de-emphasised";
+separation now does it, and the pills say the state.
+
+Consequences: this replaces the 2026-08-24 entry's client leaf; its decision
+to keep filters in the URL and apply them on the server stands. The canonical
+URL of a board state is whatever `boardHref()` returns. `SegmentedControl`
+gained a link mode for the access filter, and `Chip` was added to the kit. On
+a phone the four access options sit two by two, so none is ever hidden off the
+edge of a scrolling row. A quick sequence of choices costs one round trip per
+choice, in order, rather than one combined navigation. A board link that can
+disappear must carry a `data-nav-intent` matching a link that stays, or one
+whose absence means the action no longer applies. A board link that stays must
+keep its element across navigations, since a held click refers to that
+element: its React key is what it stands for, never its `href`, which changes
+with the rest of the URL. `SegmentLink` therefore has a required `value`, as
+`SegmentOption` does; keying the access options by `href` had replaced them on
+every category or section change and dropped an access click held behind one.
+On a narrow screen the shell's bar is pinned to the top, so the section links
+have a `scroll-margin` of the bar's height plus `--space-2`; without it,
+restoring focus to a link above the screen left it under the bar.

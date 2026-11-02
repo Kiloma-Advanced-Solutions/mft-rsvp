@@ -1,27 +1,37 @@
 import Link from "next/link";
 
 import { BoardFilters } from "@/components/events/BoardFilters";
-import type {
-  AccessFilter,
-  CategoryFilter,
-} from "@/components/events/BoardFilters";
+import { BoardSectionNav } from "@/components/events/BoardSectionNav";
 import { EventCard, EventGrid } from "@/components/events/EventCard";
-import { EmptyState, PageHeader, buttonClass } from "@/components/ui";
-import { cx } from "@/lib/cx";
+import {
+  EmptyState,
+  Icon,
+  PageHeader,
+  QueuedNavigation,
+  buttonClass,
+} from "@/components/ui";
+import {
+  BOARD_SECTIONS,
+  CLEAR_FILTERS_INTENT,
+  boardHref,
+  parseAccess,
+  parseCategory,
+  parseSection,
+  sectionIntent,
+} from "@/lib/board";
+import type { BoardSection, BoardState } from "@/lib/board";
 import { isPast } from "@/lib/date";
 import { getVisibleEventsWithContext } from "@/lib/events";
 import {
-  ACCESS_ORDER,
   BOARD_LABELS,
-  CATEGORY_ORDER,
+  BOARD_SECTION_LABELS,
   MANAGE_LABELS,
   eventCountLabel,
+  sectionJumpLabel,
 } from "@/lib/labels";
 import { canCreateEvent } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
 import type { EventWithContext } from "@/lib/types";
-
-import styles from "./events.module.css";
 
 export const metadata = {
   /*
@@ -32,24 +42,38 @@ export const metadata = {
   title: { absolute: BOARD_LABELS.title },
 };
 
+/** Ties the section's list to its heading, which only screen readers see. */
+const SECTION_HEADING_ID = "board-section-heading";
+
 /**
  * The board.
  *
  * A Server Component throughout: it resolves the viewer through
  * `getCurrentUser()`, asks `lib/events.ts` for the events that viewer is
- * allowed to see, and only then filters, sorts and groups them. Nothing the
- * viewer may not see is ever rendered, so nothing can be revealed by editing
- * the query string or the DOM.
+ * allowed to see, and only then filters them and sorts them into sections.
+ * Nothing the viewer may not see is ever rendered -- not a card, not a count
+ * -- so nothing can be revealed by editing the query string or the DOM.
  *
- * Filters live in the URL and are applied here, over the already-authorised
- * set. `BoardFilters` is the one client leaf, and all it does is navigate.
+ * The filters and the section live in the URL and are applied here, over the
+ * already-authorised set. The filters and the section navigation are links to
+ * the URLs of other board states, which `lib/board.ts` reads and writes, so no
+ * board data and no filtering reach client code. Two small client pieces
+ * handle navigation only: `QueuedNavigation`, around the board's controls,
+ * holds a click made while an earlier one is still loading and replays it on
+ * the refreshed links, so a quick second choice keeps the first; and the
+ * section navigation's `<nav>` restores keyboard focus when a navigation
+ * removes the link that had it -- see `BoardSectionNav`.
  */
 export default async function BoardPage({ searchParams }: PageProps<"/events">) {
   const [viewer, query] = await Promise.all([getCurrentUser(), searchParams]);
   const visible = await getVisibleEventsWithContext(viewer);
 
-  const category = parseCategory(query.category);
-  const access = parseAccess(query.access);
+  const state: BoardState = {
+    category: parseCategory(query.category),
+    access: parseAccess(query.access),
+    section: parseSection(query.section),
+  };
+  const { category, access, section } = state;
   const filtering = category !== null || access !== null;
 
   const matching = visible.filter(
@@ -64,16 +88,24 @@ export default async function BoardPage({ searchParams }: PageProps<"/events">) 
   const active = matching.filter(({ event }) => event.status !== "cancelled");
   const cancelled = matching.filter(({ event }) => event.status === "cancelled");
 
-  // `isPast` reads the start, which is also what dims a card and what closes
-  // registration — one boundary, used consistently.
-  const upcoming = upcomingSoonestFirst(active);
-  const past = startedMostRecentFirst(active);
-  // The two orders above, one after the other: a cancellation that was still
-  // to come is the one someone might have been planning around.
-  const cancelledInOrder = [
-    ...upcomingSoonestFirst(cancelled),
-    ...startedMostRecentFirst(cancelled),
-  ];
+  // `isPast` reads the start, which is also what marks a card as past and what
+  // closes registration — one boundary, used consistently.
+  const sections: Record<BoardSection, EventWithContext[]> = {
+    upcoming: upcomingSoonestFirst(active),
+    // The two orders, one after the other: a cancellation that was still to
+    // come is the one someone might have been planning around.
+    cancelled: [
+      ...upcomingSoonestFirst(cancelled),
+      ...startedMostRecentFirst(cancelled),
+    ],
+    past: startedMostRecentFirst(active),
+  };
+  const counts: Record<BoardSection, number> = {
+    upcoming: sections.upcoming.length,
+    cancelled: sections.cancelled.length,
+    past: sections.past.length,
+  };
+  const items = sections[section];
 
   return (
     <div>
@@ -89,36 +121,48 @@ export default async function BoardPage({ searchParams }: PageProps<"/events">) 
           canCreateEvent(viewer) ? (
             <Link
               href="/events/new"
-              className={buttonClass({ variant: "primary" })}
+              className={buttonClass({ variant: "primary", size: "lg" })}
             >
+              <Icon name="plus" />
               {MANAGE_LABELS.create}
             </Link>
           ) : undefined
         }
       />
 
-      <div className={styles.toolbar}>
-        <BoardFilters category={category} access={access} />
-        {filtering && (
-          <Link href="/events" className={styles.clear}>
-            {BOARD_LABELS.clearFilters}
-          </Link>
-        )}
-      </div>
+      <QueuedNavigation location={boardHref(state)}>
+        <BoardFilters state={state} />
 
-      {matching.length === 0 ? (
-        <BoardEmptyState filtering={filtering} />
-      ) : (
-        <>
-          <BoardSection title={BOARD_LABELS.upcoming} items={upcoming} />
-          <BoardSection
-            title={BOARD_LABELS.cancelled}
-            items={cancelledInOrder}
-            muted
-          />
-          <BoardSection title={BOARD_LABELS.past} items={past} muted />
-        </>
-      )}
+        <BoardSectionNav state={state} counts={counts} />
+
+        <section aria-labelledby={SECTION_HEADING_ID}>
+          <h2 id={SECTION_HEADING_ID} className="srOnly">
+            {BOARD_SECTION_LABELS[section].heading}
+          </h2>
+
+          {matching.length === 0 ? (
+            <BoardEmptyState state={state} filtering={filtering} />
+          ) : items.length === 0 ? (
+            <SectionEmptyState
+              state={state}
+              filtering={filtering}
+              counts={counts}
+            />
+          ) : (
+            <EventGrid>
+              {items.map(({ event, hosts, goingCount, viewerRegistration }) => (
+                <EventCard
+                  key={event.id}
+                  event={event}
+                  goingCount={goingCount}
+                  viewerStatus={viewerRegistration?.status ?? null}
+                  hostName={hosts[0]?.name}
+                />
+              ))}
+            </EventGrid>
+          )}
+        </section>
+      </QueuedNavigation>
     </div>
   );
 }
@@ -138,52 +182,59 @@ function startedMostRecentFirst(items: EventWithContext[]): EventWithContext[] {
 }
 
 /**
- * One titled run of cards. Renders nothing when it is empty, so a board with no
- * history does not grow a lonely "אירועים שעברו" heading.
+ * A link styled as a small button, to another state of the board. `intent` is
+ * its `data-nav-intent`, so a click held by `QueuedNavigation` can still be
+ * replayed after the empty state it sits in has gone.
  */
-function BoardSection({
-  title,
-  items,
-  muted = false,
+function BoardLink({
+  href,
+  intent,
+  variant,
+  children,
 }: {
-  title: string;
-  items: EventWithContext[];
-  muted?: boolean;
+  href: string;
+  intent: string;
+  variant: "secondary" | "ghost";
+  children: string;
 }) {
-  if (items.length === 0) return null;
-
   return (
-    <section className={cx(styles.section, muted && styles.sectionMuted)}>
-      <div className={styles.sectionHead}>
-        <h2 className={styles.sectionTitle}>{title}</h2>
-        <span className={styles.sectionCount}>{items.length}</span>
-      </div>
-
-      <EventGrid>
-        {items.map(({ event, hosts, goingCount, viewerRegistration }) => (
-          <EventCard
-            key={event.id}
-            event={event}
-            goingCount={goingCount}
-            viewerStatus={viewerRegistration?.status ?? null}
-            hostName={hosts[0]?.name}
-          />
-        ))}
-      </EventGrid>
-    </section>
+    <Link
+      href={href}
+      replace
+      scroll={false}
+      data-nav-intent={intent}
+      className={buttonClass({ variant, size: "sm" })}
+    >
+      {children}
+    </Link>
   );
 }
 
-/** Two different dead ends, and only one of them is the viewer's to fix. */
-function BoardEmptyState({ filtering }: { filtering: boolean }) {
+/**
+ * Nothing on the board at all, in any section. Two different dead ends, and
+ * only one of them is the viewer's to fix: the filters exclude everything, or
+ * there is nothing this viewer may see.
+ */
+function BoardEmptyState({
+  state,
+  filtering,
+}: {
+  state: BoardState;
+  filtering: boolean;
+}) {
   if (filtering) {
     return (
       <EmptyState
-        icon="⌕"
         title={BOARD_LABELS.noMatchesTitle}
         description={BOARD_LABELS.noMatchesDescription}
         actions={
-          <Link href="/events" className={buttonClass({ variant: "secondary" })}>
+          <Link
+            href={boardHref({ ...state, category: null, access: null })}
+            replace
+            scroll={false}
+            data-nav-intent={CLEAR_FILTERS_INTENT}
+            className={buttonClass({ variant: "secondary" })}
+          >
             {BOARD_LABELS.clearFilters}
           </Link>
         }
@@ -193,7 +244,6 @@ function BoardEmptyState({ filtering }: { filtering: boolean }) {
 
   return (
     <EmptyState
-      icon="◳"
       title={BOARD_LABELS.emptyTitle}
       description={BOARD_LABELS.emptyDescription}
     />
@@ -201,14 +251,73 @@ function BoardEmptyState({ filtering }: { filtering: boolean }) {
 }
 
 /**
- * Query values are untrusted input. Anything that is not a known category or
- * access mode is treated as no filter at all, which is why these return the
- * union rather than casting a string into it.
+ * The selected section is empty while another is not. Under filters, the
+ * matches are elsewhere: offer each section that has some, with how many, and
+ * clearing the filters. Without filters, this section simply has nothing in
+ * it; from cancelled or past, offer the way back to upcoming if anything is
+ * there. Every offer is a section with matching events -- never one that
+ * would lead to another empty page.
  */
-function parseCategory(value: string | string[] | undefined): CategoryFilter {
-  return CATEGORY_ORDER.find((category) => category === value) ?? null;
-}
+function SectionEmptyState({
+  state,
+  filtering,
+  counts,
+}: {
+  state: BoardState;
+  filtering: boolean;
+  counts: Record<BoardSection, number>;
+}) {
+  const labels = BOARD_SECTION_LABELS[state.section];
 
-function parseAccess(value: string | string[] | undefined): AccessFilter {
-  return ACCESS_ORDER.find((access) => access === value) ?? null;
+  if (filtering) {
+    const others = BOARD_SECTIONS.filter(
+      (other) => other !== state.section && counts[other] > 0,
+    );
+    return (
+      <EmptyState
+        title={labels.filteredEmptyTitle}
+        description={BOARD_LABELS.otherSectionsMatch}
+        actions={
+          <>
+            {others.map((other) => (
+              <BoardLink
+                key={other}
+                href={boardHref({ ...state, section: other })}
+                intent={sectionIntent(other)}
+                variant="secondary"
+              >
+                {sectionJumpLabel(other, counts[other])}
+              </BoardLink>
+            ))}
+            <BoardLink
+              href={boardHref({ ...state, category: null, access: null })}
+              intent={CLEAR_FILTERS_INTENT}
+              variant="ghost"
+            >
+              {BOARD_LABELS.clearFilters}
+            </BoardLink>
+          </>
+        }
+      />
+    );
+  }
+
+  const offersUpcoming = state.section !== "upcoming" && counts.upcoming > 0;
+  return (
+    <EmptyState
+      title={labels.emptyTitle}
+      description={labels.emptyDescription}
+      actions={
+        offersUpcoming ? (
+          <BoardLink
+            href={boardHref({ ...state, section: "upcoming" })}
+            intent={sectionIntent("upcoming")}
+            variant="secondary"
+          >
+            {BOARD_LABELS.toUpcoming}
+          </BoardLink>
+        ) : undefined
+      }
+    />
+  );
 }

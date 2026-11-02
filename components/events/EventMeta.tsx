@@ -1,4 +1,5 @@
-import { Badge } from "@/components/ui";
+import { Badge, Icon } from "@/components/ui";
+import type { IconName } from "@/components/ui";
 import { cx } from "@/lib/cx";
 import {
   formatDateLong,
@@ -12,7 +13,6 @@ import {
 } from "@/lib/date";
 import {
   ACCESS_LABELS,
-  ACCESS_TONES,
   CAPACITY_LABELS,
   EVENT_STATUS_LABELS,
   EVENT_STATUS_TONES,
@@ -26,6 +26,7 @@ import {
 } from "@/lib/labels";
 import type {
   EventAccess,
+  EventCategory,
   EventLocation,
   EventRecord,
   RegistrationStatus,
@@ -41,19 +42,31 @@ import styles from "./EventMeta.module.css";
  * what makes the app feel finished.
  */
 
-/** Calendar-tile date, e.g. AUG / 24 / Sat. */
+/**
+ * The class that sets `--category-bg`, `--category-fg` and `--category-dot` to
+ * a category's tone, for anything inside it that is tinted by category. The
+ * category-to-tone mapping itself is in `app/styles/tokens.css`.
+ */
+export function categoryToneClass(category: EventCategory): string {
+  return styles[category];
+}
+
+/** Calendar-tile date, e.g. AUG / 24 / Sat, tinted by the event's category. */
 export function DateBlock({
   iso,
-  accent,
+  category,
   size = "md",
   cancelled = false,
   className,
 }: {
   iso: string;
-  /** Tints the month. Defaults to the brand colour. */
-  accent?: EventRecord["accent"];
+  /** Tints the tile. Without one it takes the neutral tone. */
+  category?: EventCategory;
   size?: "md" | "lg";
-  /** Strikes the date through: the event is not going to happen on it. */
+  /**
+   * Strikes the date through: the event is not going to happen on it. The
+   * tile takes the cancelled tone instead of the category's.
+   */
   cancelled?: boolean;
   className?: string;
 }) {
@@ -61,11 +74,11 @@ export function DateBlock({
     <div
       className={cx(
         styles.dateBlock,
+        category && styles[category],
         size === "lg" && styles.dateBlockLg,
         cancelled && styles.dateBlockCancelled,
         className,
       )}
-      style={accent ? { ["--accent-color" as string]: `var(--accent-${accent})` } : undefined}
     >
       <span className={styles.dateBlockMonth}>{formatMonthShort(iso)}</span>
       <span className={styles.dateBlockDay}>{formatDayNumber(iso)}</span>
@@ -74,7 +87,18 @@ export function DateBlock({
   );
 }
 
-/** How people get in: Open / Approval needed / Invite only. */
+/** Each access mode's icon, on its chip and in the board's access filter. */
+export const ACCESS_ICONS: Record<EventAccess, IconName> = {
+  open: "globe",
+  approval: "userCheck",
+  invite: "lock",
+};
+
+/**
+ * How people get in: Open / Approval needed / Invite only. A neutral chip with
+ * an icon rather than a coloured pill -- colour is kept for states (the
+ * viewer's registration, draft, cancelled, past), and access is not one.
+ */
 export function AccessBadge({
   access,
   size = "sm",
@@ -83,7 +107,12 @@ export function AccessBadge({
   size?: "sm" | "lg";
 }) {
   return (
-    <Badge tone={ACCESS_TONES[access]} size={size}>
+    <Badge variant="outline" size={size}>
+      <Icon
+        name={ACCESS_ICONS[access]}
+        size={size === "lg" ? "sm" : "xs"}
+        className={styles.accessIcon}
+      />
       {ACCESS_LABELS[access]}
     </Badge>
   );
@@ -102,14 +131,7 @@ export function EventStatusBadge({
 }) {
   if (event.status !== "published") {
     return (
-      <Badge
-        tone={EVENT_STATUS_TONES[event.status]}
-        // Solid for a cancellation: it is the one state that has to be seen
-        // at a glance. A draft is only ever in front of its hosts.
-        variant={event.status === "cancelled" ? "solid" : "soft"}
-        size={size}
-        dot
-      >
+      <Badge tone={EVENT_STATUS_TONES[event.status]} size={size} dot>
         {EVENT_STATUS_LABELS[event.status]}
       </Badge>
     );
@@ -152,17 +174,13 @@ export function EventMetaLine({
   return (
     <div className={cx(styles.metaList, className)}>
       <span className={styles.metaItem}>
-        <span className={styles.metaIcon} aria-hidden>
-          ◷
-        </span>
+        <Icon name="clock" size="sm" />
         <span className={styles.metaText}>
           {formatTimeRange(event.startsAt, event.endsAt)}
         </span>
       </span>
       <span className={styles.metaItem}>
-        <span className={styles.metaIcon} aria-hidden>
-          ⌖
-        </span>
+        <Icon name="pin" size="sm" />
         <span className={styles.metaText} dir="auto">
           {locationLabel(event.location)}
         </span>

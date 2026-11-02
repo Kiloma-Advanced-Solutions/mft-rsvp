@@ -7,6 +7,7 @@
  */
 
 import type { BadgeTone } from "@/components/ui";
+import type { BoardSection } from "@/lib/board";
 import type {
   AttendeeRemovalClosedReason,
   AttendeeRestoreClosedReason,
@@ -58,12 +59,6 @@ export const ACCESS_DESCRIPTIONS: Record<EventAccess, string> = {
   open: "כל אחד יכול לראות את האירוע ולהירשם בלחיצה אחת.",
   approval: "כל אחד יכול לראות את האירוע, אבל אתם מחליטים מי נכנס.",
   invite: "רק מי שתזמינו יוכל לראות את האירוע.",
-};
-
-export const ACCESS_TONES: Record<EventAccess, BadgeTone> = {
-  open: "success",
-  approval: "warning",
-  invite: "primary",
 };
 
 /** Fixed order for access filters and pickers, so the options never shuffle. */
@@ -145,23 +140,75 @@ export const LOCATION_KIND_LABELS: Record<EventLocation["kind"], string> = {
 
 /* ------------------------------------------------------------------- board */
 
-/** The board's own words: its sections, its filters and its empty states. */
+/** The board's own words: its filters, its navigation and its empty states. */
 export const BOARD_LABELS = {
   title: "לוח האירועים",
-  upcoming: "אירועים קרובים",
-  past: "אירועים שעברו",
-  cancelled: "אירועים שבוטלו",
+  /** The accessible name of the section navigation. */
+  sectionNav: "אירועים לפי מועד",
   categoryFilter: "קטגוריה",
   accessFilter: "אופן הכניסה",
   allCategories: "כל הקטגוריות",
-  allAccessModes: "כל אופני הכניסה",
+  /** The access filter's first option, which is no filter. */
+  allAccess: "הכל",
   clearFilters: "ניקוי הסינון",
   emptyTitle: "עדיין אין כאן אירועים בשבילכם",
   emptyDescription:
     "אין כרגע אירועים שאתם יכולים לראות. אירועים יופיעו כאן ברגע שמארח יפרסם אירוע, או יזמין אתכם לאירוע.",
   noMatchesTitle: "אין אירועים שתואמים את הסינון",
   noMatchesDescription: "שום אירוע שאתם יכולים לראות לא תואם את השילוב הזה.",
+  /** Under a section that is empty only because of the filters. */
+  otherSectionsMatch: "יש התאמות בלשוניות אחרות.",
+  /** From an empty cancelled or past section back to the default one. */
+  toUpcoming: "לאירועים הקרובים",
 };
+
+/**
+ * Each board section's words: its name in the navigation, the heading of its
+ * list (read by screen readers, not shown), and its two empty states -- empty
+ * for the viewer, and empty only under the current filters.
+ */
+export const BOARD_SECTION_LABELS: Record<
+  BoardSection,
+  {
+    name: string;
+    heading: string;
+    emptyTitle: string;
+    emptyDescription: string;
+    filteredEmptyTitle: string;
+  }
+> = {
+  upcoming: {
+    name: "קרובים",
+    heading: "אירועים קרובים",
+    emptyTitle: "אין אירועים קרובים",
+    emptyDescription:
+      "אירועים יופיעו כאן ברגע שמארח יפרסם אירוע חדש, או יזמין אתכם לאירוע.",
+    filteredEmptyTitle: "אין אירועים קרובים שתואמים את הסינון",
+  },
+  cancelled: {
+    name: "בוטלו",
+    heading: "אירועים שבוטלו",
+    emptyTitle: "אין אירועים שבוטלו",
+    emptyDescription: "אירוע שיבוטל יישאר בלוח ויופיע כאן, עם הפרטים שלו.",
+    filteredEmptyTitle: "אין אירועים שבוטלו שתואמים את הסינון",
+  },
+  past: {
+    name: "עברו",
+    heading: "אירועים שעברו",
+    emptyTitle: "אין אירועים שעברו",
+    emptyDescription: "אירועים עוברים לכאן ברגע שהם מתחילים.",
+    filteredEmptyTitle: "אין אירועים שעברו שתואמים את הסינון",
+  },
+};
+
+/**
+ * "עברו · 3" -- a way to another section from an empty one, with how many
+ * matching events wait there. A digit, not a counted noun, so it needs no
+ * agreement.
+ */
+export function sectionJumpLabel(section: BoardSection, count: number): string {
+  return `${BOARD_SECTION_LABELS[section].name} · ${count}`;
+}
 
 /**
  * The board's headline count. `shown` is what the filters left on the board,

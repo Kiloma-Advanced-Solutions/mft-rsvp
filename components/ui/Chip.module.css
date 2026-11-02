@@ -1,0 +1,46 @@
+/* The system's chip: raised on the surface with a hairline, navy when chosen. */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  height: var(--control-height-chip);
+  padding: 0 var(--control-padding-sm);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow:
+    inset 0 0 0 1px var(--color-field-border),
+    var(--shadow-card);
+  font-size: var(--text-label);
+  white-space: nowrap;
+  transition:
+    background var(--transition-fast),
+    color var(--transition-fast),
+    box-shadow var(--transition-fast);
+}
+
+.chip:hover:not(.selected) {
+  box-shadow:
+    inset 0 0 0 1px var(--color-focus),
+    var(--shadow-card);
+}
+
+/* Keeps its shape when focused; see the same rule in Button.module.css. */
+.chip:focus-visible {
+  border-radius: var(--radius-control);
+}
+
+.selected {
+  background: var(--color-navy);
+  color: var(--color-on-navy);
+  box-shadow: none;
+}
+
+.dot {
+  flex: none;
+  width: var(--dot-size-lg);
+  height: var(--dot-size-lg);
+  border-radius: var(--radius-full);
+  background: var(--chip-dot, currentColor);
+}

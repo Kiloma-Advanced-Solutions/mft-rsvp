@@ -44,11 +44,11 @@ const ACCENTS: AccentKey[] = [
 /**
  * Which tint a new event gets.
  *
- * An accent is decorative -- it colours the card and the date block on the
- * board and appears nowhere on the event's own page -- so a host is not asked
- * to choose one. Derived from the title rather than drawn at random so the
- * result is stable across a reset-and-recreate, and spread across all six
- * rather than fixed so the board keeps the variety the fixtures demonstrate.
+ * `EventRecord.accent` is required, so a new event still gets one, but since
+ * M11 nothing renders it -- an event's colour on the board comes from its
+ * category -- so a host is not asked to choose one. Derived from the title
+ * rather than drawn at random so the result is stable across a
+ * reset-and-recreate, and spread across all six like the fixtures' accents.
  */
 function accentForTitle(title: string): AccentKey {
   let sum = 0;

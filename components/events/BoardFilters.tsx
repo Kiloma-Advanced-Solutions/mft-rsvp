@@ -1,9 +1,10 @@
-"use client";
+import Link from "next/link";
 
-import { useRouter } from "next/navigation";
-import type { ChangeEvent } from "react";
-
-import { Field, Select } from "@/components/ui";
+import { Chip, Icon, SegmentedControl } from "@/components/ui";
+import type { SegmentLink } from "@/components/ui";
+import { CLEAR_FILTERS_INTENT, boardHref } from "@/lib/board";
+import type { BoardState } from "@/lib/board";
+import { cx } from "@/lib/cx";
 import {
   ACCESS_LABELS,
   ACCESS_ORDER,
@@ -11,97 +12,98 @@ import {
   CATEGORY_LABELS,
   CATEGORY_ORDER,
 } from "@/lib/labels";
-import type { EventAccess, EventCategory } from "@/lib/types";
 
+import { ACCESS_ICONS, categoryToneClass } from "./EventMeta";
 import styles from "./BoardFilters.module.css";
 
 /**
- * The board's filters. The only client code on the page.
+ * The board's filters: access as a segmented control, category as chips, and
+ * the clear link while either is set.
  *
- * It owns no state: the filters live in the URL and the server does the
- * filtering, so this component's whole job is to turn a choice into a
- * navigation. `null` means "no filter" and is represented by the parameter
- * being absent from the query string.
+ * A Server Component made of links. The filters live in the URL and the page
+ * filters on the server, so choosing one is a navigation to the URL of the
+ * new state and nothing here holds state or runs in the browser. Every link
+ * is built from the whole current state with `boardHref`, so changing one
+ * filter keeps the other one and the board's section, and clearing the
+ * filters keeps the section too.
  */
+export function BoardFilters({ state }: { state: BoardState }) {
+  const { category, access } = state;
+  const filtering = category !== null || access !== null;
 
-/** Absent from the query string, and the empty option in the picker. */
-export type CategoryFilter = EventCategory | null;
-export type AccessFilter = EventAccess | null;
-
-export function BoardFilters({
-  category,
-  access,
-}: {
-  category: CategoryFilter;
-  access: AccessFilter;
-}) {
-  const router = useRouter();
-
-  /**
-   * Both filters are read off the form, not off the props, because the props
-   * are one render behind until the server responds. Changing the second
-   * filter while the first is still in flight would otherwise navigate with a
-   * stale value and silently drop the filter the person just set.
-   */
-  function navigate(event: ChangeEvent<HTMLSelectElement>) {
-    const form = event.currentTarget.form;
-    if (!form) return;
-
-    const values = new FormData(form);
-    const params = new URLSearchParams();
-    for (const name of ["category", "access"]) {
-      const value = values.get(name);
-      if (typeof value === "string" && value) params.set(name, value);
-    }
-
-    const query = params.toString();
-    // `replace`, not `push`: trying four filter combinations should not mean
-    // pressing Back four times to leave the board.
-    router.replace(query ? `/events?${query}` : "/events", { scroll: false });
-  }
+  const accessLinks: SegmentLink[] = [
+    {
+      value: "all",
+      href: boardHref({ ...state, access: null }),
+      label: BOARD_LABELS.allAccess,
+      current: access === null,
+    },
+    ...ACCESS_ORDER.map((value) => ({
+      value,
+      href: boardHref({ ...state, access: value }),
+      label: (
+        <>
+          <Icon name={ACCESS_ICONS[value]} size="sm" />
+          {ACCESS_LABELS[value]}
+        </>
+      ),
+      current: access === value,
+    })),
+  ];
 
   return (
-    <form
-      className={styles.filters}
-      // The form exists to group the two pickers so their live values can be
-      // read together. Navigation happens on change; there is nothing to post.
-      onSubmit={(event) => event.preventDefault()}
-    >
-      <Field label={BOARD_LABELS.categoryFilter} className={styles.filter}>
-        <Select
-          name="category"
-          // Uncontrolled, keyed by the value the server rendered. The choice
-          // stays put while the new page is fetched, and a reset from
-          // elsewhere — the clear link, the Back button — remounts the picker
-          // so it cannot drift from the URL.
-          key={category ?? ""}
-          defaultValue={category ?? ""}
-          onChange={navigate}
-        >
-          <option value="">{BOARD_LABELS.allCategories}</option>
-          {CATEGORY_ORDER.map((value) => (
-            <option key={value} value={value}>
-              {CATEGORY_LABELS[value]}
-            </option>
-          ))}
-        </Select>
-      </Field>
+    <div className={styles.filters}>
+      <div className={styles.row}>
+        <span className={styles.label} aria-hidden>
+          {BOARD_LABELS.accessFilter}
+        </span>
+        <SegmentedControl
+          label={BOARD_LABELS.accessFilter}
+          links={accessLinks}
+          className={styles.access}
+        />
+      </div>
 
-      <Field label={BOARD_LABELS.accessFilter} className={styles.filter}>
-        <Select
-          name="access"
-          key={access ?? ""}
-          defaultValue={access ?? ""}
-          onChange={navigate}
+      <div className={styles.row}>
+        <span className={styles.label} aria-hidden>
+          {BOARD_LABELS.categoryFilter}
+        </span>
+        <div
+          className={styles.chips}
+          role="group"
+          aria-label={BOARD_LABELS.categoryFilter}
         >
-          <option value="">{BOARD_LABELS.allAccessModes}</option>
-          {ACCESS_ORDER.map((value) => (
-            <option key={value} value={value}>
-              {ACCESS_LABELS[value]}
-            </option>
+          <Chip
+            href={boardHref({ ...state, category: null })}
+            selected={category === null}
+          >
+            {BOARD_LABELS.allCategories}
+          </Chip>
+          {CATEGORY_ORDER.map((value) => (
+            <Chip
+              key={value}
+              href={boardHref({ ...state, category: value })}
+              selected={category === value}
+              dot
+              className={cx(styles.categoryChip, categoryToneClass(value))}
+            >
+              {CATEGORY_LABELS[value]}
+            </Chip>
           ))}
-        </Select>
-      </Field>
-    </form>
+        </div>
+
+        {filtering && (
+          <Link
+            href={boardHref({ ...state, category: null, access: null })}
+            replace
+            scroll={false}
+            data-nav-intent={CLEAR_FILTERS_INTENT}
+            className={styles.clear}
+          >
+            {BOARD_LABELS.clearFilters}
+          </Link>
+        )}
+      </div>
+    </div>
   );
 }

@@ -237,7 +237,8 @@ logic that lives in the route is turning that answer into a status code. See
 - `ui/` — generic primitives that know nothing about events. Import from the
   barrel: [components/ui/index.ts](../components/ui/index.ts).
 - `events/` — anything that understands the domain: `EventCard`, `EventGrid`,
-  `BoardFilters`, `RegistrationPanel`, `RegistrationActions`, `EventForm`,
+  `BoardFilters`, `BoardSectionNav`, `RegistrationPanel`, `RegistrationActions`,
+  `EventForm`,
   `HostEventActions`, `ApprovalQueue`, `RequestDecisionActions`,
   `AttendeeList`, `AttendeeActions`, `InvitationList`, `InvitationActions`,
   `ShareEventActions`, `ShareEmailPicker`, and the
@@ -257,6 +258,13 @@ and dark (via `prefers-color-scheme` and a `data-theme` attribute). Components
 each have one `.module.css` beside them. The rules governing all of this are in
 [CLAUDE.md](../CLAUDE.md). Rules that depend on reading direction have their own
 conventions, in the next section.
+
+An event's colour comes from its **category**: `tokens.css` maps each category
+to one tone of the tinted scale (`--category-<category>-bg|fg|dot`), and
+`categoryToneClass()` in `components/events/EventMeta.tsx` applies it. It tints
+the board card's date tile and category label and the category filter's dots.
+`EventRecord.accent` is still stored and still assigned on creation, but
+nothing renders it any more. Why: [dec_log.md](dec_log.md).
 
 ### Language and direction — Hebrew, RTL
 
@@ -499,17 +507,74 @@ page (server) → getCurrentUser() → lib/events → canViewEvent() → lib/db
 
 ### The board — `/events`
 
-Server-rendered end to end. It asks `lib/events.ts` for what the viewer may see,
-then filters, sorts and groups that already-authorised set. Cancelled events are
-grouped into a section of their own rather than mixed into upcoming or past
-ones; grouping only, so every cancelled event the viewer may see is still there.
-Filters live in the URL, so the query string can only narrow what the viewer was
-already allowed to see — never widen it.
+Server-rendered end to end: the data, the filtering, the sections and the URL
+state are all decided on the server, and no board data reaches client code.
+It asks `lib/events.ts` for what the viewer may see, then filters that already-authorised set and sorts it
+into three sections: **upcoming** (not started, soonest first), **cancelled**
+(the ones not yet started soonest first, then the started ones most recent
+first) and **past** (started, most recent first). Cancelled is grouping only:
+every cancelled event the viewer may see is still there. `isPast` — the
+start — is the boundary, as it is for closing registration.
 
-[components/events/BoardFilters.tsx](../components/events/BoardFilters.tsx) is
-the page's only client leaf. It holds no state and makes no decisions; it turns a
-choice into a navigation. Why the filters work this way:
-[dec_log.md](dec_log.md).
+Only the selected section's cards are rendered. The section navigation,
+[components/events/BoardSectionNav.tsx](../components/events/BoardSectionNav.tsx),
+always shows all three with their counts, a zero included. The counts are
+computed on the server from the filtered, authorised set, so a count — like a
+card — can never reveal an event the viewer cannot see. Cards in the cancelled
+and past sections are not dimmed; their pills carry the state.
+
+The board's state is in the URL: `category`, `access` and `section`
+(`cancelled` or `past`; upcoming is the default). The query string can only
+narrow what the viewer was already allowed to see — never widen it.
+[lib/board.ts](../lib/board.ts) parses it (anything unknown, empty or repeated
+is the default) and builds each state's one canonical URL — parameters in that
+order, defaults omitted, so the unfiltered upcoming board is plain `/events`.
+[components/events/BoardFilters.tsx](../components/events/BoardFilters.tsx) and
+the section navigation are links built from the whole current state, so
+changing a filter keeps the section, changing the section keeps the filters,
+and clearing the filters keeps the section. Every one of these links replaces
+the history entry and keeps the scroll position; only restoring focus (below)
+may move it, and only on a screen too short to show the section navigation.
+
+An empty section explains itself: under filters, it offers the other sections
+that have matches, with their counts, and clearing the filters; without
+filters, an empty cancelled or past section offers the way back to upcoming
+when upcoming has events. When nothing matches in any section — or the viewer
+can see nothing at all — one board-level empty state replaces them.
+
+**Two client pieces, for navigation only.** Neither filters, fetches nor
+decides anything about the board's data; the links inside both are rendered by
+the server as before.
+
+- [components/ui/QueuedNavigation.tsx](../components/ui/QueuedNavigation.tsx)
+  wraps the filters, the section navigation and the section. Each link's
+  `href` is built from the state the page was rendered with, so a second click
+  before the first navigation commits would follow an outdated link and undo
+  the first choice. While a navigation to `/events` is pending it holds
+  further board-link clicks, in order, and replays each on its link once the
+  page has re-rendered, when that `href` is current. That needs a lasting link
+  to keep its element across the navigation, so board links are keyed by what
+  they stand for — an access option by its value, a chip by its category, a
+  section by its name — never by their `href`. A held link that is gone
+  by then — a jump out of an empty section, a clear link — is replayed through
+  a remaining link with the same `data-nav-intent` (`lib/board.ts`): a section
+  through that section's link, a clear through any clear link still shown, or
+  not at all once no filters are left. Event cards and other routes are not
+  held, and a navigation that has not committed after ten seconds no longer
+  holds anything.
+- [components/ui/FocusRestoringNav.tsx](../components/ui/FocusRestoringNav.tsx)
+  is the section navigation's `<nav>`. Those empty-state links and the filters'
+  clear link navigate to a board on which they no longer exist, which would
+  drop focus to the document body. After the board's URL changes, and only if
+  focus was dropped, it moves focus to the current section's link — without
+  the browser's default scroll, then scrolling only as far as it takes to
+  bring the link into view if it is off-screen. On a narrow screen, where the
+  shell's bar is pinned to the top, the section links' `scroll-margin` of the
+  bar's height plus `--space-2` keeps the link and its focus ring below the
+  bar. It holds no state and never takes focus on first render or from an
+  element that still has it.
+
+Why the board works this way: [dec_log.md](dec_log.md).
 
 ### The detail screen — `/events/[id]`
 
