@@ -381,28 +381,38 @@ export function ActionMenu({
     it is a measurement of this render, and nothing else reads it.
   */
   useLayoutEffect(() => {
-    const popup = popupRef.current;
-    const trigger = triggerRef.current;
-    if (!open || !popup || !trigger) return;
+    if (!open) return;
 
-    popup.style.translate = "";
-    const viewport = document.documentElement.clientWidth;
-    const gutter = screenGutter(popup);
-    const rtl = getComputedStyle(trigger).direction === "rtl";
-    const anchor = trigger.getBoundingClientRect();
-    const { left, width } = popup.getBoundingClientRect();
+    function place() {
+      const popup = popupRef.current;
+      const trigger = triggerRef.current;
+      if (!popup || !trigger) return;
 
-    // Towards the start is rightwards in RTL, leftwards in LTR.
-    const startRoom = rtl ? viewport - anchor.left : anchor.right;
-    const endRoom = rtl ? anchor.right : viewport - anchor.left;
-    const towardsEnd = endRoom > startRoom ? width - anchor.width : 0;
-    const placed = left + (rtl ? -towardsEnd : towardsEnd);
-    const kept = Math.min(
-      Math.max(placed, gutter),
-      viewport - gutter - width,
-    );
+      popup.style.translate = "";
+      const viewport = document.documentElement.clientWidth;
+      const gutter = screenGutter(popup);
+      const rtl = getComputedStyle(trigger).direction === "rtl";
+      const anchor = trigger.getBoundingClientRect();
+      const { left, width } = popup.getBoundingClientRect();
 
-    if (kept !== left) popup.style.translate = `${kept - left}px 0`;
+      // Towards the start is rightwards in RTL, leftwards in LTR.
+      const startRoom = rtl ? viewport - anchor.left : anchor.right;
+      const endRoom = rtl ? anchor.right : viewport - anchor.left;
+      const towardsEnd = endRoom > startRoom ? width - anchor.width : 0;
+      const placed = left + (rtl ? -towardsEnd : towardsEnd);
+      const kept = Math.min(
+        Math.max(placed, gutter),
+        viewport - gutter - width,
+      );
+
+      if (kept !== left) popup.style.translate = `${kept - left}px 0`;
+    }
+
+    // Placed again if the screen changes while it is open -- a phone turned
+    // on its side re-wraps the row the trigger is in.
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
   }, [open, triggerRef]);
 
   const tooltipRef = useRef<HTMLSpanElement>(null);

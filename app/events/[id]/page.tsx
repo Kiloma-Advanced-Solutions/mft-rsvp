@@ -139,7 +139,6 @@ export default async function EventDetailPage({
             />
           ) : undefined
         }
-        alignActions="start"
         centerTitle
         meta={
           <>

@@ -74,10 +74,6 @@
   flex-wrap: wrap;
 }
 
-.rowTop {
-  align-items: flex-start;
-}
-
 /*
   A basis of half the row, not the text's own width: with `auto`, a long title
   or summary asked for its whole one-line width and pushed the actions onto a
@@ -132,8 +128,8 @@
   The title and description centred on the whole header, not on the space the
   actions leave beside them. The row becomes a grid and the title group's box
   steps aside (`display: contents`), so its parts are placed one by one: the
-  eyebrow at the start of the first line with the actions at its end -- level
-  with the top, where `rowTop` would have put them -- and the title, the
+  eyebrow at the start of the first line with the actions at its end, level
+  with the top of the header -- and the title, the
   description and the meta each across both columns below. Nothing the actions
   are has to be known or measured, and the title can never run under them.
 

@@ -26,7 +26,6 @@ export function PageHeader({
   eyebrow,
   meta,
   actions,
-  alignActions = "end",
   centerTitle = false,
   breadcrumbs,
   backHref,
@@ -40,16 +39,10 @@ export function PageHeader({
   meta?: ReactNode;
   actions?: ReactNode;
   /**
-   * Where the actions sit against the title's column: level with its last
-   * line (the default), or with its top, as the event page's do beside a
-   * title, summary and badges.
-   */
-  alignActions?: "start" | "end";
-  /**
    * Centres the title and the description under it on the whole header --
    * only those two; the eyebrow and the meta keep the start. The actions move
    * up to the eyebrow's line, at its end, so they never take width from the
-   * title; `alignActions` does not apply.
+   * title.
    */
   centerTitle?: boolean;
   /** Replaces the back link when given. */
@@ -68,14 +61,7 @@ export function PageHeader({
         </Link>
       )}
 
-      <div
-        className={cx(
-          styles.row,
-          centerTitle
-            ? styles.centered
-            : alignActions === "start" && styles.rowTop,
-        )}
-      >
+      <div className={cx(styles.row, centerTitle && styles.centered)}>
         <div className={styles.titleGroup}>
           {eyebrow && <p className={styles.eyebrow}>{eyebrow}</p>}
           {/*
