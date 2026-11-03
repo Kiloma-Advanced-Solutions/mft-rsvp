@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import type { KeyboardEvent, ReactNode } from "react";
 
 import { cx } from "@/lib/cx";
@@ -101,6 +101,45 @@ function useMenuButton() {
     closeToTrigger,
     onMenuKeyDown,
   };
+}
+
+/**
+ * The room an action menu keeps from each side of the screen: what its
+ * popup's `max-width` leaves over, so the CSS stays the one place that sets
+ * it. Resolved from the stylesheet even while the popup is hidden.
+ */
+function screenGutter(popup: HTMLElement) {
+  const viewport = document.documentElement.clientWidth;
+  return (viewport - parseFloat(getComputedStyle(popup).maxWidth)) / 2 || 0;
+}
+
+/**
+ * Keeps a trigger's tooltip, centred under it, inside the screen less the
+ * popup's gutter. A trigger that wraps to the edge of a narrow row would
+ * otherwise push half of it off the screen -- and as it stays laid out while
+ * invisible, push the page into sideways scroll as well. Physical pixels, so
+ * either direction works the same. Touch screens never show it: see
+ * `.tooltip`.
+ */
+function keepTooltipOnScreen(
+  tooltip: HTMLElement | null,
+  popup: HTMLElement | null,
+) {
+  if (!tooltip || !popup) return;
+
+  tooltip.style.translate = "";
+  const viewport = document.documentElement.clientWidth;
+  const gutter = screenGutter(popup);
+  const { left, right, width } = tooltip.getBoundingClientRect();
+  // Not laid out on a touch screen, so there is nothing to place.
+  if (width === 0) return;
+  const shift =
+    left < gutter
+      ? gutter - left
+      : right > viewport - gutter
+        ? viewport - gutter - right
+        : 0;
+  if (shift !== 0) tooltip.style.translate = `${shift}px 0`;
 }
 
 /**
@@ -323,26 +362,70 @@ export function ActionMenu({
   const menuId = useId();
   const noteId = useId();
   const itemNoteId = useId();
-  /** Grow from the trigger towards the end, instead of towards the start. */
-  const [growsToEnd, setGrowsToEnd] = useState(false);
+  const popupRef = useRef<HTMLDivElement>(null);
 
-  /**
-   * Opens on the first item, growing towards whichever side of the trigger
-   * has more room in the viewport. By default the popup's end edge lines up
-   * with the trigger's, so it grows towards the start -- but a trigger that
-   * has wrapped to the start of a narrow row has no room there, and the menu
-   * would open off the screen.
-   */
-  function show() {
+  /*
+    Where the popup opens, worked out once it is visible and before it is
+    painted. It is laid out with its end edge on the trigger's, growing
+    towards the start, and measured there: whatever it overflows on that side
+    is never scrollable, so laying it out cannot widen a phone's page. It then
+    moves in one horizontal shift to
+      - grow towards the end instead, when the trigger has more room on that
+        side -- a trigger that has wrapped to the start of a narrow row has
+        none towards the start; and
+      - stay inside the screen, less the gutter its `max-width` leaves, which
+        it always fits -- on a phone a trigger mid-row can have less room than
+        the menu on either side.
+    Physical pixels throughout, so either direction works the same. Written to
+    the element rather than kept in state, as the pickers size their lists:
+    it is a measurement of this render, and nothing else reads it.
+  */
+  useLayoutEffect(() => {
+    const popup = popupRef.current;
     const trigger = triggerRef.current;
-    if (trigger) {
-      const { left, right } = trigger.getBoundingClientRect();
-      const rtl = getComputedStyle(trigger).direction === "rtl";
-      // Towards the start is rightwards in RTL, leftwards in LTR.
-      const startRoom = rtl ? window.innerWidth - left : right;
-      const endRoom = rtl ? right : window.innerWidth - left;
-      setGrowsToEnd(endRoom > startRoom);
-    }
+    if (!open || !popup || !trigger) return;
+
+    popup.style.translate = "";
+    const viewport = document.documentElement.clientWidth;
+    const gutter = screenGutter(popup);
+    const rtl = getComputedStyle(trigger).direction === "rtl";
+    const anchor = trigger.getBoundingClientRect();
+    const { left, width } = popup.getBoundingClientRect();
+
+    // Towards the start is rightwards in RTL, leftwards in LTR.
+    const startRoom = rtl ? viewport - anchor.left : anchor.right;
+    const endRoom = rtl ? anchor.right : viewport - anchor.left;
+    const towardsEnd = endRoom > startRoom ? width - anchor.width : 0;
+    const placed = left + (rtl ? -towardsEnd : towardsEnd);
+    const kept = Math.min(
+      Math.max(placed, gutter),
+      viewport - gutter - width,
+    );
+
+    if (kept !== left) popup.style.translate = `${kept - left}px 0`;
+  }, [open, triggerRef]);
+
+  const tooltipRef = useRef<HTMLSpanElement>(null);
+
+  /*
+    The tooltip is placed on mount and on resize, and again as it is about to
+    show -- on pointer enter and on focus -- so a row that has re-wrapped since
+    is caught. See `keepTooltipOnScreen`.
+  */
+  function placeTooltip() {
+    keepTooltipOnScreen(tooltipRef.current, popupRef.current);
+  }
+
+  useLayoutEffect(() => {
+    const place = () =>
+      keepTooltipOnScreen(tooltipRef.current, popupRef.current);
+    place();
+    window.addEventListener("resize", place);
+    return () => window.removeEventListener("resize", place);
+  }, []);
+
+  /** Opens on the first item; the effect above places it. */
+  function show() {
     openAt(0);
   }
 
@@ -375,19 +458,18 @@ export function ActionMenu({
         disabled={disabled}
         onClick={() => (open ? setOpen(false) : show())}
         onKeyDown={onTriggerKeyDown}
+        onPointerEnter={placeTooltip}
+        onFocus={placeTooltip}
       >
         <Icon name={icon} />
-        <span className={styles.tooltip} aria-hidden>
+        <span ref={tooltipRef} className={styles.tooltip} aria-hidden>
           {label}
         </span>
       </button>
 
       <div
-        className={cx(
-          styles.popup,
-          growsToEnd && styles.popupToEnd,
-          popupClassName,
-        )}
+        ref={popupRef}
+        className={cx(styles.popup, popupClassName)}
         hidden={!open}
       >
         <div

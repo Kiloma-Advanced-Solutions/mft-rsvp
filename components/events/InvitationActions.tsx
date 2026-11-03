@@ -253,7 +253,7 @@ export function InvitePicker({
         description={INVITATION_LABELS.pickerDescription}
         dismissible={!submitting}
         footer={
-          <>
+          <div className={styles.dialogFooter}>
             <div className={styles.dialogActions}>
               <Button
                 onClick={invite}
@@ -275,7 +275,7 @@ export function InvitePicker({
             <p className={styles.dialogCount} aria-live="polite">
               {selectedCountLabel(chosen.length)}
             </p>
-          </>
+          </div>
         }
       >
         <div className={styles.filter}>

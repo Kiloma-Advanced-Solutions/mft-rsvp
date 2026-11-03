@@ -67,15 +67,22 @@
 
 /* ---- action menu -------------------------------------------------------- */
 
-/* Lined up with the trigger's start edge, so it grows towards the end. */
-.popupToEnd {
-  inset-inline-end: auto;
-  inset-inline-start: 0;
-}
-
 /* The round icon trigger carries its tooltip, so it positions it. */
 .iconTrigger {
   position: relative;
+}
+
+/*
+  Lifted while its tooltip can show. Under the pointer the icon button rises
+  with a `transform`, which makes it a stacking context: the tooltip's own
+  z-index then only counts inside the button, and a positioned card that
+  follows it -- the registration panel, on a phone-width page -- paints over
+  the tooltip's lower edge. Lifting the trigger itself puts the whole button,
+  tooltip included, above that content. The open menu still sits above it.
+*/
+.iconTrigger:hover,
+.iconTrigger:focus-visible {
+  z-index: 1;
 }
 
 /*

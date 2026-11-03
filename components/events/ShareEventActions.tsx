@@ -326,7 +326,7 @@ function ShareEmailDialog({
       // A batch that is going out finishes before the dialog can go.
       dismissible={!sending}
       footer={
-        <>
+        <div className={styles.dialogFooter}>
           <div className={styles.dialogActions}>
             <Button
               onClick={send}
@@ -344,7 +344,7 @@ function ShareEmailDialog({
           <p className={styles.dialogCount} aria-live="polite">
             {selectedCountLabel(chosen.length)}
           </p>
-        </>
+        </div>
       }
     >
       <div className={styles.filter}>
