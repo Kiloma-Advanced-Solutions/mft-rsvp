@@ -31,6 +31,9 @@ import styles from "./ShareEventActions.module.css";
 /** Somebody the host may email the link to: no address, which stays on the server. */
 type ShareRecipient = { id: string; name: string; title: string };
 
+/** A batch that did not all go out: its headline and who was refused, and why. */
+type BatchFailure = { title: string; detail: string };
+
 /**
  * What the page decided about sharing, on the server: open, with the finished
  * URL and the people who can already see the event, or closed, with the
@@ -200,6 +203,9 @@ function ShareEmailDialog({
   const [selected, setSelected] = useState<string[]>([]);
   const [filter, setFilter] = useState("");
   const [sending, setSending] = useState(false);
+  // The last batch's refusals, shown inside the dialog: the toasts live
+  // outside it, where a native modal leaves them inert and under its backdrop.
+  const [failure, setFailure] = useState<BatchFailure | null>(null);
   const [refreshing, startTransition] = useTransition();
   const recipientArea = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -253,11 +259,13 @@ function ShareEmailDialog({
   function close() {
     onClose();
     setFilter("");
+    setFailure(null);
   }
 
   async function send() {
     if (chosen.length === 0 || busy) return;
     setSending(true);
+    setFailure(null);
 
     const sent = new Set<string>();
     const failures: { name: string; message: string }[] = [];
@@ -290,12 +298,15 @@ function ShareEmailDialog({
       if (failures.length === 0) {
         toast.success(shareEmailsSentLabel(sent.size));
       } else {
-        toast.error(
-          sent.size > 0
-            ? shareEmailsPartlySentLabel(sent.size, chosen.length)
-            : shareEmailsFailedLabel(chosen.length),
-          invitationFailuresLabel(failures),
-        );
+        const summary = {
+          title:
+            sent.size > 0
+              ? shareEmailsPartlySentLabel(sent.size, chosen.length)
+              : shareEmailsFailedLabel(chosen.length),
+          detail: invitationFailuresLabel(failures),
+        };
+        toast.error(summary.title, summary.detail);
+        setFailure(summary);
       }
 
       // Whoever was emailed leaves the selection, so a second click cannot
@@ -347,6 +358,18 @@ function ShareEmailDialog({
         </div>
       }
     >
+      {/*
+        The same words as the toast, inside the dialog, where a screen reader
+        can reach them and hears them as they appear. Cleared by the next send
+        and by closing.
+      */}
+      {failure && (
+        <div role="alert" className={styles.failure}>
+          <p className={styles.failureTitle}>{failure.title}</p>
+          <p>{failure.detail}</p>
+        </div>
+      )}
+
       <div className={styles.filter}>
         <Field label={SHARE_EMAIL_LABELS.filterLabel}>
           {/* No `dir="auto"`, as in the invitation picker: it is a query. */}

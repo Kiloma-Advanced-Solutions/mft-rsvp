@@ -93,17 +93,26 @@ export function PageHeader({
  * Where this page sits, as links back up the trail. An ordered list inside a
  * named `<nav>`, the last step marked `aria-current="page"` and not a link.
  * A step's label can be an event's own title, so each takes its own direction
- * with `dir="auto"`, and the current one truncates rather than widening the
- * page. The separator is decorative.
+ * with `dir="auto"`. The trail stays on one line: the first step and the
+ * current page keep their width, and the steps between them give way and
+ * truncate, with the full label in `title` -- so in edit mode the event's
+ * title shortens while "the board" and "edit" stay whole. With one or two
+ * steps, the current page is the one that gives way. The separator is
+ * decorative.
  */
 function Breadcrumbs({ steps }: { steps: Breadcrumb[] }) {
   const last = steps.length - 1;
+  const flexible = (index: number) =>
+    last <= 1 ? index === last : index > 0 && index < last;
 
   return (
     <nav aria-label={UI_LABELS.breadcrumbs} className={styles.breadcrumbs}>
       <ol className={styles.trail}>
         {steps.map((step, index) => (
-          <li key={index} className={styles.step}>
+          <li
+            key={index}
+            className={cx(styles.step, flexible(index) && styles.stepFlexible)}
+          >
             {index > 0 && (
               <Icon name="chevronLeft" size="sm" className={styles.separator} />
             )}
@@ -117,7 +126,12 @@ function Breadcrumbs({ steps }: { steps: Breadcrumb[] }) {
                 {step.label}
               </span>
             ) : (
-              <Link href={step.href} className={styles.crumb} dir="auto">
+              <Link
+                href={step.href}
+                className={styles.crumb}
+                dir="auto"
+                title={step.label}
+              >
                 {step.label}
               </Link>
             )}

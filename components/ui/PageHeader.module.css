@@ -25,9 +25,13 @@
   min-width: 0;
 }
 
+/*
+  One line, always. Wrapping would put a long event title on a line of its
+  own before anything truncated; instead every step keeps its width except the
+  one marked flexible, which gives way and truncates -- see `Breadcrumbs`.
+*/
 .trail {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
@@ -39,13 +43,24 @@
 
 .step {
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
   max-width: 100%;
 }
 
+.stepFlexible {
+  flex: 0 1 auto;
+}
+
+/* Truncates like `.current`: in edit mode the event's own title is a linked
+   step, and a long unbroken one must not widen the page. */
 .crumb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--color-link);
   transition: color var(--transition-fast);
 }
@@ -63,6 +78,7 @@
 }
 
 .separator {
+  flex: none;
   color: var(--color-text-muted);
 }
 

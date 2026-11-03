@@ -89,6 +89,15 @@
   The trigger's name, shown on hover and keyboard focus, and hidden while the
   menu it opens is in the same place. Centred under the button, which is not
   a direction-sensitive placement, so it uses physical `left`.
+
+  It covers what is under it, so it is hoverable and dismissible (WCAG
+  1.4.13): while the pointer has brought it up it takes the pointer, and it
+  is part of the button, so moving onto it keeps the button hovered;
+  `::before` bridges the gap between the two. A click on it does nothing
+  (`ActionMenu` ignores it), so pointing at the label never opens the menu.
+  Shown by keyboard focus alone, or hidden, it takes no pointer, so a click
+  aimed at what lies beneath reaches it. Escape hides it until the next hover
+  or focus (`.tooltipDismissed`, set by `ActionMenu`).
 */
 .tooltip {
   position: absolute;
@@ -107,13 +116,27 @@
   transition: opacity var(--transition-fast);
 }
 
+.tooltip::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: 100%;
+  height: var(--space-2);
+}
+
 .iconTrigger:hover .tooltip,
 .iconTrigger:focus-visible .tooltip {
   opacity: 1;
 }
 
-.iconTrigger[aria-expanded="true"] .tooltip {
+.iconTrigger:hover .tooltip {
+  pointer-events: auto;
+}
+
+.iconTrigger[aria-expanded="true"] .tooltip,
+.iconTrigger .tooltip.tooltipDismissed {
   opacity: 0;
+  pointer-events: none;
 }
 
 /*

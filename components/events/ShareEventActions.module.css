@@ -6,6 +6,26 @@
 
 /* ---- send by email: the same shape as the invitation picker ----------- */
 
+/* The last batch's refusals, in the form's own error style, above the search. */
+.failure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  background: var(--color-danger-soft);
+  color: var(--color-danger-text);
+  font-size: var(--text-sm);
+  line-height: var(--leading-normal);
+  overflow-wrap: anywhere;
+}
+
+.failureTitle {
+  font-weight: var(--weight-medium);
+}
+
 /* Stays put while the list under it scrolls. */
 .filter {
   position: sticky;

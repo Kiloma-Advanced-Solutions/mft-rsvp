@@ -52,6 +52,9 @@ import styles from "./InvitationList.module.css";
 
 type Candidate = { id: string; name: string; title: string };
 
+/** A batch that did not all go out: its headline and who was refused, and why. */
+type BatchFailure = { title: string; detail: string };
+
 /**
  * Tick several people and invite them with one click.
  *
@@ -88,6 +91,9 @@ export function InvitePicker({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // The last batch's refusals, shown inside the dialog: the toasts live
+  // outside it, where a native modal leaves them inert and under its backdrop.
+  const [failure, setFailure] = useState<BatchFailure | null>(null);
   const [refreshing, startTransition] = useTransition();
   const candidateArea = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -165,6 +171,7 @@ export function InvitePicker({
   async function invite() {
     if (chosen.length === 0 || busy) return;
     setSubmitting(true);
+    setFailure(null);
 
     const invited = new Set<string>();
     const failures: { name: string; message: string }[] = [];
@@ -188,12 +195,15 @@ export function InvitePicker({
       if (failures.length === 0) {
         toast.success(invitationsAddedLabel(invited.size));
       } else {
-        toast.error(
-          invited.size > 0
-            ? invitationsPartlyAddedLabel(invited.size, chosen.length)
-            : invitationsFailedLabel(chosen.length),
-          invitationFailuresLabel(failures),
-        );
+        const summary = {
+          title:
+            invited.size > 0
+              ? invitationsPartlyAddedLabel(invited.size, chosen.length)
+              : invitationsFailedLabel(chosen.length),
+          detail: invitationFailuresLabel(failures),
+        };
+        toast.error(summary.title, summary.detail);
+        setFailure(summary);
       }
 
       // Whoever was invited leaves the selection now, so a second click cannot
@@ -223,6 +233,7 @@ export function InvitePicker({
   function closePicker() {
     setPickerOpen(false);
     setFilter("");
+    setFailure(null);
   }
 
   return (
@@ -278,6 +289,18 @@ export function InvitePicker({
           </div>
         }
       >
+        {/*
+          The same words as the toast, inside the dialog, where a screen
+          reader can reach them and hears them as they appear. Cleared by the
+          next batch and by closing.
+        */}
+        {failure && (
+          <div role="alert" className={styles.failure}>
+            <p className={styles.failureTitle}>{failure.title}</p>
+            <p>{failure.detail}</p>
+          </div>
+        )}
+
         <div className={styles.filter}>
           <Field label={INVITATION_LABELS.filterLabel}>
             {/*

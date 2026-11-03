@@ -434,6 +434,32 @@ export function ActionMenu({
     return () => window.removeEventListener("resize", place);
   }, []);
 
+  /*
+    Escape hides the tooltip without moving the pointer or focus, and it
+    stays hidden until the next hover or focus entry -- WCAG 1.4.13. Heard on
+    the document, because a hovered trigger need not have focus. An Escape the
+    open menu has already used (to close itself) is left alone.
+  */
+  const [tooltipDismissed, setTooltipDismissed] = useState(false);
+
+  useEffect(() => {
+    function onKeyDown(event: globalThis.KeyboardEvent) {
+      const trigger = triggerRef.current;
+      if (event.key !== "Escape" || event.defaultPrevented || !trigger) return;
+      if (trigger.matches(":hover") || trigger.matches(":focus-visible")) {
+        setTooltipDismissed(true);
+      }
+    }
+
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [triggerRef]);
+
+  function showTooltipAgain() {
+    setTooltipDismissed(false);
+    placeTooltip();
+  }
+
   /** Opens on the first item; the effect above places it. */
   function show() {
     openAt(0);
@@ -466,13 +492,27 @@ export function ActionMenu({
         aria-controls={menuId}
         aria-label={label}
         disabled={disabled}
-        onClick={() => (open ? setOpen(false) : show())}
+        onClick={(event) => {
+          // The tooltip is inside the button so that moving onto it keeps the
+          // button hovered; a click on it is a click on the label, not on the
+          // control, and opens nothing.
+          if (tooltipRef.current?.contains(event.target as Node)) return;
+          if (open) setOpen(false);
+          else show();
+        }}
         onKeyDown={onTriggerKeyDown}
-        onPointerEnter={placeTooltip}
-        onFocus={placeTooltip}
+        onPointerEnter={showTooltipAgain}
+        onFocus={showTooltipAgain}
       >
         <Icon name={icon} />
-        <span ref={tooltipRef} className={styles.tooltip} aria-hidden>
+        <span
+          ref={tooltipRef}
+          className={cx(
+            styles.tooltip,
+            tooltipDismissed && styles.tooltipDismissed,
+          )}
+          aria-hidden
+        >
           {label}
         </span>
       </button>

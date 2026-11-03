@@ -177,6 +177,12 @@
   min-width: 0;
   font-size: var(--text-body);
   color: var(--color-text);
+  /*
+    A venue, address or platform is the host's own text and can hold an
+    unbroken run with nowhere to wrap; without this the line is sized to that
+    run and takes the page into sideways scroll on a phone.
+  */
+  overflow-wrap: anywhere;
 }
 
 .factSub {
