@@ -10,9 +10,11 @@ Iron Numbers design system, which has been supplied, and changes presentation
 only: no rule, API, schema or permission changes. It is delivered in four
 sequential PRs. PR 1 — design foundations, the shared UI kit and the
 navigation shell — is merged (PR #46). PR 2 — the Events Board: its cards and
-badges, filters and section navigation — is implemented on its branch and not
-yet merged. PRs 3 and 4 (the detail page and host management; the forms and
-the milestone's close-out) have not started.
+badges, filters and section navigation — is merged (PR #48). PR 3 — the
+detail page, the host's actions and sharing, and host management — is
+implemented on its branch and not yet merged. PR 4 (the forms and the
+milestone's close-out) has not started. The desktop widths are unchanged by
+M11: the board, the detail page and the forms keep the shell's 1120px column.
 [TASKS.md](../TASKS.md) §5 still describes M11 as awaiting its Style Guide; it
 is brought up to date when the milestone closes.
 
@@ -120,13 +122,13 @@ over from when it was is shown read-only, and counts again if the event goes
 back to `invite`. Like the queue, the list is built only for people who may
 manage the event; an invitee sees nothing of it.
 
-In the host tools, a host can **copy the event's link** — with the URL shown in
-a read-only field if the clipboard is refused — and **email it** to people
-picked from everyone who can already see the event. The link is the event's
-own page and grants nothing: an invite-only event stays a 404 for anyone not on
-its list, and nothing is invited, registered or written. On a draft, a
-cancelled event or one that has started, the host tools say why sharing is
-closed instead. How it fits together is in [a_system.md](a_system.md) "Sharing
+From the Share menu in the event's header, a host can **copy the event's
+link** — with the URL shown in a read-only field if the clipboard is refused —
+and **email it** to people picked from everyone who can already see the event.
+The link is the event's own page and grants nothing: an invite-only event
+stays a 404 for anyone not on its list, and nothing is invited, registered or
+written. On a draft, a cancelled event or one that has started, the Share menu
+says why sharing is closed instead. How it fits together is in [a_system.md](a_system.md) "Sharing
 events".
 
 **Everything is persistent (M6).** Users, events and registrations live in SQL
@@ -149,7 +151,8 @@ Everything that is not the product was supplied. Do not rebuild it — see
 
 - Design tokens (light and dark) and the `components/ui/` kit.
 - `components/events/` — cards, badges, date blocks, capacity meter; the
-  board's cards, badges and date blocks restyled by M11 PR 2.
+  board's cards, badges and date blocks restyled by M11 PR 2, and the detail
+  page's panel, sections, host actions and host lists by M11 PR 3.
 - `components/layout/` — app shell (the navigation rail, or a top bar on a
   narrow screen) and persona switcher; restyled by M11 PR 1, with the tokens
   and the `components/ui/` kit.
@@ -175,7 +178,8 @@ M9 added the invitation route, its three shared rules, the host's invitation
 list with its one client leaf, and a warning on a confirmed attendee who can no
 longer see the event, with no schema change.
 M10 added the sharing rule, the share-link builder, Copy Link and the
-share-email picker in the host tools, the share-email route, the email layer —
+share-email picker (now in the header's Share menu, since M11 PR 3), the
+share-email route, the email layer —
 the organizational transport, the React Email shell and template, the HTML and
 plain-text content, and Jerusalem-time email dates — plus the email preview
 script and the image conversion script, with no schema change.
@@ -384,7 +388,7 @@ Outlook 2016 — including the `data:` URI logo — none of which was available.
 Sharing needs configuration in every deployment: `EVENTS_APP_BASE_URL` for the
 link at all, and `MAIL_SERVICE_URL`, `EVENTS_MAIL_SENDER_NAME`,
 `EVENTS_MAIL_SENDER_EMAIL` and `EVENTS_MAIL_SYSTEM_ID` for email. Without the
-first, the host tools say sharing is unavailable; without the others, every send
+first, the Share menu says sharing is unavailable; without the others, every send
 is refused as "not configured". [.env.example](../.env.example) is
 authoritative. Copying to the clipboard also needs the page to be in a secure
 context, which the browser decides — plain `http` on a non-local host, for
@@ -414,7 +418,8 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-10-29 — M11 in progress: PR 1 (design foundations, UI kit
-and navigation shell) merged (PR #46); PR 2 (the Events Board) implemented on
-its branch, not yet merged; PRs 3–4 not started. Pre-M11 stabilization
+Last updated: 2026-11-03 — M11 in progress: PR 1 (design foundations, UI kit
+and navigation shell) merged (PR #46); PR 2 (the Events Board) merged
+(PR #48); PR 3 (the detail page, host actions and sharing, host management)
+implemented on its branch, not yet merged; PR 4 not started. Pre-M11 stabilization
 C1–C5 merged (PRs #41–#45); C6 follows M11; then M12 (application logging).

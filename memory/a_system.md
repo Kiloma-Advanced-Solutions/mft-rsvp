@@ -241,7 +241,7 @@ logic that lives in the route is turning that answer into a status code. See
   `EventForm`,
   `HostEventActions`, `ApprovalQueue`, `RequestDecisionActions`,
   `AttendeeList`, `AttendeeActions`, `InvitationList`, `InvitationActions`,
-  `ShareEventActions`, `ShareEmailPicker`, and the
+  `ShareEventActions` (`ShareMenu` and its email dialog), and the
   `EventMeta` family (`DateBlock`, `AccessBadge`, `EventStatusBadge`,
   `RegistrationBadge`, `EventMetaLine`, `EventMetaDetails`, `CapacityMeter`).
 - `layout/` — the app frame: `AppShell` (the navigation rail, or the top bar on a
@@ -601,11 +601,26 @@ otherwise keeps its own detail-page presentation: no meter and no headcount in
 the panel. Presentation only — what is open or closed is still decided by
 `lib/permissions.ts`.
 
+**Layout (M11 PR 3).** Breadcrumbs — the board, then the event, then "edit" in
+edit mode — replace the back link. The title and summary are centred on the
+whole header, with the category above them and the badges below; `PageHeader`
+does this under its opt-in `centerTitle`, which moves the actions up to the
+category's line so they never take width from the title. Below the header,
+the registration panel comes first in the document, so on a narrow screen it
+follows the header directly; from 921px a two-column grid places it in a
+sticky side column, with the main column's section cards — when and where,
+about, hosts, then the host lists and who is going — beside it. The desktop
+width is the shell's 1120px column, unchanged by M11.
+
 There are four host-only surfaces on the page, and they sit apart on purpose.
-The **host tools** card in the aside holds the event's own actions — edit,
-publish, cancel, delete — and, between edit and the rest, sharing: copy the
-link and email it, or a sentence saying why sharing is closed — see "Sharing
-events" below. Cancel is offered only where
+The **header actions** (`HostEventActions`, in `PageHeader`'s actions slot)
+are the event's own: Publish for a draft, an Edit link, a Share menu — copy
+the link and email it, or a disabled item whose note says why sharing is
+closed; see "Sharing events" below — and a More menu holding Cancel and
+Delete, each still confirmed through its dialog. Share and More are
+`ActionMenu`s from the kit: a menu button whose items are actions, opening
+towards the trigger's roomier side and kept inside the screen. They are
+absent in edit mode, where the form is the page. Cancel is offered only where
 `getCancellationAvailability()` says so, the same rule the cancel route
 applies. The **approval queue** is a section of the main column, above "Who is
 going", because a request carries a person and a message and needs the width,
@@ -1036,10 +1051,13 @@ error or a silent success.
 nothing; it renders nothing at all on an event that is not invite-only and has
 no dormant rows. Its one client leaf, `InvitationActions`, holds the picker and
 the revoke buttons, and receives ids, names and job titles — never the event or
-anybody's email. The picker lets a host tick several people, but sends **one
-per-person request at a time** through the same route, best effort: a refusal
-for one does not stop or undo the others, one toast sums up the batch, and the
-view refreshes once after the last. Revoking always asks first.
+anybody's email. The picker is a dialog in which a host ticks several people
+and invites them, but it sends **one per-person request at a time** through
+the same route, best effort: a refusal for one does not stop or undo the
+others, one toast sums up the batch, and the view refreshes once after the
+last. The dialog closes when every invitation went through, stays open with
+only the refused people still ticked when any did not, and cannot be
+dismissed while a batch is going out. Revoking always asks first.
 
 Why each of these was decided this way: [dec_log.md](dec_log.md).
 
@@ -1059,23 +1077,24 @@ POST /api/events/[id]/share-emails/[userId]   email this person the link -> { se
 is the one place it is built: `<EVENTS_APP_BASE_URL>/events/<id>`. The origin is
 configuration, never the request's `Host` header, and only a bare `http`/`https`
 origin is accepted. When it is missing or unusable the function returns `null`,
-and the host tools say sharing is unavailable — the rest of the page is
+and the Share menu says sharing is unavailable — the rest of the page is
 unaffected, and nothing falls back to another origin. Because the link is the
 canonical URL, whoever opens it is answered by `canViewEvent()` as if they had
 typed it: an invite-only event stays a 404 for anyone not on its list.
 
 **The rule.** `getSharingAvailability()` closes sharing on a draft, a cancelled
 event and one that has started, and nothing else; *who* may share is
-`canManageEvent()`. On the detail page, `ShareTool` asks it on the server and
-renders the copy action and the email picker while it is open, a note naming
-the reason while it is closed, and the "unavailable" note when the base URL is
-not configured.
+`canManageEvent()`. On the detail page, `shareState()` asks it on the server
+and hands the header's `ShareMenu` either the finished URL and the recipients
+while it is open, or the sentence naming the reason — or the "unavailable"
+note when the base URL is not configured — which the menu shows as a disabled
+item's note.
 
-**Copy Link.** `ShareEventActions` is a client leaf handed the finished URL; it
-builds none and reads no `window.location`. Copying changes no server state, so
-it does not refresh the page. If the clipboard is refused — a denied permission,
-or an origin that is not a secure context — it says so and shows the URL in a
-read-only field to copy by hand.
+**Copy Link.** `ShareMenu` is a client leaf handed the finished URL; it builds
+none and reads no `window.location`. Copying changes no server state, so it
+does not refresh the page. If the clipboard is refused — a denied permission,
+or an origin that is not a secure context — it says so and opens a dialog with
+the URL in a read-only field to copy by hand.
 
 **Who can be emailed.** The detail loader builds `shareRecipients` **only when
 `viewerCanManage`**, and leaves it `null` for everyone else: every user
@@ -1106,11 +1125,14 @@ without contacting the mail service. Each operational failure carries a short,
 fixed message; the mail service's status and response stay in the server log.
 The route's header comment lists the same statuses, but not in this order.
 
-**Sending.** `ShareEmailPicker` sends **one request per recipient, in
-sequence**, best effort: one failure does not stop the others, and one toast
-reports the batch as sent, partly sent or failed — never calling a partial
-batch a success. Sent recipients leave the selection and failed ones stay
-selected for the host to retry; nothing is retried automatically, because a send
+**Sending.** People are picked, counted and emailed inside one dialog, opened
+from the Share menu. It sends **one request per recipient, in sequence**, best
+effort: one failure does not stop the others, and one toast reports the batch
+as sent, partly sent or failed — never calling a partial batch a success. The
+dialog closes when every send went through, stays open with only the failed
+people still ticked when any did not, and cannot be dismissed while a batch is
+going out. Sent recipients leave the selection and failed ones stay selected
+for the host to retry; nothing is retried automatically, because a send
 that timed out may still have been delivered. A success changes nothing the page
 shows, so it does not refresh. A 4xx means the page was stale, so it refreshes
 then; a 5xx means the service behind the route failed, so it does not.
@@ -1246,6 +1268,6 @@ Why the protocol replaced the race M3 accepted: [dec_log.md](dec_log.md).
 | The approval queue, and its decision buttons | [components/events/ApprovalQueue.tsx](../components/events/ApprovalQueue.tsx) · [components/events/RequestDecisionActions.tsx](../components/events/RequestDecisionActions.tsx) |
 | "Who is going", its host version, and the remove and restore buttons | [components/events/AttendeeList.tsx](../components/events/AttendeeList.tsx) · [components/events/AttendeeActions.tsx](../components/events/AttendeeActions.tsx) |
 | The host's invitation list, its picker and revoke buttons | [components/events/InvitationList.tsx](../components/events/InvitationList.tsx) · [components/events/InvitationActions.tsx](../components/events/InvitationActions.tsx) |
-| Copy Link and the share-email picker | [components/events/ShareEventActions.tsx](../components/events/ShareEventActions.tsx) |
+| The Share menu, Copy Link and the share-email dialog | [components/events/ShareEventActions.tsx](../components/events/ShareEventActions.tsx) |
 | Event components | [components/events/](../components/events/) |
 | App frame | [components/layout/](../components/layout/) |
