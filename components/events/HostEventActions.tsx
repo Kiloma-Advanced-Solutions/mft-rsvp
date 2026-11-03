@@ -1,9 +1,18 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
-import { Button, ConfirmDialog, useToast } from "@/components/ui";
+import {
+  ActionMenu,
+  Button,
+  ConfirmDialog,
+  Icon,
+  buttonClass,
+  useToast,
+} from "@/components/ui";
+import type { ActionMenuItem } from "@/components/ui";
 import { fetchJson } from "@/lib/api";
 import {
   CANCEL_DIALOG,
@@ -14,12 +23,20 @@ import {
   deleteDialogMessage,
 } from "@/lib/labels";
 
+import { ShareMenu } from "./ShareEventActions";
+import type { ShareState } from "./ShareEventActions";
 import styles from "./HostEventActions.module.css";
 
 /**
- * The three host actions on the detail page that need a handler: publishing a
- * draft, cancelling a published event and deleting the event. Editing is a
- * plain `<Link>` to `?edit=1` and needs no client code, so it stays in the page.
+ * The host's actions in the event header: Publish (drafts only), Edit, the
+ * Share menu, and the More menu holding Cancel and Delete.
+ *
+ * Edit is a `<Link>` to `?edit=1`, because it navigates rather than acts.
+ * Publishing, cancelling and deleting act, and their handlers are here; the
+ * two destructive ones confirm first, from the More menu. Sharing is
+ * `ShareMenu`'s. What is on offer -- whether this is a draft, whether it may
+ * be cancelled, whether sharing is open -- is decided on the server and passed
+ * in, by the same rules the routes apply.
  *
  * No button is an authorisation boundary. This component is rendered only
  * where `canManageEvent()` allows, but every endpoint establishes identity from
@@ -36,8 +53,11 @@ export function HostEventActions({
   canCancel,
   goingCount,
   pendingCount,
+  share,
 }: {
   eventId: string;
+  /** Sharing, as `getSharingAvailability()` and the share-link builder left it. */
+  share: ShareState;
   /** Publishing only ever applies to a draft. */
   isDraft: boolean;
   /** `getCancellationAvailability()` said yes: published and not yet started. */
@@ -131,32 +151,52 @@ export function HostEventActions({
     });
   }
 
+  // Cancel only where `getCancellationAvailability()` allowed it; Delete always.
+  const moreItems: ActionMenuItem[] = [
+    ...(canCancel
+      ? [
+          {
+            id: "cancel",
+            label: DETAIL_LABELS.cancelEvent,
+            icon: "ban" as const,
+            danger: true,
+            onSelect: () => setCancelOpen(true),
+          },
+        ]
+      : []),
+    {
+      id: "delete",
+      label: DETAIL_LABELS.delete,
+      icon: "trash",
+      danger: true,
+      onSelect: () => setConfirmOpen(true),
+    },
+  ];
+
   return (
     <>
-      <div className={styles.danger}>
+      <div className={styles.actions}>
         {isDraft && (
-          <Button size="sm" onClick={publish} loading={publishing || working}>
+          <Button onClick={publish} loading={publishing || working}>
+            <Icon name="arrowUp" size="sm" />
             {DETAIL_LABELS.publish}
           </Button>
         )}
-        {canCancel && (
-          <Button
-            variant="dangerGhost"
-            size="sm"
-            onClick={() => setCancelOpen(true)}
-            disabled={busy}
-          >
-            {DETAIL_LABELS.cancelEvent}
-          </Button>
-        )}
-        <Button
-          variant="dangerGhost"
-          size="sm"
-          onClick={() => setConfirmOpen(true)}
-          disabled={busy}
+        <Link
+          href={`/events/${eventId}?edit=1`}
+          className={buttonClass({ variant: "secondary" })}
         >
-          {DETAIL_LABELS.delete}
-        </Button>
+          <Icon name="edit" size="sm" />
+          {DETAIL_LABELS.edit}
+        </Link>
+        <ShareMenu eventId={eventId} share={share} />
+        <ActionMenu
+          icon="more"
+          label={DETAIL_LABELS.moreActions}
+          items={moreItems}
+          // Nothing destructive can start while another action is running.
+          disabled={busy}
+        />
       </div>
 
       <ConfirmDialog

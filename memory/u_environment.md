@@ -91,7 +91,7 @@ that engine only; nothing has been run against a real SQL Server 2008 R2.
 
 - **Configuration.** [.env.example](../.env.example) is authoritative for the
   variables, what each means and their format. Locally, set
-  `EVENTS_APP_BASE_URL` to the dev server's origin, or the host tools report
+  `EVENTS_APP_BASE_URL` to the dev server's origin, or the Share menu reports
   sharing as unavailable. The mail variables are left unset locally on purpose:
   their real values belong to the organization's mail service, and unset, every
   send is refused as "not configured" before any request is made.

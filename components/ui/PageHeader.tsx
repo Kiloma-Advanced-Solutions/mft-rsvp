@@ -4,18 +4,30 @@ import type { ReactNode } from "react";
 import { cx } from "@/lib/cx";
 import { UI_LABELS } from "@/lib/labels";
 
+import { Icon } from "./Icon";
 import styles from "./PageHeader.module.css";
 
+/** One step of a breadcrumb trail. The last step is the current page. */
+export type Breadcrumb = {
+  label: string;
+  /** Where the step leads. Ignored on the last step, which is not a link. */
+  href?: string;
+};
+
 /**
- * The top of a page: optional back link, an optional eyebrow, the title, a
- * description and the page-level actions. Every screen should use it so the
- * vertical rhythm stays the same across the app.
+ * The top of a page: optional breadcrumbs or back link, an optional eyebrow,
+ * the title, a description, a row of meta (badges, say) under it and the
+ * page-level actions. Every screen should use it so the vertical rhythm stays
+ * the same across the app.
  */
 export function PageHeader({
   title,
   description,
   eyebrow,
+  meta,
   actions,
+  centerTitle = false,
+  breadcrumbs,
   backHref,
   backLabel = UI_LABELS.back,
   className,
@@ -23,20 +35,33 @@ export function PageHeader({
   title: ReactNode;
   description?: ReactNode;
   eyebrow?: ReactNode;
+  /** Shown under the description, inside the title's column. */
+  meta?: ReactNode;
   actions?: ReactNode;
+  /**
+   * Centres the title and the description under it on the whole header --
+   * only those two; the eyebrow and the meta keep the start. The actions move
+   * up to the eyebrow's line, at its end, so they never take width from the
+   * title.
+   */
+  centerTitle?: boolean;
+  /** Replaces the back link when given. */
+  breadcrumbs?: Breadcrumb[];
   backHref?: string;
   backLabel?: string;
   className?: string;
 }) {
   return (
     <div className={cx(styles.header, className)}>
-      {backHref && (
+      {breadcrumbs ? (
+        <Breadcrumbs steps={breadcrumbs} />
+      ) : backHref && (
         <Link href={backHref} className={styles.back}>
           <span aria-hidden>→</span> {backLabel}
         </Link>
       )}
 
-      <div className={styles.row}>
+      <div className={cx(styles.row, centerTitle && styles.centered)}>
         <div className={styles.titleGroup}>
           {eyebrow && <p className={styles.eyebrow}>{eyebrow}</p>}
           {/*
@@ -55,10 +80,64 @@ export function PageHeader({
               {description}
             </p>
           )}
+          {meta && <div className={styles.meta}>{meta}</div>}
         </div>
 
         {actions && <div className={styles.actions}>{actions}</div>}
       </div>
     </div>
+  );
+}
+
+/**
+ * Where this page sits, as links back up the trail. An ordered list inside a
+ * named `<nav>`, the last step marked `aria-current="page"` and not a link.
+ * A step's label can be an event's own title, so each takes its own direction
+ * with `dir="auto"`. The trail stays on one line: the first step and the
+ * current page keep their width, and the steps between them give way and
+ * truncate, with the full label in `title` -- so in edit mode the event's
+ * title shortens while "the board" and "edit" stay whole. With one or two
+ * steps, the current page is the one that gives way. The separator is
+ * decorative.
+ */
+function Breadcrumbs({ steps }: { steps: Breadcrumb[] }) {
+  const last = steps.length - 1;
+  const flexible = (index: number) =>
+    last <= 1 ? index === last : index > 0 && index < last;
+
+  return (
+    <nav aria-label={UI_LABELS.breadcrumbs} className={styles.breadcrumbs}>
+      <ol className={styles.trail}>
+        {steps.map((step, index) => (
+          <li
+            key={index}
+            className={cx(styles.step, flexible(index) && styles.stepFlexible)}
+          >
+            {index > 0 && (
+              <Icon name="chevronLeft" size="sm" className={styles.separator} />
+            )}
+            {index === last || !step.href ? (
+              <span
+                className={styles.current}
+                aria-current={index === last ? "page" : undefined}
+                dir="auto"
+                title={step.label}
+              >
+                {step.label}
+              </span>
+            ) : (
+              <Link
+                href={step.href}
+                className={styles.crumb}
+                dir="auto"
+                title={step.label}
+              >
+                {step.label}
+              </Link>
+            )}
+          </li>
+        ))}
+      </ol>
+    </nav>
   );
 }

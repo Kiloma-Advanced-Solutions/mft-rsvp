@@ -1658,3 +1658,52 @@ every category or section change and dropped an access click held behind one.
 On a narrow screen the shell's bar is pinned to the top, so the section links
 have a `scroll-margin` of the bar's height plus `--space-2`; without it,
 restoring focus to a link above the screen left it under the bar.
+
+---
+
+## 2026-11-03 — The host's actions move into the event header as menus, and multi-person sends happen inside their dialog
+
+Context: the detail page's host actions — edit, publish, cancel, delete, and
+sharing — sat in a "host tools" card in the aside, and the share-email and
+invitation pickers chose people in a dialog but sent from a button on the page
+(2026-10-20 entries on sharing; M9). The approved M11 design puts Publish, a
+labelled Edit, a Share icon button and a More icon button in the event's
+header, with Share and More opening accessible menus, and keeps the page
+itself free of pickers.
+
+Decision: `HostEventActions` renders in `PageHeader`'s actions slot, for
+managers only and never in edit mode. Share and More are `ActionMenu`, added
+to the kit beside the persona switcher's `Menu` and sharing its keyboard and
+focus hook: Enter, Space or Down opens on the first item, arrows, Home and End
+move, Escape and Tab close, and choosing an item returns focus to the trigger
+before its action runs, so a dialog it opens hands focus back there. An action
+that cannot run stays in the menu as a focusable item with `aria-disabled` and
+a note joined by `aria-describedby` — closed sharing is a disabled copy item
+saying why — rather than vanishing. The popup is measured once open and moved
+to the trigger's roomier side and inside the screen; trigger tooltips are kept
+inside the screen too, and are not shown on touch screens. Picking, counting
+and sending now happen in one dialog for both email sharing and invitations:
+it closes when every request succeeded, stays open with only the failed people
+ticked when any did not, and cannot be dismissed mid-batch. A refused copy
+opens a dialog with the URL in a read-only field. The title and summary are
+centred on the whole header (`PageHeader`'s opt-in `centerTitle`), which moves
+the actions to the category's line rather than letting them narrow the title.
+
+Rationale: the header is where the design and the user look for an event's
+own actions, and the aside is then left to registration. A disabled item with
+its reason keeps the explanatory messages the product relies on (the M11
+message review keeps every one) where a host looks for the action. Sending
+from inside the dialog shows the host what they are sending to at the moment
+they send; it is the same per-person, best-effort, sequential flow, so the
+routes and their refusals are untouched. Placement is measured rather than
+fixed because on a phone the triggers wrap to different places with the
+number of actions, and no CSS-only rule keeps a popup wider than either side
+of its trigger on screen.
+
+Consequences: there is no host tools card; its labels are now unused and go
+with PR 4's cleanup. `ActionMenu` is the kit's menu for actions and `Menu`
+stays the menu for one exclusive choice. Nothing changed in the API, the
+permission rules or what a non-manager receives: host actions, the share URL
+and the recipient list are still built only for managers. The desktop widths
+are unchanged: a proposal to widen the board and the detail page on large
+screens was considered and not taken.

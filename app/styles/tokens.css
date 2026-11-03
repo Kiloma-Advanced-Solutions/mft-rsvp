@@ -272,6 +272,8 @@
   /* The larger dot, on a filter chip. */
   --dot-size-lg: 8px;
   --bar-height: 6px;
+  /* The capacity bar in the detail page's registration panel. */
+  --bar-height-lg: 12px;
 
   /* The calendar tile at the start of an event card. */
   --date-tile-width: 58px;
@@ -332,6 +334,9 @@
   --layout-gutter: var(--space-6);
   /* The narrowest an event card gets before the grid drops a column. */
   --layout-card-min: 300px;
+  /* The detail page's side column, and the narrowest a person gets in a list. */
+  --layout-aside-width: 340px;
+  --layout-person-min: 220px;
   /* The navigation rail on wide screens, and the bar that replaces it on narrow ones. */
   --rail-width: 80px;
   --shell-bar-height: 56px;

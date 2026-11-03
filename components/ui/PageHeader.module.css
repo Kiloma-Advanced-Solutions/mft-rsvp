@@ -19,6 +19,69 @@
   color: var(--color-link-hover);
 }
 
+/* ---- breadcrumbs -------------------------------------------------------- */
+
+.breadcrumbs {
+  min-width: 0;
+}
+
+/*
+  One line, always. Wrapping would put a long event title on a line of its
+  own before anything truncated; instead every step keeps its width except the
+  one marked flexible, which gives way and truncates -- see `Breadcrumbs`.
+*/
+.trail {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--text-label);
+}
+
+.step {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 100%;
+}
+
+.stepFlexible {
+  flex: 0 1 auto;
+}
+
+/* Truncates like `.current`: in edit mode the event's own title is a linked
+   step, and a long unbroken one must not widen the page. */
+.crumb {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-link);
+  transition: color var(--transition-fast);
+}
+
+.crumb:hover {
+  color: var(--color-link-hover);
+}
+
+.current {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-text);
+}
+
+.separator {
+  flex: none;
+  color: var(--color-text-muted);
+}
+
 .row {
   display: flex;
   align-items: flex-end;
@@ -62,12 +125,83 @@
   overflow-wrap: anywhere;
 }
 
+/*
+  Capped at 62ch and pushed to its own start edge by `margin-inline-end:
+  auto`, which follows the element's own `dir="auto"` direction: an English
+  summary's box sits at the left with its text, instead of a left-aligned line
+  floating in a box parked at the right.
+*/
 .description {
   max-width: 62ch;
+  margin-inline-end: auto;
   font-size: var(--text-body);
   font-weight: var(--weight-light);
   color: var(--color-text-muted);
   overflow-wrap: anywhere;
+}
+
+/*
+  The title and description centred on the whole header, not on the space the
+  actions leave beside them. The row becomes a grid and the title group's box
+  steps aside (`display: contents`), so its parts are placed one by one: the
+  eyebrow at the start of the first line with the actions at its end, level
+  with the top of the header -- and the title, the
+  description and the meta each across both columns below. Nothing the actions
+  are has to be known or measured, and the title can never run under them.
+
+  An item that is not there leaves no row behind: only the first line is
+  placed by hand, and the rest flow into rows of their own in source order.
+
+  Each text keeps its own `dir="auto"` for bidi, so a Latin title still orders
+  its words left to right; centring makes the alignment the same for either
+  language, and wrapped lines stay centred. The description keeps its 62ch
+  measure, with the box itself centred.
+*/
+.centered {
+  display: grid;
+  grid-template-columns: minmax(min-content, 1fr) auto;
+  align-items: start;
+  gap: var(--space-3) var(--space-6);
+}
+
+.centered .titleGroup {
+  display: contents;
+}
+
+.centered .eyebrow {
+  grid-row: 1;
+  grid-column: 1;
+  /* Kept against the title, the group's usual gap away from it, when the
+     actions make the first line taller than the eyebrow. */
+  align-self: end;
+}
+
+.centered .title,
+.centered .description,
+.centered .meta {
+  grid-column: 1 / -1;
+}
+
+.centered .title {
+  text-align: center;
+}
+
+.centered .description {
+  margin-inline: auto;
+  text-align: center;
+}
+
+.centered .actions {
+  grid-row: 1;
+  grid-column: 2;
+  justify-content: flex-end;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .actions {
@@ -80,5 +214,17 @@
 @media (max-width: 760px) {
   .title {
     font-size: var(--text-page-title-compact);
+  }
+
+  /* On a phone the actions take a line of their own after the meta, as the
+     wrapping row puts them, rather than squeezing the eyebrow. */
+  .centered .eyebrow,
+  .centered .actions {
+    grid-row: auto;
+    grid-column: 1 / -1;
+  }
+
+  .centered .actions {
+    justify-content: flex-start;
   }
 }

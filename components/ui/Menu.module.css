@@ -14,6 +14,8 @@
   inset-inline-end: 0;
   z-index: 30;
   min-width: 250px;
+  /* Never wider than a phone's screen, less a gutter on either side. */
+  max-width: calc(100vw - var(--space-8));
   padding: var(--space-2);
   background: var(--color-surface);
   border-radius: var(--radius-card);
@@ -61,6 +63,125 @@
 
 .item[aria-disabled="true"] {
   cursor: progress;
+}
+
+/* ---- action menu -------------------------------------------------------- */
+
+/* The round icon trigger carries its tooltip, so it positions it. */
+.iconTrigger {
+  position: relative;
+}
+
+/*
+  Lifted while its tooltip can show. Under the pointer the icon button rises
+  with a `transform`, which makes it a stacking context: the tooltip's own
+  z-index then only counts inside the button, and a positioned card that
+  follows it -- the registration panel, on a phone-width page -- paints over
+  the tooltip's lower edge. Lifting the trigger itself puts the whole button,
+  tooltip included, above that content. The open menu still sits above it.
+*/
+.iconTrigger:hover,
+.iconTrigger:focus-visible {
+  z-index: 1;
+}
+
+/*
+  The trigger's name, shown on hover and keyboard focus, and hidden while the
+  menu it opens is in the same place. Centred under the button, which is not
+  a direction-sensitive placement, so it uses physical `left`.
+
+  It covers what is under it, so it is hoverable and dismissible (WCAG
+  1.4.13): while the pointer has brought it up it takes the pointer, and it
+  is part of the button, so moving onto it keeps the button hovered;
+  `::before` bridges the gap between the two. A click on it does nothing
+  (`ActionMenu` ignores it), so pointing at the label never opens the menu.
+  Shown by keyboard focus alone, or hidden, it takes no pointer, so a click
+  aimed at what lies beneath reaches it. Escape hides it until the next hover
+  or focus (`.tooltipDismissed`, set by `ActionMenu`).
+*/
+.tooltip {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 50%;
+  z-index: 20;
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--color-rail);
+  color: var(--color-on-rail);
+  font-size: var(--text-caption);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-50%);
+  transition: opacity var(--transition-fast);
+}
+
+.tooltip::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: 100%;
+  height: var(--space-2);
+}
+
+.iconTrigger:hover .tooltip,
+.iconTrigger:focus-visible .tooltip {
+  opacity: 1;
+}
+
+.iconTrigger:hover .tooltip {
+  pointer-events: auto;
+}
+
+.iconTrigger[aria-expanded="true"] .tooltip,
+.iconTrigger .tooltip.tooltipDismissed {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/*
+  A hover affordance, so none on a touch screen: there a tap leaves the
+  trigger "hovered" and the tooltip would linger, and a trigger wrapped to the
+  edge of a phone would clip it. The trigger's `aria-label` still names it.
+*/
+@media (hover: none) {
+  .tooltip {
+    display: none;
+  }
+}
+
+/* An action and, under it, the line that says why it cannot be used. */
+.actionItem {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+
+.actionRow {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.itemNote {
+  max-width: 280px;
+  font-size: var(--text-caption);
+  line-height: var(--leading-normal);
+  color: var(--color-text-muted);
+}
+
+.danger {
+  color: var(--color-danger-text);
+}
+
+/* Still focusable, so its note is announced; it just does not look live. */
+.actionItem.disabled {
+  color: var(--color-text-disabled);
+  cursor: default;
+}
+
+.actionItem.disabled:hover {
+  background: transparent;
 }
 
 .separator {

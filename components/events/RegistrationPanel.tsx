@@ -1,6 +1,10 @@
 import { Card } from "@/components/ui";
 import { isPast } from "@/lib/date";
-import { closedAttendanceLabel, registrationCtaCopy } from "@/lib/labels";
+import {
+  DETAIL_LABELS,
+  closedAttendanceLabel,
+  registrationCtaCopy,
+} from "@/lib/labels";
 import type {
   EventRecord,
   Registration,
@@ -51,12 +55,13 @@ export function RegistrationPanel({
 
   return (
     <Card>
-      <div className={styles.panel}>
-        {viewerRegistration && (
-          <div className={styles.status}>
+      <section className={styles.panel}>
+        <div className={styles.head}>
+          <h2 className={styles.title}>{DETAIL_LABELS.registration}</h2>
+          {viewerRegistration && (
             <RegistrationBadge status={viewerRegistration.status} size="lg" />
-          </div>
-        )}
+          )}
+        </div>
 
         {event.status !== "cancelled" &&
           (isPast(event.startsAt) ? (
@@ -74,7 +79,7 @@ export function RegistrationPanel({
         )}
 
         <p className={styles.note}>{copy.note}</p>
-      </div>
+      </section>
     </Card>
   );
 }

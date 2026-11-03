@@ -244,13 +244,20 @@ function eventCount(n: number): string {
 /** The event detail screen's own words: its sections and its host tools. */
 export const DETAIL_LABELS = {
   back: "חזרה ללוח",
+  /** The title of the card holding the date, time and place. */
+  whenWhere: "מתי ואיפה",
   about: "על האירוע",
   hosts: "מארחים",
   attendees: "מי מגיע",
+  /** The title of the registration panel. */
+  registration: "הרשמה",
   noAttendees: "אף אחד עוד לא נרשם.",
   hostTools: "כלי מארח",
   hostToolsDescription: "רק אתם והמארחים האחרים רואים את זה.",
-  edit: "עריכת האירוע",
+  edit: "עריכה",
+  /** The header's icon buttons: their accessible names and tooltips. */
+  share: "שיתוף",
+  moreActions: "פעולות נוספות",
   publish: "פרסום הטיוטה",
   cancelEvent: "ביטול האירוע",
   delete: "מחיקת האירוע",
@@ -793,8 +800,8 @@ export const SHARE_LABELS = {
   hint: "הקישור פותח את האירוע רק למי שכבר רשאי לראות אותו.",
   copied: "הקישור הועתק",
   copyFailed: "לא הצלחנו להעתיק את הקישור",
-  copyFailedHint: "אפשר להעתיק אותו ידנית מהשדה שמתחת לכפתור.",
-  /** The read-only field shown when the clipboard refuses. */
+  copyFailedHint: "אפשר להעתיק את הקישור ידנית מהחלון שנפתח.",
+  /** The dialog, and its read-only field, shown when the clipboard refuses. */
   linkField: "הקישור לאירוע",
   /** `EVENTS_APP_BASE_URL` is missing or invalid on the server. */
   unavailable: "שיתוף האירוע לא זמין כרגע: כתובת האתר לא הוגדרה בשרת.",
@@ -807,6 +814,8 @@ export const SHARE_LABELS = {
  */
 export const SHARE_EMAIL_LABELS = {
   pickerLabel: "שליחת הקישור במייל",
+  /** The Share menu's item that opens the picker. */
+  menuItem: "שליחת הקישור במייל…",
   hint: "המייל כולל את הקישור לאירוע. הוא לא מזמין, לא רושם ולא נותן גישה.",
   choosePeople: "בחירת נמענים",
   pickerTitle: "בחירת נמענים",
@@ -1375,6 +1384,8 @@ export function nowViewingAsLabel(name: string): string {
  */
 export const UI_LABELS = {
   back: "חזרה",
+  /** The accessible name of a page's breadcrumb trail. */
+  breadcrumbs: "פירורי לחם",
   close: "סגירה",
   confirm: "אישור",
   cancel: "ביטול",

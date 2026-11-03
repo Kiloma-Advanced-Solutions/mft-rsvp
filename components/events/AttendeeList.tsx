@@ -49,41 +49,46 @@ export function AttendeeList({
       : DETAIL_LABELS.noAttendees;
 
   return (
-    <section>
-      <div className={styles.head}>
-        <h2 className={styles.title}>{DETAIL_LABELS.attendees}</h2>
-        {goingCount > 0 && <Badge tone="neutral">{goingCount}</Badge>}
-      </div>
+    <Card>
+      <section>
+        <div className={styles.head}>
+          <h2 className={styles.title}>{DETAIL_LABELS.attendees}</h2>
+          {goingCount > 0 && <Badge tone="neutral">{goingCount}</Badge>}
+        </div>
 
-      {managed === null ? (
-        <People attendees={attendees} empty={empty} />
-      ) : (
-        <ManagedPeople event={event} managed={managed} empty={empty} />
-      )}
-    </section>
+        {managed === null ? (
+          <People attendees={attendees} empty={empty} />
+        ) : (
+          <ManagedPeople event={event} managed={managed} empty={empty} />
+        )}
+      </section>
+    </Card>
   );
 }
 
-/** The list everybody but a host sees, unchanged from before M8. */
+/**
+ * The list everybody but a host sees, unchanged from before M8 apart from its
+ * layout: a grid of people, as the page's hosts are shown.
+ */
 function People({ attendees, empty }: { attendees: User[]; empty: string }) {
   if (attendees.length === 0) {
     return <p className={styles.muted}>{empty}</p>;
   }
 
   return (
-    <div className={styles.people}>
+    <div className={styles.grid}>
       {attendees.map((attendee) => (
-        <Person key={attendee.id} user={attendee} size="sm" />
+        <Person key={attendee.id} user={attendee} />
       ))}
     </div>
   );
 }
 
 /**
- * The host's list. A confirmed attendee gets a remove button only where the
- * rule allows it; where it does not — an open event, somebody who manages the
- * event, an event that is cancelled or over — the chip is exactly what a member
- * sees, and the page's own notices say why the event is closed.
+ * The host's list, as rows. A confirmed attendee gets a remove button only
+ * where the rule allows it; where it does not — an open event, somebody who
+ * manages the event, an event that is cancelled or over — the row is just the
+ * person, and the page's own notices say why the event is closed.
  */
 function ManagedPeople({
   event,
@@ -107,7 +112,7 @@ function ManagedPeople({
             : empty}
         </p>
       ) : (
-        <div className={styles.people}>
+        <div className={styles.rows}>
           {going.map((row) => (
             <GoingRow key={row.registrationId} event={event} row={row} />
           ))}
@@ -137,11 +142,12 @@ function ManagedPeople({
 }
 
 /**
- * One confirmed attendee: the chip a member sees, a remove button wherever the
- * rule allows it, and -- when the person can no longer see the event -- a
- * warning that they still hold a place. An invitation and a registration are
- * separate, so revoking one leaves the other standing; this says so instead of
- * resolving it, and removing them stays the host's own decision.
+ * One confirmed attendee, as a row: the person, a remove button at the end
+ * wherever the rule allows it, and -- when the person can no longer see the
+ * event -- a warning under their name that they still hold a place. An
+ * invitation and a registration are separate, so revoking one leaves the other
+ * standing; this says so instead of resolving it, and removing them stays the
+ * host's own decision.
  *
  * Whether they can see it is `attendeeCanView`, worked out on the server by
  * `canViewEvent()`. It also decides what the remove dialog may promise: "the
@@ -155,37 +161,41 @@ function GoingRow({
   event: Pick<EventRecord, "id" | "access">;
   row: Extract<ManagedAttendee, { status: "going" }>;
 }) {
-  const attendee = (
-    <div className={styles.attendee}>
-      <Person user={row.attendee} size="sm" />
-      {row.removal.state === "open" && (
-        <AttendeeActions
-          eventId={event.id}
-          registrationId={row.registrationId}
-          attendeeName={row.attendee.name}
-          action="remove"
-          inviteOnly={event.access === "invite" && row.attendeeCanView}
-        />
-      )}
-    </div>
-  );
-
-  if (row.attendeeCanView) return attendee;
-
   return (
-    <div className={styles.flagged}>
-      {attendee}
-      <p className={styles.warning}>{ATTENDEE_LABELS.goingCannotView}</p>
+    <div className={styles.row}>
+      <div className={styles.rowText}>
+        <Person user={row.attendee} />
+        {!row.attendeeCanView && (
+          <p className={styles.warning}>{ATTENDEE_LABELS.goingCannotView}</p>
+        )}
+      </div>
+
+      {row.removal.state === "open" && (
+        <div className={styles.rowAction}>
+          <AttendeeActions
+            eventId={event.id}
+            registrationId={row.registrationId}
+            attendeeName={row.attendee.name}
+            action="remove"
+            inviteOnly={event.access === "invite" && row.attendeeCanView}
+          />
+        </div>
+      )}
     </div>
   );
 }
 
 /**
- * One removed attendee. Restore is offered wherever the rule allows it, and
- * shown disabled when the only thing in the way is a full event — a greyed-out
- * button beside "the event is full" reads better than one that silently
- * vanishes, as the queue's approve button does. Any other reason — an open
- * event, or one that is cancelled or over — leaves the note alone.
+ * One removed attendee, as a row. Restore is offered wherever the rule allows
+ * it, and shown disabled when the only thing in the way is a full event — a
+ * greyed-out button beside "the event is full" reads better than one that
+ * silently vanishes, as the queue's approve button does. Any other reason — an
+ * open event, or one that is cancelled or over — leaves the note alone.
+ *
+ * The warning that they can no longer see the event, and the note saying why
+ * restoring is closed, sit under the name and come before the button, so they
+ * are read before Restore is reached: restoring gives back a place, not sight
+ * of the event.
  */
 function RemovedRow({
   eventId,
@@ -200,31 +210,30 @@ function RemovedRow({
     (restore.state === "closed" && restore.reason === "full");
 
   return (
-    <Card subtle elevation="flat" padding="sm">
-      <div className={styles.row}>
-        <div className={styles.attendee}>
-          <Person user={row.attendee} size="sm" />
-          {offered && (
-            <AttendeeActions
-              eventId={eventId}
-              registrationId={row.registrationId}
-              attendeeName={row.attendee.name}
-              action="restore"
-              disabled={restore.state !== "open"}
-            />
-          )}
-        </div>
-
+    <div className={styles.row}>
+      <div className={styles.rowText}>
+        <Person user={row.attendee} />
         {!row.attendeeCanView && (
           <p className={styles.warning}>{ATTENDEE_LABELS.attendeeCannotView}</p>
         )}
-
         {restore.state === "closed" && (
           <p className={styles.note}>
             {attendeeRestoreClosedNote(restore.reason)}
           </p>
         )}
       </div>
-    </Card>
+
+      {offered && (
+        <div className={styles.rowAction}>
+          <AttendeeActions
+            eventId={eventId}
+            registrationId={row.registrationId}
+            attendeeName={row.attendee.name}
+            action="restore"
+            disabled={restore.state !== "open"}
+          />
+        </div>
+      )}
+    </div>
   );
 }

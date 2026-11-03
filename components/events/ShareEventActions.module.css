@@ -1,15 +1,3 @@
-.share {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--space-2);
-}
-
-/* The button sizes to its label; the URL field needs the whole width. */
-.field {
-  align-self: stretch;
-}
-
 .hint {
   font-size: var(--text-sm);
   line-height: var(--leading-snug);
@@ -18,21 +6,24 @@
 
 /* ---- send by email: the same shape as the invitation picker ----------- */
 
-/* The same weight and size as a `Field` label. */
-.pickerLabel {
+/* The last batch's refusals, in the form's own error style, above the search. */
+.failure {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-bottom: var(--space-4);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-md);
+  background: var(--color-danger-soft);
+  color: var(--color-danger-text);
   font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  color: var(--color-text);
+  line-height: var(--leading-normal);
+  overflow-wrap: anywhere;
 }
 
-/* How many are ticked, and the one button that sends them. */
-.pickerFooter {
-  align-self: stretch;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-3);
+.failureTitle {
+  font-weight: var(--weight-medium);
 }
 
 /* Stays put while the list under it scrolls. */
@@ -50,9 +41,29 @@
   gap: var(--space-1);
 }
 
-/* The dialog footer ends with "סיום"; the count takes the other end. */
-.dialogCount {
+/*
+  Send, then "סיום", at the start of the footer; the count takes the end. The
+  modal's footer is a single row, so this fills it and does the wrapping: on a
+  phone the buttons keep their row and the count moves to a line of its own
+  under them, rather than either one being squeezed.
+*/
+.dialogFooter {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  min-width: 0;
+}
+
+.dialogActions {
+  display: flex;
+  flex: none;
+  gap: var(--space-3);
   margin-inline-end: auto;
+}
+
+.dialogCount {
   font-size: var(--text-sm);
   color: var(--color-text-subtle);
 }

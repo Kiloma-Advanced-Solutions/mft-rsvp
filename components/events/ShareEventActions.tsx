@@ -3,9 +3,19 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 
-import { Button, Checkbox, Field, Input, Modal, useToast } from "@/components/ui";
+import {
+  ActionMenu,
+  Button,
+  Checkbox,
+  Field,
+  Input,
+  Modal,
+  useToast,
+} from "@/components/ui";
+import type { ActionMenuItem } from "@/components/ui";
 import { RequestError, fetchJson } from "@/lib/api";
 import {
+  DETAIL_LABELS,
   SHARE_EMAIL_LABELS,
   SHARE_LABELS,
   invitationFailuresLabel,
@@ -18,97 +28,184 @@ import {
 
 import styles from "./ShareEventActions.module.css";
 
+/** Somebody the host may email the link to: no address, which stays on the server. */
+type ShareRecipient = { id: string; name: string; title: string };
+
+/** A batch that did not all go out: its headline and who was refused, and why. */
+type BatchFailure = { title: string; detail: string };
+
 /**
- * The host's way of handing an event to somebody: copy its link.
+ * What the page decided about sharing, on the server: open, with the finished
+ * URL and the people who can already see the event, or closed, with the
+ * sentence that says why -- a draft, a cancelled or started event, or a base
+ * URL this server was never given.
+ */
+export type ShareState =
+  | { state: "open"; url: string; recipients: ShareRecipient[] }
+  | { state: "closed"; note: string };
+
+/**
+ * The header's Share menu: copy the event's link, or email it.
  *
- * Interaction only. Whether sharing is on offer, and the URL itself, are worked
- * out on the server -- the page renders this only for someone
- * `canManageEvent()` allows, only while `getSharingAvailability()` is open, and
- * only with a URL `buildEventShareUrl()` produced. Nothing here builds a URL or
- * reads `window.location`.
+ * Interaction only. Whether sharing is on offer, the URL itself and who may be
+ * emailed are all worked out on the server -- the page renders this only for
+ * someone `canManageEvent()` allows, from `getSharingAvailability()`,
+ * `buildEventShareUrl()` and the loader's `shareRecipients`. Nothing here
+ * builds a URL or reads `window.location`.
  *
  * The link grants nothing, so this is not an authorisation boundary either: a
  * member who copies the address bar has the same URL and the same access.
  *
- * Copying changes no server state, so unlike the other host actions there is no
- * `router.refresh()`. A clipboard refusal -- a denied permission, or an origin
- * that is not a secure context once deployed -- is reported, and the URL is
- * shown in a read-only field so the host can still copy it by hand.
+ * When sharing is closed the menu still opens, on its copy item, disabled,
+ * with the reason under it. With nobody to email, the email item is disabled
+ * the same way.
+ *
+ * Copying changes no server state, so there is no `router.refresh()`. A
+ * clipboard refusal -- a denied permission, or an origin that is not a secure
+ * context once deployed -- is reported, and the URL opens in a dialog, in a
+ * read-only field, selected, so the host can still copy it by hand.
  */
-export function ShareEventActions({ eventUrl }: { eventUrl: string }) {
-  const [showField, setShowField] = useState(false);
+export function ShareMenu({
+  eventId,
+  share,
+}: {
+  eventId: string;
+  share: ShareState;
+}) {
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
   const toast = useToast();
 
-  async function copy() {
+  async function copy(url: string) {
     try {
       // Absent outside a secure context, so it fails here rather than later.
       if (!navigator.clipboard) throw new Error("Clipboard unavailable");
-      await navigator.clipboard.writeText(eventUrl);
+      await navigator.clipboard.writeText(url);
       toast.success(SHARE_LABELS.copied);
     } catch {
       toast.error(SHARE_LABELS.copyFailed, SHARE_LABELS.copyFailedHint);
-      setShowField(true);
+      setLinkOpen(true);
     }
   }
 
-  return (
-    <div className={styles.share}>
-      <Button variant="secondary" size="sm" onClick={copy}>
-        {SHARE_LABELS.copyLink}
-      </Button>
-      <p className={styles.hint}>{SHARE_LABELS.hint}</p>
+  const items: ActionMenuItem[] =
+    share.state === "closed"
+      ? [
+          {
+            id: "copy",
+            label: SHARE_LABELS.copyLink,
+            icon: "link",
+            disabled: true,
+            note: share.note,
+          },
+        ]
+      : [
+          {
+            id: "copy",
+            label: SHARE_LABELS.copyLink,
+            icon: "link",
+            onSelect: () => copy(share.url),
+          },
+          {
+            id: "email",
+            label: SHARE_EMAIL_LABELS.menuItem,
+            icon: "mail",
+            disabled: share.recipients.length === 0,
+            note:
+              share.recipients.length === 0
+                ? SHARE_EMAIL_LABELS.noRecipients
+                : undefined,
+            onSelect: () => setEmailOpen(true),
+          },
+        ];
 
-      {showField && (
-        <Field label={SHARE_LABELS.linkField} className={styles.field}>
-          <Input
-            readOnly
-            value={eventUrl}
-            // A URL is left-to-right; `auto` lets the content say so rather
-            // than overriding the document's direction.
-            dir="auto"
-            // Selected on focus, so one keystroke copies it.
-            onFocus={(event) => event.currentTarget.select()}
+  return (
+    <>
+      <ActionMenu
+        icon="share"
+        label={DETAIL_LABELS.share}
+        items={items}
+        note={share.state === "open" ? SHARE_LABELS.hint : undefined}
+      />
+
+      {share.state === "open" && (
+        <>
+          <Modal
+            open={linkOpen}
+            onClose={() => setLinkOpen(false)}
+            title={SHARE_LABELS.linkField}
+            size="sm"
+          >
+            <Input
+              readOnly
+              value={share.url}
+              aria-label={SHARE_LABELS.linkField}
+              // A URL is left-to-right; `auto` lets the content say so rather
+              // than overriding the document's direction.
+              dir="auto"
+              // Focused on opening and selected on focus, so one keystroke
+              // copies it.
+              data-initial-focus
+              onFocus={(event) => event.currentTarget.select()}
+            />
+          </Modal>
+
+          <ShareEmailDialog
+            open={emailOpen}
+            onClose={() => setEmailOpen(false)}
+            eventId={eventId}
+            recipients={share.recipients}
           />
-        </Field>
+        </>
       )}
-    </div>
+    </>
   );
 }
 
-type Recipient = { id: string; name: string; title: string };
-
 /**
- * Pick people who can already see the event and email each of them its link.
+ * Pick people who can already see the event and email each of them its link,
+ * in one dialog: the ticks, the count and the button that sends them.
  *
- * Mirrors the invitation picker (`InvitePicker`): the people are ticked in a
- * dialog, and the button walks the selection **one request at a time** through
- * the per-person route, so every send is authorised and re-checked on its own
- * and the results line up with the list. Best effort -- one refusal does not
- * stop the others -- and one toast sums the batch up, never calling a partial
- * batch a success. Nothing is retried automatically: a send that timed out may
- * still have been delivered, and a second email is the host's call.
+ * Mirrors the invitation picker (`InvitePicker`): the button walks the
+ * selection **one request at a time** through the per-person route, so every
+ * send is authorised and re-checked on its own and the results line up with
+ * the list. Best effort -- one refusal does not stop the others -- and one
+ * toast sums the batch up, never calling a partial batch a success. Nothing is
+ * retried automatically: a send that timed out may still have been delivered,
+ * and a second email is the host's call.
  *
- * Who is offered was decided on the server (`shareRecipients`): only people
- * who can already see the event, never the host. That list is an affordance;
- * the route asks every question again before it sends.
+ * When every send went, the dialog closes. When any failed, it stays open with
+ * only the failed people still ticked, so sending again reaches them and
+ * nobody who already has the email. It cannot be dismissed while a batch is
+ * going out.
  *
- * Unlike the invitation picker, a successful send changes nothing the page
- * shows, so it does not refresh. A refusal (4xx) means the page was out of date
- * -- the event closed to sharing, or someone lost sight of it -- so the page
- * refreshes then. A failure of the mail service itself (5xx) refreshes
- * nothing: the page was right, the email simply did not go.
+ * Who is offered was decided on the server: only people who can already see
+ * the event, never the host. That list is an affordance; the route asks every
+ * question again before it sends.
+ *
+ * A successful send changes nothing the page shows, so it does not refresh. A
+ * refusal (4xx) means the page was out of date -- the event closed to sharing,
+ * or someone lost sight of it -- so the page refreshes then. A failure of the
+ * mail service itself (5xx) refreshes nothing: the page was right, the email
+ * simply did not go.
  */
-export function ShareEmailPicker({
+function ShareEmailDialog({
+  open,
+  onClose,
   eventId,
   recipients,
 }: {
+  open: boolean;
+  onClose: () => void;
   eventId: string;
-  recipients: Recipient[];
+  recipients: ShareRecipient[];
 }) {
   const [selected, setSelected] = useState<string[]>([]);
-  const [pickerOpen, setPickerOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const [sending, setSending] = useState(false);
+  // The last batch's refusals, shown inside the dialog: the toasts live
+  // outside it, where a native modal leaves them inert and under its backdrop.
+  const [failure, setFailure] = useState<BatchFailure | null>(null);
   const [refreshing, startTransition] = useTransition();
   const recipientArea = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -124,14 +221,14 @@ export function ShareEmailPicker({
     if (!area || !body) return;
 
     area.style.minHeight = "";
-    if (!pickerOpen) return;
+    if (!open) return;
 
     const visible =
       body.clientHeight -
       parseFloat(getComputedStyle(body).paddingBottom) -
       (area.offsetTop - body.offsetTop);
     area.style.minHeight = `${Math.min(area.offsetHeight, visible)}px`;
-  }, [pickerOpen]);
+  }, [open]);
 
   // A tick lasts only as long as the server still offers the person: after a
   // refresh, anybody no longer eligible leaves the selection.
@@ -159,9 +256,16 @@ export function ShareEmailPicker({
     );
   }
 
+  function close() {
+    onClose();
+    setFilter("");
+    setFailure(null);
+  }
+
   async function send() {
     if (chosen.length === 0 || busy) return;
     setSending(true);
+    setFailure(null);
 
     const sent = new Set<string>();
     const failures: { name: string; message: string }[] = [];
@@ -194,18 +298,22 @@ export function ShareEmailPicker({
       if (failures.length === 0) {
         toast.success(shareEmailsSentLabel(sent.size));
       } else {
-        toast.error(
-          sent.size > 0
-            ? shareEmailsPartlySentLabel(sent.size, chosen.length)
-            : shareEmailsFailedLabel(chosen.length),
-          invitationFailuresLabel(failures),
-        );
+        const summary = {
+          title:
+            sent.size > 0
+              ? shareEmailsPartlySentLabel(sent.size, chosen.length)
+              : shareEmailsFailedLabel(chosen.length),
+          detail: invitationFailuresLabel(failures),
+        };
+        toast.error(summary.title, summary.detail);
+        setFailure(summary);
       }
 
       // Whoever was emailed leaves the selection, so a second click cannot
       // email them again; whoever was not stays ticked for the host to retry.
       setSelected((current) => current.filter((id) => !sent.has(id)));
       setSending(false);
+      if (failures.length === 0) close();
       if (stale) startTransition(() => router.refresh());
     }
   }
@@ -220,99 +328,81 @@ export function ShareEmailPicker({
             recipient.title.toLocaleLowerCase().includes(query),
         );
 
-  function closePicker() {
-    setPickerOpen(false);
-    setFilter("");
-  }
-
-  // Nobody but the host can see the event -- a new invite-only one, say. Say
-  // so instead of offering a dialog with nobody in it.
-  if (recipients.length === 0) {
-    return (
-      <div className={styles.share}>
-        <p className={styles.pickerLabel}>{SHARE_EMAIL_LABELS.pickerLabel}</p>
-        <p className={styles.hint}>{SHARE_EMAIL_LABELS.noRecipients}</p>
-      </div>
-    );
-  }
-
   return (
-    <div className={styles.share}>
-      <p className={styles.pickerLabel}>{SHARE_EMAIL_LABELS.pickerLabel}</p>
-      <Button
-        variant="secondary"
-        size="sm"
-        onClick={() => setPickerOpen(true)}
-        disabled={busy}
-        aria-haspopup="dialog"
-      >
-        {SHARE_EMAIL_LABELS.choosePeople}
-      </Button>
-      <p className={styles.hint}>{SHARE_EMAIL_LABELS.hint}</p>
+    <Modal
+      open={open}
+      onClose={close}
+      title={SHARE_EMAIL_LABELS.pickerTitle}
+      description={`${SHARE_EMAIL_LABELS.pickerDescription} ${SHARE_EMAIL_LABELS.hint}`}
+      // A batch that is going out finishes before the dialog can go.
+      dismissible={!sending}
+      footer={
+        <div className={styles.dialogFooter}>
+          <div className={styles.dialogActions}>
+            <Button
+              onClick={send}
+              loading={sending}
+              disabled={chosen.length === 0 || busy}
+            >
+              {chosen.length === 0
+                ? SHARE_EMAIL_LABELS.send
+                : sendShareEmailsLabel(chosen.length)}
+            </Button>
+            <Button variant="secondary" onClick={close} disabled={sending}>
+              {SHARE_EMAIL_LABELS.done}
+            </Button>
+          </div>
+          <p className={styles.dialogCount} aria-live="polite">
+            {selectedCountLabel(chosen.length)}
+          </p>
+        </div>
+      }
+    >
+      {/*
+        The same words as the toast, inside the dialog, where a screen reader
+        can reach them and hears them as they appear. Cleared by the next send
+        and by closing.
+      */}
+      {failure && (
+        <div role="alert" className={styles.failure}>
+          <p className={styles.failureTitle}>{failure.title}</p>
+          <p>{failure.detail}</p>
+        </div>
+      )}
 
-      <div className={styles.pickerFooter}>
-        <p className={styles.hint} aria-live="polite">
-          {selectedCountLabel(chosen.length)}
-        </p>
-        <Button
-          size="sm"
-          onClick={send}
-          loading={sending}
-          disabled={chosen.length === 0 || busy}
-        >
-          {chosen.length === 0
-            ? SHARE_EMAIL_LABELS.send
-            : sendShareEmailsLabel(chosen.length)}
-        </Button>
+      <div className={styles.filter}>
+        <Field label={SHARE_EMAIL_LABELS.filterLabel}>
+          {/* No `dir="auto"`, as in the invitation picker: it is a query. */}
+          <Input
+            value={filter}
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder={SHARE_EMAIL_LABELS.filterPlaceholder}
+          />
+        </Field>
       </div>
 
-      <Modal
-        open={pickerOpen}
-        onClose={closePicker}
-        title={SHARE_EMAIL_LABELS.pickerTitle}
-        description={SHARE_EMAIL_LABELS.pickerDescription}
-        footer={
-          <>
-            <p className={styles.dialogCount} aria-live="polite">
-              {selectedCountLabel(chosen.length)}
-            </p>
-            <Button onClick={closePicker}>{SHARE_EMAIL_LABELS.done}</Button>
-          </>
-        }
-      >
-        <div className={styles.filter}>
-          <Field label={SHARE_EMAIL_LABELS.filterLabel}>
-            {/* No `dir="auto"`, as in the invitation picker: it is a query. */}
-            <Input
-              value={filter}
-              onChange={(event) => setFilter(event.target.value)}
-              placeholder={SHARE_EMAIL_LABELS.filterPlaceholder}
+      <div ref={recipientArea}>
+        <div
+          className={styles.recipientList}
+          role="group"
+          aria-label={SHARE_EMAIL_LABELS.pickerTitle}
+        >
+          {visible.map((recipient) => (
+            <Checkbox
+              key={recipient.id}
+              checked={selected.includes(recipient.id)}
+              onChange={(event) => toggle(recipient.id, event.target.checked)}
+              disabled={sending}
+              label={<span dir="auto">{recipient.name}</span>}
+              hint={<span dir="auto">{recipient.title}</span>}
             />
-          </Field>
+          ))}
         </div>
 
-        <div ref={recipientArea}>
-          <div
-            className={styles.recipientList}
-            role="group"
-            aria-label={SHARE_EMAIL_LABELS.pickerTitle}
-          >
-            {visible.map((recipient) => (
-              <Checkbox
-                key={recipient.id}
-                checked={selected.includes(recipient.id)}
-                onChange={(event) => toggle(recipient.id, event.target.checked)}
-                label={<span dir="auto">{recipient.name}</span>}
-                hint={<span dir="auto">{recipient.title}</span>}
-              />
-            ))}
-          </div>
-
-          {visible.length === 0 && (
-            <p className={styles.hint}>{SHARE_EMAIL_LABELS.noMatches}</p>
-          )}
-        </div>
-      </Modal>
-    </div>
+        {visible.length === 0 && (
+          <p className={styles.hint}>{SHARE_EMAIL_LABELS.noMatches}</p>
+        )}
+      </div>
+    </Modal>
   );
 }

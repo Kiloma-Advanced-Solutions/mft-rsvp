@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { ApprovalQueue } from "@/components/events/ApprovalQueue";
@@ -6,28 +5,21 @@ import { AttendeeList } from "@/components/events/AttendeeList";
 import { EventForm } from "@/components/events/EventForm";
 import {
   AccessBadge,
+  CategoryLabel,
   EventMetaDetails,
   EventStatusBadge,
+  RegistrationBadge,
 } from "@/components/events/EventMeta";
 import { HostEventActions } from "@/components/events/HostEventActions";
 import { InvitationList } from "@/components/events/InvitationList";
 import { RegistrationPanel } from "@/components/events/RegistrationPanel";
-import {
-  ShareEmailPicker,
-  ShareEventActions,
-} from "@/components/events/ShareEventActions";
-import {
-  Card,
-  CardBody,
-  CardHeader,
-  PageHeader,
-  Person,
-  buttonClass,
-} from "@/components/ui";
+import type { ShareState } from "@/components/events/ShareEventActions";
+import { Card, PageHeader, Person } from "@/components/ui";
+import type { Breadcrumb } from "@/components/ui";
 import { getEventDetailForViewer } from "@/lib/events";
 import { toFormValues } from "@/lib/eventInput";
 import {
-  CATEGORY_LABELS,
+  BOARD_LABELS,
   DETAIL_LABELS,
   MANAGE_LABELS,
   SHARE_LABELS,
@@ -104,21 +96,52 @@ export default async function EventDetailPage({
   */
   const editing = viewerCanManage && isEditing(query.edit);
 
+  const eventHref = `/events/${event.id}`;
+  /*
+    The trail replaces the old back link. In edit mode the event is a step of
+    its own, linked without `?edit=1`, so leaving the form for the event --
+    rather than for the board -- stays one click away, as the back link was.
+  */
+  const breadcrumbs: Breadcrumb[] = editing
+    ? [
+        { label: BOARD_LABELS.title, href: "/events" },
+        { label: event.title, href: eventHref },
+        { label: MANAGE_LABELS.editTitle },
+      ]
+    : [
+        { label: BOARD_LABELS.title, href: "/events" },
+        { label: event.title },
+      ];
+
   return (
     <div>
       <PageHeader
-        /*
-          In edit mode the back action leaves edit mode rather than the event,
-          so it cannot be mistaken for a way out of the form and quietly
-          discard unsaved changes. Outside edit mode it is the board, as before.
-        */
-        backHref={editing ? `/events/${event.id}` : "/events"}
-        backLabel={editing ? MANAGE_LABELS.backToEvent : DETAIL_LABELS.back}
-        eyebrow={CATEGORY_LABELS[event.category]}
+        breadcrumbs={breadcrumbs}
+        eyebrow={<CategoryLabel category={event.category} />}
         title={editing ? MANAGE_LABELS.editTitle : event.title}
         description={editing ? MANAGE_LABELS.editDescription : event.summary}
+        /*
+          The host's actions -- Publish, Edit, Share, More -- for whoever
+          `canManageEvent()` allows, and absent from the markup for everyone
+          else: hiding them in CSS would still ship them to a member. Not in
+          edit mode, where the form is the page.
+        */
         actions={
-          <div className={styles.headerBadges}>
+          viewerCanManage && !editing ? (
+            <HostEventActions
+              eventId={event.id}
+              isDraft={event.status === "draft"}
+              canCancel={getCancellationAvailability(event).state === "open"}
+              goingCount={goingCount}
+              pendingCount={pendingCount}
+              // Built only for a manager, so never `null` here.
+              share={shareState(event, shareRecipients ?? [])}
+            />
+          ) : undefined
+        }
+        centerTitle
+        meta={
+          <>
             {/* A cancellation leads, as on the board's card. */}
             {event.status === "cancelled" && (
               <EventStatusBadge event={event} size="lg" />
@@ -127,24 +150,29 @@ export default async function EventDetailPage({
             {event.status !== "cancelled" && (
               <EventStatusBadge event={event} size="lg" />
             )}
-          </div>
+            {viewerRegistration && (
+              <RegistrationBadge status={viewerRegistration.status} size="lg" />
+            )}
+          </>
         }
       />
 
       {/*
         Above both columns, so it is the first thing under the title on every
-        screen width -- the registration panel's note stacks below the whole
-        main column on a narrow one. It stays in edit mode too: editing a
-        cancelled event never restores it.
+        screen width. It stays in edit mode too: editing a cancelled event
+        never restores it.
       */}
       {event.status === "cancelled" && (
         <div className={styles.cancelledNotice}>
-          <p className={styles.cancelledNoticeTitle}>
-            {DETAIL_LABELS.cancelledNoticeTitle}
-          </p>
-          <p className={styles.cancelledNoticeText}>
-            {DETAIL_LABELS.cancelledNoticeText}
-          </p>
+          <span className={styles.cancelledNoticeDot} aria-hidden />
+          <div>
+            <p className={styles.cancelledNoticeTitle}>
+              {DETAIL_LABELS.cancelledNoticeTitle}
+            </p>
+            <p className={styles.cancelledNoticeText}>
+              {DETAIL_LABELS.cancelledNoticeText}
+            </p>
+          </div>
         </div>
       )}
 
@@ -161,24 +189,48 @@ export default async function EventDetailPage({
         </Card>
       ) : (
         <div className={styles.layout}>
+          {/*
+            First in the document, so on a narrow screen -- one column, in
+            source order -- the panel comes straight after the header (and the
+            cancelled notice), and keyboard order matches what is seen. On a
+            wide screen the grid places it in the side column instead.
+          */}
+          <aside className={styles.aside}>
+            <RegistrationPanel
+              event={event}
+              availability={availability}
+              goingCount={goingCount}
+              viewerRegistration={viewerRegistration}
+            />
+          </aside>
+
           <div className={styles.main}>
             <Card>
-              <EventMetaDetails event={event} />
+              <section>
+                <h2 className={styles.sectionTitle}>
+                  {DETAIL_LABELS.whenWhere}
+                </h2>
+                <EventMetaDetails event={event} />
+              </section>
             </Card>
 
-            <section>
-              <h2 className={styles.sectionTitle}>{DETAIL_LABELS.about}</h2>
-              <Description text={event.description} />
-            </section>
+            <Card>
+              <section>
+                <h2 className={styles.sectionTitle}>{DETAIL_LABELS.about}</h2>
+                <Description text={event.description} />
+              </section>
+            </Card>
 
-            <section>
-              <h2 className={styles.sectionTitle}>{DETAIL_LABELS.hosts}</h2>
-              <div className={styles.people}>
-                {hosts.map((host) => (
-                  <Person key={host.id} user={host} />
-                ))}
-              </div>
-            </section>
+            <Card>
+              <section>
+                <h2 className={styles.sectionTitle}>{DETAIL_LABELS.hosts}</h2>
+                <div className={styles.people}>
+                  {hosts.map((host) => (
+                    <Person key={host.id} user={host} />
+                  ))}
+                </div>
+              </section>
+            </Card>
 
             {/*
               The host's queue sits above the attendee list: it is the part of
@@ -216,30 +268,6 @@ export default async function EventDetailPage({
               <InvitationList eventId={event.id} invitations={invitations} />
             )}
           </div>
-
-          <aside className={styles.aside}>
-            <RegistrationPanel
-              event={event}
-              availability={availability}
-              goingCount={goingCount}
-              viewerRegistration={viewerRegistration}
-            />
-
-            {/*
-              Host tools exist only for whoever `canManageEvent()` allows, and are
-              absent from the markup for everyone else — hiding them in CSS would
-              still ship them to a member.
-            */}
-            {viewerCanManage && (
-              <HostTools
-                event={event}
-                pendingCount={pendingCount}
-                goingCount={goingCount}
-                // Built only for a manager, so never `null` here.
-                shareRecipients={shareRecipients ?? []}
-              />
-            )}
-          </aside>
         </div>
       )}
     </div>
@@ -294,107 +322,29 @@ function Description({ text }: { text: string }) {
 }
 
 /**
- * The host's half of the screen — there is no separate edit screen, so this is
- * where management lives.
+ * Sharing, for the header's Share menu, decided here on the server: whether
+ * it is open comes from `getSharingAvailability()`, the URL from
+ * `buildEventShareUrl()`, and the client leaf is handed a finished string or
+ * the sentence saying why not. A base URL that is not configured costs the
+ * host this one menu, not the page, and nothing falls back to the request's
+ * own host.
  *
- * Edit is a `<Link>` because it navigates rather than acts: it turns on the
- * `?edit=1` mode this same page renders. Publish, cancel and delete do act, so
- * they live in a client leaf. Whether cancelling is on offer comes from the
- * same rule the cancel route applies, so the button and the API agree. Sharing
- * sits between Edit and those actions, in `ShareTool` below.
- * Deciding requests is the approval queue's job, and it lives in the main
- * column where there is room for what people wrote; managing who is invited is
- * the invitation list's, in the main column for the same reason, and it carries
- * its own count.
- */
-function HostTools({
-  event,
-  pendingCount,
-  goingCount,
-  shareRecipients,
-}: {
-  event: EventRecord;
-  pendingCount: number;
-  goingCount: number;
-  shareRecipients: User[];
-}) {
-  return (
-    <Card padding="none">
-      <CardHeader
-        title={DETAIL_LABELS.hostTools}
-        description={DETAIL_LABELS.hostToolsDescription}
-      />
-
-      <CardBody>
-        <div className={styles.hostActions}>
-          <Link
-            href={`/events/${event.id}?edit=1`}
-            className={buttonClass({ variant: "secondary", size: "sm" })}
-          >
-            {DETAIL_LABELS.edit}
-          </Link>
-        </div>
-
-        <ShareTool event={event} recipients={shareRecipients} />
-
-        <HostEventActions
-          eventId={event.id}
-          isDraft={event.status === "draft"}
-          canCancel={getCancellationAvailability(event).state === "open"}
-          goingCount={goingCount}
-          pendingCount={pendingCount}
-        />
-      </CardBody>
-    </Card>
-  );
-}
-
-/**
- * Sharing, inside the host tools: the copy action while there is something
- * worth sharing, and otherwise a sentence saying why not -- the way the
- * invitation list explains a closed picker rather than leaving a gap.
- *
- * Every decision is made here, on the server: whether sharing is open comes
- * from `getSharingAvailability()`, the URL from `buildEventShareUrl()`, and the
- * client leaf is handed a finished string. A base URL that is not configured
- * costs the host this one tool, not the page, and nothing falls back to the
- * request's own host.
- *
- * Emailing the link sits under copying it, in the same open state: both need
- * the same link. The picker gets ids, names and job titles only -- never an
- * email address, which the route reads on the server. It is shown whether or
+ * The recipients are ids, names and job titles only -- never an email
+ * address, which the route reads on the server. They are offered whether or
  * not this server can send mail; a send that cannot go says so when tried.
  */
-function ShareTool({
-  event,
-  recipients,
-}: {
-  event: EventRecord;
-  recipients: User[];
-}) {
+function shareState(event: EventRecord, recipients: User[]): ShareState {
   const sharing = getSharingAvailability(event);
-  const eventUrl =
-    sharing.state === "open" ? buildEventShareUrl(event.id) : null;
+  if (sharing.state === "closed") {
+    return { state: "closed", note: sharingClosedNote(sharing.reason) };
+  }
 
-  return (
-    <div className={styles.shareTool}>
-      {sharing.state === "closed" ? (
-        <p className={styles.hostNote}>{sharingClosedNote(sharing.reason)}</p>
-      ) : eventUrl === null ? (
-        <p className={styles.hostNote}>{SHARE_LABELS.unavailable}</p>
-      ) : (
-        <>
-          <ShareEventActions eventUrl={eventUrl} />
-          <ShareEmailPicker
-            eventId={event.id}
-            recipients={recipients.map(({ id, name, title }) => ({
-              id,
-              name,
-              title,
-            }))}
-          />
-        </>
-      )}
-    </div>
-  );
+  const url = buildEventShareUrl(event.id);
+  if (url === null) return { state: "closed", note: SHARE_LABELS.unavailable };
+
+  return {
+    state: "open",
+    url,
+    recipients: recipients.map(({ id, name, title }) => ({ id, name, title })),
+  };
 }

@@ -52,12 +52,19 @@ import styles from "./InvitationList.module.css";
 
 type Candidate = { id: string; name: string; title: string };
 
+/** A batch that did not all go out: its headline and who was refused, and why. */
+type BatchFailure = { title: string; detail: string };
+
 /**
  * Tick several people and invite them with one click.
  *
- * The people are picked in a dialog, so the page holds one button, a count and
- * the send button however many candidates there are. Ticking applies at once;
- * closing the dialog keeps the ticks, and inviting happens from the page.
+ * The people are picked, counted and invited in one dialog, so the page holds a
+ * single button however many candidates there are -- the same shape as the
+ * share-email dialog. Ticking applies at once, and closing the dialog without
+ * inviting keeps the ticks for the next opening. When every invitation went
+ * through, the dialog closes; when any was refused, it stays open with only
+ * the refused people still ticked. It cannot be dismissed while a batch is
+ * going out.
  *
  * Each person is still one invitation: the button walks the selection **one
  * request at a time** through the same per-person route a single invitation
@@ -84,6 +91,9 @@ export function InvitePicker({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [filter, setFilter] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // The last batch's refusals, shown inside the dialog: the toasts live
+  // outside it, where a native modal leaves them inert and under its backdrop.
+  const [failure, setFailure] = useState<BatchFailure | null>(null);
   const [refreshing, startTransition] = useTransition();
   const candidateArea = useRef<HTMLDivElement>(null);
   const router = useRouter();
@@ -159,8 +169,9 @@ export function InvitePicker({
   }
 
   async function invite() {
-    if (chosen.length === 0) return;
+    if (chosen.length === 0 || busy) return;
     setSubmitting(true);
+    setFailure(null);
 
     const invited = new Set<string>();
     const failures: { name: string; message: string }[] = [];
@@ -184,12 +195,15 @@ export function InvitePicker({
       if (failures.length === 0) {
         toast.success(invitationsAddedLabel(invited.size));
       } else {
-        toast.error(
-          invited.size > 0
-            ? invitationsPartlyAddedLabel(invited.size, chosen.length)
-            : invitationsFailedLabel(chosen.length),
-          invitationFailuresLabel(failures),
-        );
+        const summary = {
+          title:
+            invited.size > 0
+              ? invitationsPartlyAddedLabel(invited.size, chosen.length)
+              : invitationsFailedLabel(chosen.length),
+          detail: invitationFailuresLabel(failures),
+        };
+        toast.error(summary.title, summary.detail);
+        setFailure(summary);
       }
 
       // Whoever was invited leaves the selection now, so a second click cannot
@@ -197,6 +211,7 @@ export function InvitePicker({
       // the refresh shows they can no longer be invited, `chosen` drops them.
       setSelected((current) => current.filter((id) => !invited.has(id)));
       setSubmitting(false);
+      if (failures.length === 0) closePicker();
       startTransition(() => router.refresh());
     }
   }
@@ -218,6 +233,7 @@ export function InvitePicker({
   function closePicker() {
     setPickerOpen(false);
     setFilter("");
+    setFailure(null);
   }
 
   return (
@@ -226,46 +242,65 @@ export function InvitePicker({
       <Button
         variant="secondary"
         onClick={() => setPickerOpen(true)}
-        disabled={busy}
+        // Not while the list refreshes after a batch: the dialog closes as
+        // that refresh starts and hands focus back to this button, which a
+        // disabled button cannot take. Inviting stays disabled until it lands.
+        disabled={submitting}
         aria-haspopup="dialog"
       >
         {INVITATION_LABELS.choosePeople}
       </Button>
 
-      <div className={styles.pickerFooter}>
-        <p className={styles.note} aria-live="polite">
-          {selectedCountLabel(chosen.length)}
-        </p>
-        <Button
-          onClick={invite}
-          loading={submitting}
-          disabled={chosen.length === 0 || busy}
-        >
-          {chosen.length === 0
-            ? INVITATION_LABELS.invite
-            : inviteSelectedLabel(chosen.length)}
-        </Button>
-      </div>
-
       {/*
         The shared `Modal`: the native dialog gives focus trapping, Escape, the
         backdrop and focus returning to the button above. Its body scrolls, so
-        a long list stays inside it rather than lengthening the page.
+        a long list stays inside it rather than lengthening the page. Inviting
+        happens from its footer, and nothing dismisses it mid-batch.
       */}
       <Modal
         open={pickerOpen}
         onClose={closePicker}
         title={INVITATION_LABELS.pickerTitle}
         description={INVITATION_LABELS.pickerDescription}
+        dismissible={!submitting}
         footer={
-          <>
+          <div className={styles.dialogFooter}>
+            <div className={styles.dialogActions}>
+              <Button
+                onClick={invite}
+                loading={submitting}
+                disabled={chosen.length === 0 || busy}
+              >
+                {chosen.length === 0
+                  ? INVITATION_LABELS.invite
+                  : inviteSelectedLabel(chosen.length)}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={closePicker}
+                disabled={submitting}
+              >
+                {INVITATION_LABELS.done}
+              </Button>
+            </div>
             <p className={styles.dialogCount} aria-live="polite">
               {selectedCountLabel(chosen.length)}
             </p>
-            <Button onClick={closePicker}>{INVITATION_LABELS.done}</Button>
-          </>
+          </div>
         }
       >
+        {/*
+          The same words as the toast, inside the dialog, where a screen
+          reader can reach them and hears them as they appear. Cleared by the
+          next batch and by closing.
+        */}
+        {failure && (
+          <div role="alert" className={styles.failure}>
+            <p className={styles.failureTitle}>{failure.title}</p>
+            <p>{failure.detail}</p>
+          </div>
+        )}
+
         <div className={styles.filter}>
           <Field label={INVITATION_LABELS.filterLabel}>
             {/*
@@ -298,6 +333,7 @@ export function InvitePicker({
                 key={candidate.id}
                 checked={selected.includes(candidate.id)}
                 onChange={(event) => toggle(candidate.id, event.target.checked)}
+                disabled={submitting}
                 label={<span dir="auto">{candidate.name}</span>}
                 hint={<span dir="auto">{candidate.title}</span>}
               />
