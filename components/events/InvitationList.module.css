@@ -12,12 +12,18 @@
   line-height: var(--leading-tight);
 }
 
+/* Only a dormant list has one. */
 .description {
   margin-top: var(--space-2);
   margin-bottom: var(--space-4);
   font-size: var(--text-sm);
   line-height: var(--leading-snug);
   color: var(--color-text-muted);
+}
+
+/* An active list goes straight from its title to the people. */
+.head + :not(.description) {
+  margin-top: var(--space-4);
 }
 
 .rows {

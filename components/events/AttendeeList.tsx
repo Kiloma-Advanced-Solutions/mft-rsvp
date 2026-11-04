@@ -127,9 +127,6 @@ function ManagedPeople({
       {removed.length > 0 && (
         <>
           <h3 className={styles.groupTitle}>{ATTENDEE_LABELS.removedTitle}</h3>
-          <p className={styles.description}>
-            {ATTENDEE_LABELS.removedDescription}
-          </p>
           <div className={styles.rows}>
             {removed.map((row) => (
               <RemovedRow key={row.registrationId} eventId={event.id} row={row} />

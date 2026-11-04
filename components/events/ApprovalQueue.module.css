@@ -1,5 +1,5 @@
-/* One of the detail page's section cards: its title and count, and who else
-   sees it, then the requests. */
+/* One of the detail page's section cards: its title and count, then the
+   requests. */
 .section {
   display: flex;
   flex-direction: column;
@@ -21,15 +21,6 @@
   font-size: var(--text-section-title);
   font-weight: var(--weight-bold);
   line-height: var(--leading-tight);
-}
-
-/* "Only you and the other hosts see this", with the eye beside it. */
-.private {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: var(--text-caption);
-  color: var(--color-text-muted);
 }
 
 .rows {

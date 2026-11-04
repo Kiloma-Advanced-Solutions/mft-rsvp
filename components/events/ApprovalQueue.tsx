@@ -1,4 +1,4 @@
-import { Badge, Card, EmptyState, Icon, Person } from "@/components/ui";
+import { Badge, Card, EmptyState, Person } from "@/components/ui";
 import { formatRelativeDay } from "@/lib/date";
 import {
   QUEUE_LABELS,
@@ -57,11 +57,6 @@ export function ApprovalQueue({
               <Badge tone="warning">{pending.length}</Badge>
             )}
           </h2>
-          {/* Who else can see this section: the host's own reassurance. */}
-          <p className={styles.private}>
-            <Icon name="eye" size="sm" />
-            {QUEUE_LABELS.description}
-          </p>
         </div>
 
         {pending.length === 0 ? (

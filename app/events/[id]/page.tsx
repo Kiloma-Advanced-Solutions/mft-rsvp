@@ -119,7 +119,7 @@ export default async function EventDetailPage({
         breadcrumbs={breadcrumbs}
         eyebrow={<CategoryLabel category={event.category} />}
         title={editing ? MANAGE_LABELS.editTitle : event.title}
-        description={editing ? MANAGE_LABELS.editDescription : event.summary}
+        description={editing ? undefined : event.summary}
         /*
           The host's actions -- Publish, Edit, Share, More -- for whoever
           `canManageEvent()` allows, and absent from the markup for everyone
@@ -183,7 +183,6 @@ export default async function EventDetailPage({
             // Converted on the server, so the client never recomputes a
             // `datetime-local` value and cannot disagree about the timezone.
             initialValues={toFormValues(event)}
-            goingCount={goingCount}
             scheduleLock={scheduleLock(event)}
           />
         </Card>

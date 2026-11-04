@@ -77,16 +77,10 @@
 
 .groupTitle {
   margin-top: var(--space-6);
+  margin-bottom: var(--space-2);
   font-size: var(--text-label);
   font-weight: var(--weight-medium);
   color: var(--color-text-muted);
-}
-
-.description {
-  margin-top: var(--space-1);
-  margin-bottom: var(--space-2);
-  font-size: var(--text-sm);
-  color: var(--color-text-subtle);
 }
 
 .warning {

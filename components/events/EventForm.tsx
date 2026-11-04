@@ -61,7 +61,6 @@ import styles from "./EventForm.module.css";
 export function EventForm({
   mode,
   initialValues,
-  goingCount,
   scheduleLock,
 }: {
   mode: { kind: "create" } | { kind: "edit"; eventId: string };
@@ -70,8 +69,6 @@ export function EventForm({
    * are never recomputed during a client render.
    */
   initialValues: EventFormValues;
-  /** Only for the capacity hint when editing. */
-  goingCount?: number;
   /**
    * Set when editing an event whose dates may no longer change, decided on the
    * server by `getScheduleAvailability()`. The two date inputs are disabled,
@@ -314,11 +311,7 @@ export function EventForm({
                 dir="auto"
               />
             </Field>
-            <Field
-              label={EVENT_FORM_LABELS.address}
-              optional
-              hint={EVENT_FORM_LABELS.addressHint}
-            >
+            <Field label={EVENT_FORM_LABELS.address} optional>
               <Input
                 name="locationAddress"
                 defaultValue={initialValues.locationAddress}
@@ -406,11 +399,7 @@ export function EventForm({
             onChange={(changed) => setUnlimited(changed.target.checked)}
           />
           {!unlimited && (
-            <Field
-              label={EVENT_FORM_LABELS.capacity}
-              hint={capacityHint(goingCount)}
-              error={errors.capacity}
-            >
+            <Field label={EVENT_FORM_LABELS.capacity} error={errors.capacity}>
               <Input
                 type="number"
                 min={1}
@@ -470,18 +459,6 @@ function accessHint(access: string): string | undefined {
   return known === "invite"
     ? `${ACCESS_DESCRIPTIONS[known]} ${EVENT_FORM_LABELS.accessInviteWarning}`
     : ACCESS_DESCRIPTIONS[known];
-}
-
-/**
- * Lowering capacity below the people already confirmed is allowed -- it does
- * not remove anybody -- so this says what is already true rather than refusing.
- */
-function capacityHint(goingCount?: number): string {
-  if (goingCount === undefined || goingCount === 0) {
-    return EVENT_FORM_LABELS.capacityHint;
-  }
-  const people = goingCount === 1 ? "person has" : "people have";
-  return `${goingCount} ${people} a confirmed place already.`;
 }
 
 /** One titled group of fields, so a long form still reads as sections. */

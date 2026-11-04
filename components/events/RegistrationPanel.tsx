@@ -78,7 +78,7 @@ export function RegistrationPanel({
           />
         )}
 
-        <p className={styles.note}>{copy.note}</p>
+        {copy.note && <p className={styles.note}>{copy.note}</p>}
       </section>
     </Card>
   );
