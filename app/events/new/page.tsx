@@ -1,10 +1,10 @@
 import { notFound } from "next/navigation";
 
 import { EventForm } from "@/components/events/EventForm";
-import { Card, PageHeader } from "@/components/ui";
+import { PageHeader } from "@/components/ui";
 import { UNLIMITED } from "@/lib/eventInput";
 import type { EventFormValues } from "@/lib/eventInput";
-import { MANAGE_LABELS } from "@/lib/labels";
+import { BOARD_LABELS, MANAGE_LABELS } from "@/lib/labels";
 import { canCreateEvent } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
 
@@ -36,16 +36,19 @@ export default async function NewEventPage() {
 
   return (
     <div>
+      {/* The same trail the detail page uses, in place of a back link. */}
       <PageHeader
-        backHref="/events"
-        backLabel={MANAGE_LABELS.cancel}
+        breadcrumbs={[
+          { label: BOARD_LABELS.title, href: "/events" },
+          { label: MANAGE_LABELS.createTitle },
+        ]}
         title={MANAGE_LABELS.createTitle}
         description={MANAGE_LABELS.createDescription}
+        centerTitle
       />
 
-      <Card>
-        <EventForm mode={{ kind: "create" }} initialValues={BLANK_EVENT} />
-      </Card>
+      {/* The form sets out its own section cards. */}
+      <EventForm mode={{ kind: "create" }} initialValues={BLANK_EVENT} />
     </div>
   );
 }

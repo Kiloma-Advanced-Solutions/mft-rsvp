@@ -150,7 +150,8 @@ export default async function EventDetailPage({
             {event.status !== "cancelled" && (
               <EventStatusBadge event={event} size="lg" />
             )}
-            {viewerRegistration && (
+            {/* Where the viewer stands, not part of editing the event. */}
+            {viewerRegistration && !editing && (
               <ViewerRegistrationBadge
                 status={viewerRegistration.status}
                 size="lg"
@@ -180,15 +181,14 @@ export default async function EventDetailPage({
       )}
 
       {editing ? (
-        <Card>
-          <EventForm
-            mode={{ kind: "edit", eventId: event.id }}
-            // Converted on the server, so the client never recomputes a
-            // `datetime-local` value and cannot disagree about the timezone.
-            initialValues={toFormValues(event)}
-            scheduleLock={scheduleLock(event)}
-          />
-        </Card>
+        // The form sets out its own section cards.
+        <EventForm
+          mode={{ kind: "edit", eventId: event.id }}
+          // Converted on the server, so the client never recomputes a
+          // `datetime-local` value and cannot disagree about the timezone.
+          initialValues={toFormValues(event)}
+          scheduleLock={scheduleLock(event)}
+        />
       ) : (
         <div className={styles.layout}>
           {/*

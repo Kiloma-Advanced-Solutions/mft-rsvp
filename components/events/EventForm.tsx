@@ -7,9 +7,11 @@ import type { FormEvent, ReactNode } from "react";
 
 import {
   Button,
+  Card,
   Checkbox,
   Field,
   FieldRow,
+  Icon,
   Input,
   Select,
   Textarea,
@@ -109,9 +111,12 @@ export function EventForm({
   const showsLink = locationKind === "online" || locationKind === "hybrid";
 
   const datesLocked = scheduleLock !== undefined;
-  const dateHint = scheduleLock
-    ? scheduleRefusalNote(scheduleLock.reason)
-    : undefined;
+  const dateHint = scheduleLock ? (
+    <span className={styles.lockNote}>
+      <Icon name="lock" size="sm" />
+      {scheduleRefusalNote(scheduleLock.reason)}
+    </span>
+  ) : undefined;
 
   async function submit(formEvent: FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
@@ -198,41 +203,58 @@ export function EventForm({
 
   return (
     <form className={styles.form} onSubmit={submit} noValidate>
-      <div className={styles.fields}>
-        {/*
-          The free-text controls take their direction from what is typed into
-          them rather than from the document. The interface is Hebrew, but an
-          event's title or venue may not be, and an RTL text box puts an English
-          sentence's full stop at the wrong end. The structured controls -- the
-          dates, the capacity, the pickers -- are left alone.
-        */}
-        <Field label={EVENT_FORM_LABELS.title} required error={errors.title}>
-          <Input name="title" defaultValue={initialValues.title} dir="auto" />
-        </Field>
+      {/*
+        The details have no section title of their own: they are what the
+        page is about, and the form never named them.
+      */}
+      <Card>
+        <div className={styles.fields}>
+          {/*
+            The free-text controls take their direction from what is typed into
+            them rather than from the document. The interface is Hebrew, but an
+            event's title or venue may not be, and an RTL text box puts an
+            English sentence's full stop at the wrong end. The structured
+            controls -- the dates, the capacity, the pickers -- are left alone.
+          */}
+          <Field label={EVENT_FORM_LABELS.title} required error={errors.title}>
+            <Input
+              name="title"
+              defaultValue={initialValues.title}
+              dir="auto"
+              aria-invalid={invalid(errors.title)}
+            />
+          </Field>
 
-        <Field
-          label={EVENT_FORM_LABELS.summary}
-          required
-          hint={EVENT_FORM_LABELS.summaryHint}
-          error={errors.summary}
-        >
-          <Input name="summary" defaultValue={initialValues.summary} dir="auto" />
-        </Field>
+          <Field
+            label={EVENT_FORM_LABELS.summary}
+            required
+            hint={EVENT_FORM_LABELS.summaryHint}
+            error={errors.summary}
+          >
+            <Input
+              name="summary"
+              defaultValue={initialValues.summary}
+              dir="auto"
+              aria-invalid={invalid(errors.summary)}
+            />
+          </Field>
 
-        <Field
-          label={EVENT_FORM_LABELS.description}
-          required
-          hint={EVENT_FORM_LABELS.descriptionHint}
-          error={errors.description}
-        >
-          <Textarea
-            name="description"
-            rows={6}
-            defaultValue={initialValues.description}
-            dir="auto"
-          />
-        </Field>
-      </div>
+          <Field
+            label={EVENT_FORM_LABELS.description}
+            required
+            hint={EVENT_FORM_LABELS.descriptionHint}
+            error={errors.description}
+          >
+            <Textarea
+              name="description"
+              rows={6}
+              defaultValue={initialValues.description}
+              dir="auto"
+              aria-invalid={invalid(errors.description)}
+            />
+          </Field>
+        </div>
+      </Card>
 
       <Section title={EVENT_FORM_LABELS.sectionWhen}>
         <FieldRow>
@@ -247,6 +269,7 @@ export function EventForm({
               name="startsAt"
               defaultValue={initialValues.startsAt}
               disabled={datesLocked}
+              aria-invalid={invalid(errors.startsAt)}
               // The earliest start the picker offers, from the browser's clock
               // at the moment it is used. Set on focus rather than rendered, so
               // the server's markup never carries a time the client disagrees
@@ -269,6 +292,7 @@ export function EventForm({
               name="endsAt"
               defaultValue={initialValues.endsAt}
               disabled={datesLocked}
+              aria-invalid={invalid(errors.endsAt)}
             />
           </Field>
         </FieldRow>
@@ -284,6 +308,7 @@ export function EventForm({
             name="locationKind"
             value={locationKind}
             onChange={(changed) => setLocationKind(changed.target.value)}
+            aria-invalid={invalid(errors.location)}
           >
             {LOCATION_KINDS.map((kind) => (
               <option key={kind} value={kind}>
@@ -309,6 +334,7 @@ export function EventForm({
                 name="locationVenue"
                 defaultValue={initialValues.locationVenue}
                 dir="auto"
+                aria-invalid={invalid(errors.locationVenue)}
               />
             </Field>
             <Field label={EVENT_FORM_LABELS.address} optional>
@@ -332,6 +358,7 @@ export function EventForm({
                 name="locationUrl"
                 defaultValue={initialValues.locationUrl}
                 dir="auto"
+                aria-invalid={invalid(errors.locationUrl)}
               />
             </Field>
             <Field
@@ -356,7 +383,11 @@ export function EventForm({
             required
             error={errors.category}
           >
-            <Select name="category" defaultValue={initialValues.category}>
+            <Select
+              name="category"
+              defaultValue={initialValues.category}
+              aria-invalid={invalid(errors.category)}
+            >
               <option value="">—</option>
               {CATEGORY_ORDER.map((category) => (
                 <option key={category} value={category}>
@@ -376,6 +407,7 @@ export function EventForm({
               name="access"
               value={access}
               onChange={(changed) => setAccess(changed.target.value)}
+              aria-invalid={invalid(errors.access)}
             >
               <option value="">—</option>
               {ACCESS_ORDER.map((option) => (
@@ -399,22 +431,26 @@ export function EventForm({
             onChange={(changed) => setUnlimited(changed.target.checked)}
           />
           {!unlimited && (
-            <Field label={EVENT_FORM_LABELS.capacity} error={errors.capacity}>
-              <Input
-                type="number"
-                min={1}
-                step={1}
-                name="capacity"
-                placeholder={EVENT_FORM_LABELS.capacityPlaceholder}
-                defaultValue={initialValues.capacity}
-              />
-            </Field>
+            <div className={styles.capacityField}>
+              <Field label={EVENT_FORM_LABELS.capacity} error={errors.capacity}>
+                <Input
+                  type="number"
+                  min={1}
+                  step={1}
+                  name="capacity"
+                  placeholder={EVENT_FORM_LABELS.capacityPlaceholder}
+                  defaultValue={initialValues.capacity}
+                  aria-invalid={invalid(errors.capacity)}
+                />
+              </Field>
+            </div>
           )}
         </div>
       </Section>
 
       {formError && (
         <p className={styles.formError} role="alert">
+          <span className={styles.formErrorDot} aria-hidden />
           {formError}
         </p>
       )}
@@ -430,6 +466,7 @@ export function EventForm({
           href={cancelHref}
           className={buttonClass({
             variant: "ghost",
+            size: "lg",
             className: busy ? styles.linkBusy : undefined,
           })}
           aria-disabled={busy}
@@ -437,7 +474,7 @@ export function EventForm({
         >
           {MANAGE_LABELS.cancel}
         </Link>
-        <Button type="submit" loading={busy}>
+        <Button type="submit" size="lg" loading={busy}>
           {creating ? MANAGE_LABELS.createSubmit : MANAGE_LABELS.editSubmit}
         </Button>
       </div>
@@ -461,7 +498,18 @@ function accessHint(access: string): string | undefined {
     : ACCESS_DESCRIPTIONS[known];
 }
 
-/** One titled group of fields, so a long form still reads as sections. */
+/**
+ * `aria-invalid` for a control whose field has an error, and nothing
+ * otherwise. The message itself is announced by `Field`, inside the label.
+ */
+function invalid(error: string | undefined): true | undefined {
+  return error ? true : undefined;
+}
+
+/**
+ * One titled group of fields on a section card of its own, as the detail page
+ * sets out its sections, so a long form still reads as parts.
+ */
 function Section({
   title,
   children,
@@ -470,10 +518,12 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section className={styles.section}>
-      <h2 className={styles.sectionTitle}>{title}</h2>
-      <div className={styles.fields}>{children}</div>
-    </section>
+    <Card>
+      <section>
+        <h2 className={styles.sectionTitle}>{title}</h2>
+        <div className={styles.fields}>{children}</div>
+      </section>
+    </Card>
   );
 }
 
