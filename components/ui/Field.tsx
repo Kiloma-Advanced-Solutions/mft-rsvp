@@ -1,7 +1,6 @@
 import type {
   InputHTMLAttributes,
   ReactNode,
-  SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
 
@@ -104,18 +103,6 @@ export function Textarea({
   );
 }
 
-export function Select({
-  className,
-  children,
-  ...rest
-}: SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <select {...rest} className={cx(styles.control, styles.select, className)}>
-      {children}
-    </select>
-  );
-}
-
 /** Checkbox carrying its own label. Does not go inside a `Field`. */
 export function Checkbox({
   label,
@@ -129,27 +116,6 @@ export function Checkbox({
   return (
     <label className={cx(styles.check, className)}>
       <input type="checkbox" {...rest} />
-      <span className={styles.checkText}>
-        <span className={styles.checkLabel}>{label}</span>
-        {hint && <span className={styles.checkHint}>{hint}</span>}
-      </span>
-    </label>
-  );
-}
-
-/** Radio carrying its own label. Give every option in a group the same `name`. */
-export function Radio({
-  label,
-  hint,
-  className,
-  ...rest
-}: InputHTMLAttributes<HTMLInputElement> & {
-  label: ReactNode;
-  hint?: ReactNode;
-}) {
-  return (
-    <label className={cx(styles.check, className)}>
-      <input type="radio" {...rest} />
       <span className={styles.checkText}>
         <span className={styles.checkLabel}>{label}</span>
         {hint && <span className={styles.checkHint}>{hint}</span>}

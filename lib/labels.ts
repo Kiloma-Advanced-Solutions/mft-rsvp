@@ -243,7 +243,6 @@ function eventCount(n: number): string {
 
 /** The event detail screen's own words: its sections and its host tools. */
 export const DETAIL_LABELS = {
-  back: "חזרה ללוח",
   /** The title of the card holding the date, time and place. */
   whenWhere: "מתי ואיפה",
   about: "על האירוע",
@@ -252,7 +251,6 @@ export const DETAIL_LABELS = {
   /** The title of the registration panel. */
   registration: "הרשמה",
   noAttendees: "אף אחד עוד לא נרשם.",
-  hostTools: "כלי מארח",
   edit: "עריכה",
   /** The header's icon buttons: their accessible names and tooltips. */
   share: "שיתוף",
@@ -506,8 +504,6 @@ export const MANAGE_LABELS = {
   createDescription:
     "האירוע מתחיל כטיוטה, כך שאף אחד אחר לא יראה אותו עד שתפרסמו.",
   createSubmit: "יצירת טיוטה",
-  /** Leaves edit mode without leaving the event. */
-  backToEvent: "חזרה לאירוע",
   editTitle: "עריכת האירוע",
   editSubmit: "שמירת השינויים",
   cancel: "ביטול",
@@ -774,11 +770,9 @@ export const SHARE_LABELS = {
  * purpose -- this adds nobody to anything, and the hint says so.
  */
 export const SHARE_EMAIL_LABELS = {
-  pickerLabel: "שליחת הקישור במייל",
   /** The Share menu's item that opens the picker. */
   menuItem: "שליחת הקישור במייל…",
   hint: "המייל כולל את הקישור לאירוע. הוא לא מזמין, לא רושם ולא נותן גישה.",
-  choosePeople: "בחירת נמענים",
   pickerTitle: "בחירת נמענים",
   pickerDescription: "מופיעים כאן רק מי שכבר יכולים לראות את האירוע.",
   filterLabel: "חיפוש",
@@ -1332,21 +1326,16 @@ export function nowViewingAsLabel(name: string): string {
  * The words the UI kit says on its own behalf.
  *
  * A primitive in `components/ui/` knows nothing about events, but it still has
- * to say "close" and "loading" somewhere. These are its defaults; anything
+ * to say "close" and "optional" somewhere. These are its defaults; anything
  * event-specific is still passed in by the caller.
  */
 export const UI_LABELS = {
-  back: "חזרה",
   /** The accessible name of a page's breadcrumb trail. */
   breadcrumbs: "פירורי לחם",
   close: "סגירה",
   confirm: "אישור",
   cancel: "ביטול",
   optional: "אופציונלי",
-  /** The spinner's accessible name. */
-  loading: "טוען",
-  /** `LoadingBlock`'s visible text, which is the same word plus its ellipsis. */
-  loadingEllipsis: "טוען…",
   notifications: "התראות",
   dismissNotification: "סגירת ההתראה",
   /** The avatar stack's accessible name when there is nobody in it. */

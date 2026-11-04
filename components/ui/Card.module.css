@@ -62,57 +62,13 @@
   padding: var(--space-card-padding-lg);
 }
 
-/* ---- sections ----------------------------------------------------------- */
-
-.header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--space-4);
-  padding: var(--space-card-padding) var(--space-6);
-  border-bottom: 1px solid var(--color-border);
-}
-
-.headerTitle {
-  font-size: var(--text-section-title);
-  font-weight: var(--weight-bold);
-}
-
-.headerDescription {
-  margin-top: var(--space-1);
-  font-size: var(--text-sm);
-  font-weight: var(--weight-light);
-  color: var(--color-text-muted);
-}
-
-.body {
-  padding: var(--space-card-padding) var(--space-6);
-}
-
-.footer {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--space-2);
-  padding: var(--space-4) var(--space-6);
-  border-top: 1px solid var(--color-border);
-  background: var(--color-surface-subtle);
-  border-radius: 0 0 var(--radius-section) var(--radius-section);
-}
-
 /* The section card tightens at phone width, as the system's does. */
 @media (max-width: 760px) {
   .card:not(.subtle) {
     border-radius: var(--radius-section-compact);
   }
 
-  .padMd,
-  .header,
-  .body {
+  .padMd {
     padding: var(--space-4);
-  }
-
-  .footer {
-    border-radius: 0 0 var(--radius-section-compact) var(--radius-section-compact);
   }
 }

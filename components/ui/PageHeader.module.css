@@ -5,20 +5,6 @@
   margin-bottom: var(--space-card-gap);
 }
 
-.back {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  align-self: flex-start;
-  font-size: var(--text-label);
-  color: var(--color-link);
-  transition: color var(--transition-fast);
-}
-
-.back:hover {
-  color: var(--color-link-hover);
-}
-
 /* ---- breadcrumbs -------------------------------------------------------- */
 
 .breadcrumbs {

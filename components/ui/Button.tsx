@@ -12,7 +12,7 @@ export type ButtonVariant =
   | "danger"
   | "dangerGhost";
 
-export type ButtonSize = "sm" | "md" | "lg";
+type ButtonSize = "sm" | "md" | "lg";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;

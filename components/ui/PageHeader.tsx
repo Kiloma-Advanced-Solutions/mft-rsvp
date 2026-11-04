@@ -15,10 +15,10 @@ export type Breadcrumb = {
 };
 
 /**
- * The top of a page: optional breadcrumbs or back link, an optional eyebrow,
- * the title, a description, a row of meta (badges, say) under it and the
- * page-level actions. Every screen should use it so the vertical rhythm stays
- * the same across the app.
+ * The top of a page: optional breadcrumbs, an optional eyebrow, the title, a
+ * description, a row of meta (badges, say) under it and the page-level
+ * actions. Every screen should use it so the vertical rhythm stays the same
+ * across the app.
  */
 export function PageHeader({
   title,
@@ -28,8 +28,6 @@ export function PageHeader({
   actions,
   centerTitle = false,
   breadcrumbs,
-  backHref,
-  backLabel = UI_LABELS.back,
   className,
 }: {
   title: ReactNode;
@@ -45,21 +43,13 @@ export function PageHeader({
    * title.
    */
   centerTitle?: boolean;
-  /** Replaces the back link when given. */
+  /** Where the page sits, as links back up the trail. */
   breadcrumbs?: Breadcrumb[];
-  backHref?: string;
-  backLabel?: string;
   className?: string;
 }) {
   return (
     <div className={cx(styles.header, className)}>
-      {breadcrumbs ? (
-        <Breadcrumbs steps={breadcrumbs} />
-      ) : backHref && (
-        <Link href={backHref} className={styles.back}>
-          <span aria-hidden>→</span> {backLabel}
-        </Link>
-      )}
+      {breadcrumbs && <Breadcrumbs steps={breadcrumbs} />}
 
       <div className={cx(styles.row, centerTitle && styles.centered)}>
         <div className={styles.titleGroup}>
