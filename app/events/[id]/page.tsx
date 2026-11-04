@@ -8,7 +8,7 @@ import {
   CategoryLabel,
   EventMetaDetails,
   EventStatusBadge,
-  RegistrationBadge,
+  ViewerRegistrationBadge,
 } from "@/components/events/EventMeta";
 import { HostEventActions } from "@/components/events/HostEventActions";
 import { InvitationList } from "@/components/events/InvitationList";
@@ -151,7 +151,10 @@ export default async function EventDetailPage({
               <EventStatusBadge event={event} size="lg" />
             )}
             {viewerRegistration && (
-              <RegistrationBadge status={viewerRegistration.status} size="lg" />
+              <ViewerRegistrationBadge
+                status={viewerRegistration.status}
+                size="lg"
+              />
             )}
           </>
         }

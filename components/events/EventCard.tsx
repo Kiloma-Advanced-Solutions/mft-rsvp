@@ -17,7 +17,7 @@ import {
   DateBlock,
   EventMetaLine,
   EventStatusBadge,
-  RegistrationBadge,
+  ViewerRegistrationBadge,
   categoryToneClass,
 } from "./EventMeta";
 import styles from "./EventCard.module.css";
@@ -98,7 +98,7 @@ export function EventCard({
         {cancelled && <EventStatusBadge event={event} />}
         <AccessBadge access={event.access} />
         {!cancelled && <EventStatusBadge event={event} />}
-        {viewerStatus && <RegistrationBadge status={viewerStatus} />}
+        {viewerStatus && <ViewerRegistrationBadge status={viewerStatus} />}
       </div>
 
       <div className={styles.footer}>

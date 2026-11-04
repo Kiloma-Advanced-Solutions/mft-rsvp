@@ -161,7 +161,7 @@ export function EventStatusBadge({
   return null;
 }
 
-/** Where the viewer stands with this event. */
+/** A registration's status. Host views show every status through this. */
 export function RegistrationBadge({
   status,
   size = "sm",
@@ -174,6 +174,28 @@ export function RegistrationBadge({
       {REGISTRATION_LABELS[status]}
     </Badge>
   );
+}
+
+/**
+ * Where the viewer stands with this event, on their own screens: the board
+ * card, the detail header and the registration panel.
+ *
+ * `removed` and `rejected` are a host's past decision, not where the viewer
+ * stands now, and next to a closed panel they read as its reason -- an event
+ * that is full would look as though it refused them. So the viewer is not shown
+ * them, in any event state; the panel's action and note say what they can do.
+ * Presentation only: the status is stored and enforced as before, and host
+ * views still show it through `RegistrationBadge`.
+ */
+export function ViewerRegistrationBadge({
+  status,
+  size = "sm",
+}: {
+  status: RegistrationStatus;
+  size?: "sm" | "lg";
+}) {
+  if (status === "removed" || status === "rejected") return null;
+  return <RegistrationBadge status={status} size={size} />;
 }
 
 /** Compact "when + where" line for cards. */
