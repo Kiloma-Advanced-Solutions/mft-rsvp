@@ -7,21 +7,26 @@ progresses — it is current state, not a changelog.
 
 **M11, the system redesign — in progress.** M11 restyles the whole UI to the
 Iron Numbers design system, which has been supplied, and changes presentation
-only: no rule, API, schema or permission changes. It is delivered in four
+only: no rule, API, schema or permission changes. It is delivered in five
 sequential PRs. PR 1 — design foundations, the shared UI kit and the
 navigation shell — is merged (PR #46). PR 2 — the Events Board: its cards and
 badges, filters and section navigation — is merged (PR #48). PR 3 — the
-detail page, the host's actions and sharing, and host management — is
-implemented on its branch and not yet merged. PR 4 (the forms and the
-milestone's close-out) has not started. The desktop widths are unchanged by
+detail page, the host's actions and sharing, and host management — is merged
+(PR #49). PR 4 — the create and edit forms, the approved removal of
+explanatory copy, the viewer's own status badges and the S9 kit cleanup — is
+implemented on `yardenah/m11-forms` and not yet pushed or merged. PR 5 — the
+email templates, redesigned to match — is planned and not started: it begins
+by inspecting the templates and their sending flows, and goes to a mockup for
+approval before anything is implemented. Until then the emails are as M10
+left them. The desktop widths are unchanged by
 M11: the board, the detail page and the forms keep the shell's 1120px column.
-[TASKS.md](../TASKS.md) §5 still describes M11 as awaiting its Style Guide; it
-is brought up to date when the milestone closes.
+What M11 delivered and what remains is in [TASKS.md](../TASKS.md) §5.
 
 **Pre-M11 stabilization — C1–C5 merged, C6 after M11.** Eleven fixes and
 behaviour changes requested after M10 were planned in six branches, C1–C6; two
-of them (category colours and the explanatory-note review) are deferred into
-M11. The approved requirements, branch boundaries and decisions H1–H3 are in
+of them were deferred into M11 — category colours (done in M11 PR 2) and the
+explanatory-note review (done in M11 PR 4). The approved requirements, branch
+boundaries and decisions H1–H3 are in
 [docs/pre-m11-stabilization-plan.md](../docs/pre-m11-stabilization-plan.md),
 a temporary plan that C6 retires; its order — C6 before M11 — has since been
 changed, and M11 now comes first. Merged: C1 (removing the workshop pages,
@@ -97,8 +102,9 @@ still waiting and the ones already turned down, with whatever message the
 requester sent. A host approves or rejects each one, and the counts, the
 capacity meter and "Who is going" re-derive on the spot. A person who was turned
 down cannot ask again while the event is `approval` or `invite`, but if it is
-switched to `open` they may register on their own, and their panel says why the
-register button is there. How it fits together is
+switched to `open` they may register on their own, and their panel offers the
+register button. A viewer is never shown their own "removed" or "rejected"
+badge; hosts still see both. How it fits together is
 in [a_system.md](a_system.md); why it behaves as it does is in
 [dec_log.md](dec_log.md).
 
@@ -151,8 +157,9 @@ Everything that is not the product was supplied. Do not rebuild it — see
 
 - Design tokens (light and dark) and the `components/ui/` kit.
 - `components/events/` — cards, badges, date blocks, capacity meter; the
-  board's cards, badges and date blocks restyled by M11 PR 2, and the detail
-  page's panel, sections, host actions and host lists by M11 PR 3.
+  board's cards, badges and date blocks restyled by M11 PR 2, the detail
+  page's panel, sections, host actions and host lists by M11 PR 3, and the
+  event form by M11 PR 4.
 - `components/layout/` — app shell (the navigation rail, or a top bar on a
   narrow screen) and persona switcher; restyled by M11 PR 1, with the tokens
   and the `components/ui/` kit.
@@ -189,6 +196,15 @@ The shape of all of it is in [a_system.md](a_system.md).
 
 Not missing — decided against, for this milestone or for the exercise. A later
 session should not treat any of these as an oversight to fix.
+
+From M11 PR 4's scope — why each was decided is in [dec_log.md](dec_log.md):
+
+- **No length limit on an event's summary.** A hard 110-character limit was
+  proposed and dropped: nothing caps it in the form, the parser, the API or the
+  schema, and the card line-clamps a long one.
+- **No dropdowns in the event form, and no custom listbox in the kit.** Its
+  choices are native radios shown outright; a select or a listbox for them was
+  considered and not taken.
 
 From C5's scope — why each was decided is in
 [dec_log.md](dec_log.md):
@@ -418,8 +434,10 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-11-03 — M11 in progress: PR 1 (design foundations, UI kit
+Last updated: 2026-11-04 — M11 in progress: PR 1 (design foundations, UI kit
 and navigation shell) merged (PR #46); PR 2 (the Events Board) merged
 (PR #48); PR 3 (the detail page, host actions and sharing, host management)
-implemented on its branch, not yet merged; PR 4 not started. Pre-M11 stabilization
-C1–C5 merged (PRs #41–#45); C6 follows M11; then M12 (application logging).
+merged (PR #49); PR 4 (the forms, the copy review, viewer badges, S9 cleanup)
+implemented on `yardenah/m11-forms`, not yet pushed or merged; PR 5 (the email
+templates) planned, not started. Pre-M11 stabilization C1–C5 merged
+(PRs #41–#45); C6 follows M11; then M12 (application logging).

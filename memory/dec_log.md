@@ -1707,3 +1707,112 @@ permission rules or what a non-manager receives: host actions, the share URL
 and the recipient list are still built only for managers. The desktop widths
 are unchanged: a proposal to widen the board and the detail page on large
 screens was considered and not taken.
+
+## 2026-11-04 — The explanatory-note review removes only sentences approved one by one
+
+Context: M11 carried the review of redundant explanatory notes deferred from
+the pre-M11 stabilization (`TASKS.md` §5): remove what is purely redundant,
+keep anything explaining a restriction, a permission or a business state, and
+anything the API reuses as a refusal. The planning made it analysis only — no
+message changes without its exact text being approved.
+
+Decision: nine sentences were approved for removal and removed wherever they
+appeared: the host sections' "only you and the other hosts see this" line, the
+edit page's description, the open registration panel's notes — the request
+note, "ההרשמה תאושר מיד", and the two notes explaining why a removed or
+rejected person may register again on a now-open event — the active invitation
+list's description, and the form's capacity and address hints. The capacity
+field's untranslated English line was removed as well. A rejected request's
+timeline now says "נדחתה" rather than "לא אושרה"; the summary hint is
+reworded. `EVENT_SHARE_ACCESS_NOTES`, which reads like some of the removed
+copy, is email content and was kept unchanged, as was everything else in the
+share email.
+
+Rationale: each removed sentence either restated what the screen already shows
+— a host-only section's privacy, the action a button names — or explained a
+state the product owner preferred the screen to show by itself. Approval per
+sentence, rather than a rule, kept the review from removing a message nobody
+had looked at. Every closed-registration note and every API refusal stayed,
+so nothing a refusal says changed.
+
+Consequences: supersedes the note half of "A rejected person may register again
+on an `open` event, and is told why" (2026-10-25), including the removed
+person's note it mirrored; the rule that lets them register is unchanged. An
+open register or request button now has no note, so the panel's note is
+optional. Elements left empty by a removal were removed with it.
+
+## 2026-11-04 — A viewer is not shown their own "removed" or "rejected", and edit mode shows no personal badge
+
+Context: after the reopened-registration notes went, a removed or rejected
+person on an open event saw their old badge beside an active register button.
+The first proposal hid the badge only while registering was open, but on a
+full event the badge would still read as the reason they could not register.
+
+Decision: `ViewerRegistrationBadge` renders nothing for `removed` and
+`rejected`, in every event state, and is what the board card, the detail
+header and the registration panel use for the viewer's own status. Every other
+status shows as before. Separately, the detail header in edit mode shows no
+personal registration badge at all — the form is the page, and where the
+editor stands is not part of editing the event.
+
+Rationale: those two statuses are a host's past decision, not where the viewer
+stands now, and the panel's action and note already say what the viewer can
+do. One presentation rule, applied wherever the viewer sees their own status,
+means the three places cannot disagree.
+
+Consequences: supersedes "the badge is kept because it is the person's true
+status" in the 2026-10-25 entry. Stored statuses, availability, capacity, the
+API and every host view are unchanged — the queue, the removed group and the
+invitation list still show both statuses through `RegistrationBadge`.
+
+## 2026-11-04 — The event form shows its choices as native radios, in section cards
+
+Context: the form's three dropdowns — location type, category and access — used
+the browser's own select popup, which opens differently on every platform and
+cannot be styled. Three options were mocked: the selects restyled, a custom
+listbox, and the choices shown outright. The planning also proposed a hard
+110-character limit on the summary.
+
+Decision: the choices are shown outright (the approved mockup's option 1) as
+native radio inputs, through radio modes added to `SegmentedControl` and
+`Chip` beside their link modes and a `Field` `group` that is a fieldset with a
+legend. They submit the same names and values the selects did. The form is
+four section cards with the detail page's headings, both pages have
+breadcrumbs, and both titles are centred — a start-aligned edit title was
+approved, built and then reversed after review in the browser. The summary
+limit was not adopted: there is still no length rule anywhere.
+
+Rationale: native radios bring the keyboard, the reading-direction arrow keys
+and form submission for free, where a custom listbox would have meant a new
+accessibility-critical primitive and the loss of the phones' own pickers. Every
+option is visible at once and nothing opens or overflows. Reusing the board's
+segments and chips makes a choice look the same wherever it is made. Keeping
+the submitted values left `readForm`, the parser and the API untouched. The
+summary limit was the product owner's call to drop after review; the card's
+line clamp continues to handle a long summary.
+
+Consequences: the kit's `Select` lost its last user, and is removed in the
+cleanup below. `Field` now has two roots, a `<label>` for one control and a
+`<fieldset>` for a group.
+
+## 2026-11-04 — The kit drops the components no screen uses
+
+Context: "The workshop pages are retired" (2026-10-22) kept the components and
+types `/styleguide` had shown but no page used — `SegmentedControl`, `Spinner`,
+`Radio`, `CardFooter` and `BadgeVariant` — for M11 to decide on. M11 left
+others unused too.
+
+Decision: removed — `Spinner` and `LoadingBlock`, `Radio`, `Select`,
+`CardHeader` with `CardBody` and `CardFooter`, `PageHeader`'s back link
+(`backHref`, `backLabel`), the barrel exports of `BadgeVariant` and
+`ButtonSize` (both types stay inside their components), and labels nothing
+reads. Kept: `SegmentedControl`, which the board and the form use.
+
+Rationale: an unused kit component is a second way to build something the kit
+already builds another way, and `TASKS.md` §7 asks for no unused exports. Each
+was checked for consumers across `app/`, `components/`, `lib/`, `emails/` and
+`scripts/` first.
+
+Consequences: supersedes the "are kept" list of the 2026-10-22 entry. A page
+that needs a loading state, a back link or a select adds one deliberately.
+`Button`'s own loading spinner is unaffected.

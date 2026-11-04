@@ -243,13 +243,26 @@ logic that lives in the route is turning that answer into a status code. See
   `AttendeeList`, `AttendeeActions`, `InvitationList`, `InvitationActions`,
   `ShareEventActions` (`ShareMenu` and its email dialog), and the
   `EventMeta` family (`DateBlock`, `AccessBadge`, `EventStatusBadge`,
-  `RegistrationBadge`, `EventMetaLine`, `EventMetaDetails`, `CapacityMeter`).
+  `RegistrationBadge`, `ViewerRegistrationBadge`, `EventMetaLine`,
+  `EventMetaDetails`, `CapacityMeter`).
 - `layout/` — the app frame: `AppShell` (the navigation rail, or the top bar on a
   narrow screen), `RailLink` and `PersonaSwitcher`.
 
 `EventCard` renders only what it is passed — deriving counts, attendees and the
 viewer's own status is the caller's job. Check these three directories before
 building anything new; it probably already exists.
+
+**One choice, two modes.** `SegmentedControl` and `Chip` each come in a
+**link** mode, for a choice that lives in the URL — the board's access and
+category filters, marked with `aria-current` — and a **radio** mode, for a
+choice in a form: a visually hidden native radio inside each segment or chip,
+so the browser supplies the keyboard (one tab stop per group, the arrow keys
+in the reading direction) and submits the checked value under its `name`.
+A set of radios is not one control, so it sits in a `Field` with `group`, a
+`<fieldset>` whose `<legend>` names it, rather than in `Field`'s usual
+`<label>`; the row carries `role="radiogroup"` and `aria-invalid`, and each
+radio points at the field's hint or error through `messageId`. The event form
+is the radio modes' only user.
 
 ### Styling layer — `app/styles/tokens.css`
 
@@ -338,8 +351,9 @@ dash to the paragraph direction and renders the range end-first.
 Rules that are not direction-sensitive are left alone — `Button`'s spinner keeps
 `border-right-color`, because a rotating shape has no reading direction. Do not
 mechanically reverse a layout that does not depend on direction. Directional
-glyphs in text are *not* mirrored by `dir` and are authored for the reading
-direction: `PageHeader`'s back arrow is `→`.
+glyphs are *not* mirrored by `dir` and are authored for the reading
+direction: the breadcrumb trail's separator is the `chevronLeft` icon, pointing
+onward in RTL.
 
 **Free-form content takes its own direction.** Anything a person wrote — an
 event's title, summary, description, venue, address or link, a person's name or
@@ -612,6 +626,21 @@ sticky side column, with the main column's section cards — when and where,
 about, hosts, then the host lists and who is going — beside it. The desktop
 width is the shell's 1120px column, unchanged by M11.
 
+**Edit mode (M11 PR 4).** The header keeps the breadcrumbs, the category, a
+centred title and the event-level badges (access, status), but not the
+viewer's own registration badge — editing the event is not about where the
+viewer stands — and has no description and no host actions. The form takes
+the place of both columns; see "Managing events" below.
+
+**The viewer's own status.** The badge saying where the viewer stands — on
+their board card, in the detail header and in the registration panel — is
+`ViewerRegistrationBadge`, which shows nothing for `removed` and `rejected`
+in any event state. Those are a host's past decision, and next to a closed
+panel they would read as its reason; the panel's action and note say what the
+viewer can do. Presentation only: the stored status, availability and every
+rule are unchanged, and host views — the queue, the removed group, the
+invitation list — show every status through `RegistrationBadge`.
+
 There are four host-only surfaces on the page, and they sit apart on purpose.
 The **header actions** (`HostEventActions`, in `PageHeader`'s actions slot)
 are the event's own: Publish for a draft, an Edit link, a Share menu — copy
@@ -674,10 +703,12 @@ here writes `waitlisted`.
 
 A `rejected` or `removed` row is revived the same way, but only while the
 event's access is `open`; on `approval` and `invite` it stays closed and only a
-host can bring the person back. While that exception applies, the panel keeps
-the person's old status badge and explains beside the register button that the
-event is now open (`registrationCtaCopy` in [lib/labels.ts](../lib/labels.ts)).
-A changed access mode registers nobody by itself.
+host can bring the person back. While that exception applies, the panel offers
+the ordinary register button, with no note and without the person's old
+status badge (see "The viewer's own status" above); an open register or
+request button carries no note at all (`registrationCtaCopy` in
+[lib/labels.ts](../lib/labels.ts)), while the registered and closed states
+keep theirs. A changed access mode registers nobody by itself.
 
 ```
 RegistrationActions (client) → fetchJson → route handler
@@ -725,14 +756,28 @@ between them: the endpoint and method, the submit label, the toast wording, and
 where Cancel goes. Both land on the event's detail page on success. The fields
 and the rules are shared, so they cannot drift between creating and editing.
 
+**The form's layout (M11 PR 4).** Both pages have breadcrumbs and a centred
+title — the create page its description centred under it — and the form is
+four section cards: the details (title, summary, description; untitled, as the
+form always was), then "מתי", "איפה" and "מי יכול להיכנס", each headed like a
+detail-page section. Location type and access are segmented choices, access
+with its icons, and category is a row of colour-dot chips — the kit's radio
+modes (see "Component layers"), submitting under the same names and values
+the selects they replaced did, so nothing downstream of the form changed. A
+field with an error marks its control `aria-invalid`; locked dates show a lock
+beside their reason; a whole-form refusal from the server is a tinted notice
+above the actions. On a phone the segments stack and the primary action
+stretches beside Cancel, in source order.
+
 **Shared validation.** [lib/eventInput.ts](../lib/eventInput.ts) turns untrusted
 input into a valid event, and is deliberately free of the store, the session and
 HTTP so the form and the route handlers can both run it. The form runs it to put
 a message next to the field that caused it; the API runs it again and does not
 trust the client having passed. Its rules come from the contracts documented in
-[lib/types.ts](../lib/types.ts) and nothing else — notably `summary`'s "around
-110 characters" is guidance for whoever writes one, shown as a form hint, and is
-**not** enforced anywhere.
+[lib/types.ts](../lib/types.ts) and nothing else — notably `summary` has **no**
+length limit: not in the form, the parser, the API or the schema. The board
+card line-clamps a long one, and the form's hint only says it is the short
+description the card shows.
 
 **Authorisation.** Identity from `getCurrentUser()`, visibility from
 `lib/events.ts`, manageability from `canManageEvent()` — the same answers the
@@ -1265,6 +1310,8 @@ Why the protocol replaced the race M3 accepted: [dec_log.md](dec_log.md).
 | Design tokens | [app/styles/tokens.css](../app/styles/tokens.css) |
 | Language, direction and fonts | [app/layout.tsx](../app/layout.tsx) — `lang`, `dir` and the font variables · font stack in [app/styles/tokens.css](../app/styles/tokens.css) |
 | UI kit barrel | [components/ui/index.ts](../components/ui/index.ts) |
+| A choice in a form — segments, chips, a labelled group | [components/ui/SegmentedControl.tsx](../components/ui/SegmentedControl.tsx) · [components/ui/Chip.tsx](../components/ui/Chip.tsx) · `Field` with `group` in [components/ui/Field.tsx](../components/ui/Field.tsx) |
+| The viewer's own registration badge, and which statuses it leaves out | `ViewerRegistrationBadge` in [components/events/EventMeta.tsx](../components/events/EventMeta.tsx) |
 | The approval queue, and its decision buttons | [components/events/ApprovalQueue.tsx](../components/events/ApprovalQueue.tsx) · [components/events/RequestDecisionActions.tsx](../components/events/RequestDecisionActions.tsx) |
 | "Who is going", its host version, and the remove and restore buttons | [components/events/AttendeeList.tsx](../components/events/AttendeeList.tsx) · [components/events/AttendeeActions.tsx](../components/events/AttendeeActions.tsx) |
 | The host's invitation list, its picker and revoke buttons | [components/events/InvitationList.tsx](../components/events/InvitationList.tsx) · [components/events/InvitationActions.tsx](../components/events/InvitationActions.tsx) |
