@@ -37,6 +37,31 @@
   box-shadow: none;
 }
 
+/*
+  Radio mode: the chip wraps a visually hidden radio, anchors it, and shows its
+  keyboard focus. The chosen chip also takes a heavier weight, so the choice is
+  not told by colour alone.
+*/
+.choice {
+  position: relative;
+  cursor: pointer;
+}
+
+.choice:has(:focus-visible) {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.choice.selected {
+  font-weight: var(--weight-medium);
+}
+
+.invalid {
+  box-shadow:
+    inset 0 0 0 1px var(--color-danger-border),
+    var(--shadow-card);
+}
+
 .dot {
   flex: none;
   width: var(--dot-size-lg);

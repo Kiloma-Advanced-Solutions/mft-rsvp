@@ -12,6 +12,24 @@
   gap: var(--space-3);
 }
 
+/*
+  A field that is a fieldset: no frame of its own. Its legend is laid out
+  outside the fieldset's flex box, so the gap above the choices is restated on
+  the legend, which also takes the full width the label row has elsewhere.
+*/
+.group {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.group > .labelRow {
+  width: 100%;
+  margin-bottom: var(--space-2);
+  padding: 0;
+}
+
 .label {
   font-size: var(--text-label);
   font-weight: var(--weight-normal);

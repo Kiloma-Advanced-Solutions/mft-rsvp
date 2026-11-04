@@ -21,6 +21,12 @@ import styles from "./Field.module.css";
  *   <Field label="Title" required error={errors.title}>
  *     <Input name="title" defaultValue={event.title} />
  *   </Field>
+ *
+ * A group of radios cannot sit in a `<label>`, which names one control. With
+ * `group` the field is a `<fieldset>` instead and its label the `<legend>`,
+ * which is what names a set of choices. The hint and the error are then
+ * outside any label, so give the field a `messageId` and point the choices'
+ * `aria-describedby` at it.
  */
 type FieldProps = {
   label: ReactNode;
@@ -30,6 +36,10 @@ type FieldProps = {
   required?: boolean;
   /** Renders an "Optional" marker instead of the required asterisk. */
   optional?: boolean;
+  /** A set of choices rather than one control: a fieldset with a legend. */
+  group?: boolean;
+  /** The id of whichever of the hint and the error is showing. */
+  messageId?: string;
   className?: string;
 };
 
@@ -40,11 +50,16 @@ export function Field({
   error,
   required = false,
   optional = false,
+  group = false,
+  messageId,
   className,
 }: FieldProps) {
+  const Root = group ? "fieldset" : "label";
+  const LabelRow = group ? "legend" : "span";
+
   return (
-    <label className={cx(styles.field, className)}>
-      <span className={styles.labelRow}>
+    <Root className={cx(styles.field, group && styles.group, className)}>
+      <LabelRow className={styles.labelRow}>
         <span className={styles.label}>
           {label}
           {required && (
@@ -54,18 +69,22 @@ export function Field({
           )}
         </span>
         {optional && !required && <span className={styles.optional}>{UI_LABELS.optional}</span>}
-      </span>
+      </LabelRow>
 
       {children}
 
       {error ? (
-        <span className={styles.error} role="alert">
+        <span className={styles.error} role="alert" id={messageId}>
           {error}
         </span>
       ) : (
-        hint && <span className={styles.hint}>{hint}</span>
+        hint && (
+          <span className={styles.hint} id={messageId}>
+            {hint}
+          </span>
+        )
       )}
-    </label>
+    </Root>
   );
 }
 

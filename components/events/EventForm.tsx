@@ -2,23 +2,25 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import type { FormEvent, ReactNode } from "react";
 
 import {
   Button,
   Card,
   Checkbox,
+  Chip,
   Field,
   FieldRow,
   Icon,
   Input,
-  Select,
+  SegmentedControl,
   Textarea,
   buttonClass,
   useToast,
 } from "@/components/ui";
 import { RequestError, fetchJson } from "@/lib/api";
+import { cx } from "@/lib/cx";
 import { toDateTimeLocalValue } from "@/lib/date";
 import { UNLIMITED, parseEventForm, readFieldErrors } from "@/lib/eventInput";
 import type { EventFieldErrors, EventFormValues } from "@/lib/eventInput";
@@ -41,6 +43,7 @@ import type {
   ScheduleLockReason,
 } from "@/lib/types";
 
+import { ACCESS_ICONS, categoryToneClass } from "./EventMeta";
 import styles from "./EventForm.module.css";
 
 /**
@@ -88,7 +91,14 @@ export function EventForm({
   };
 }) {
   const [locationKind, setLocationKind] = useState(initialValues.locationKind);
+  const [category, setCategory] = useState(initialValues.category);
   const [access, setAccess] = useState(initialValues.access);
+  // The hint or error under each set of choices, which the choices point at.
+  const messageIds = {
+    locationKind: useId(),
+    category: useId(),
+    access: useId(),
+  };
   const [unlimited, setUnlimited] = useState(
     initialValues.capacityUnlimited !== "",
   );
@@ -299,23 +309,29 @@ export function EventForm({
       </Section>
 
       <Section title={EVENT_FORM_LABELS.sectionWhere}>
+        {/*
+          The three choices below are radios, not menus: every option shows,
+          and each set submits under the same name the select it replaced did.
+        */}
         <Field
           label={EVENT_FORM_LABELS.locationKind}
           required
           error={errors.location}
+          group
+          messageId={messageIds.locationKind}
         >
-          <Select
+          <SegmentedControl<string>
             name="locationKind"
+            fullWidth
+            options={LOCATION_KINDS.map((kind) => ({
+              value: kind,
+              label: LOCATION_KIND_LABELS[kind],
+            }))}
             value={locationKind}
-            onChange={(changed) => setLocationKind(changed.target.value)}
-            aria-invalid={invalid(errors.location)}
-          >
-            {LOCATION_KINDS.map((kind) => (
-              <option key={kind} value={kind}>
-                {LOCATION_KIND_LABELS[kind]}
-              </option>
-            ))}
-          </Select>
+            onChange={setLocationKind}
+            invalid={Boolean(errors.location)}
+            describedBy={errors.location ? messageIds.locationKind : undefined}
+          />
         </Field>
 
         {/*
@@ -377,47 +393,68 @@ export function EventForm({
       </Section>
 
       <Section title={EVENT_FORM_LABELS.sectionWho}>
-        <FieldRow>
-          <Field
-            label={EVENT_FORM_LABELS.category}
-            required
-            error={errors.category}
+        {/*
+          No category is chosen on a new event -- the select's "—" -- so none
+          of these is checked, nothing is submitted, and the rule asks for one.
+        */}
+        <Field
+          label={EVENT_FORM_LABELS.category}
+          required
+          error={errors.category}
+          group
+          messageId={messageIds.category}
+        >
+          <div
+            className={styles.chips}
+            role="radiogroup"
+            aria-invalid={invalid(errors.category)}
           >
-            <Select
-              name="category"
-              defaultValue={initialValues.category}
-              aria-invalid={invalid(errors.category)}
-            >
-              <option value="">—</option>
-              {CATEGORY_ORDER.map((category) => (
-                <option key={category} value={category}>
-                  {CATEGORY_LABELS[category]}
-                </option>
-              ))}
-            </Select>
-          </Field>
+            {CATEGORY_ORDER.map((option) => (
+              <Chip
+                key={option}
+                name="category"
+                value={option}
+                selected={category === option}
+                onChange={setCategory}
+                dot
+                className={cx(styles.categoryChip, categoryToneClass(option))}
+                invalid={Boolean(errors.category)}
+                describedBy={errors.category ? messageIds.category : undefined}
+              >
+                {CATEGORY_LABELS[option]}
+              </Chip>
+            ))}
+          </div>
+        </Field>
 
-          <Field
-            label={EVENT_FORM_LABELS.access}
-            required
-            hint={accessHint(access)}
-            error={errors.access}
-          >
-            <Select
-              name="access"
-              value={access}
-              onChange={(changed) => setAccess(changed.target.value)}
-              aria-invalid={invalid(errors.access)}
-            >
-              <option value="">—</option>
-              {ACCESS_ORDER.map((option) => (
-                <option key={option} value={option}>
+        <Field
+          label={EVENT_FORM_LABELS.access}
+          required
+          hint={accessHint(access)}
+          error={errors.access}
+          group
+          messageId={messageIds.access}
+        >
+          <SegmentedControl<string>
+            name="access"
+            fullWidth
+            options={ACCESS_ORDER.map((option) => ({
+              value: option,
+              label: (
+                <>
+                  <Icon name={ACCESS_ICONS[option]} size="sm" />
                   {ACCESS_LABELS[option]}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </FieldRow>
+                </>
+              ),
+            }))}
+            value={access}
+            onChange={setAccess}
+            invalid={Boolean(errors.access)}
+            describedBy={
+              errors.access || accessHint(access) ? messageIds.access : undefined
+            }
+          />
+        </Field>
 
         <div className={styles.capacity}>
           <Checkbox
