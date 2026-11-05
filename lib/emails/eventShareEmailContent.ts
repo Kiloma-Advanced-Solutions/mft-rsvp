@@ -35,7 +35,8 @@ export type EventShareEmailContent = {
   date: string;
   time: string;
   location: string;
-  accessNote: string;
+  /** What registering will do, or `null` for an access mode with no note. */
+  accessNote: string | null;
   eventUrl: string;
 };
 

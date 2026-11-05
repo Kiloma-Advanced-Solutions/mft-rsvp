@@ -13,9 +13,13 @@
  * no environment, so the template, the plain-text part and the preview all
  * show the same message.
  *
- * The call to action is a link inside a coloured table cell, the full link is
- * printed under it for a client that will not open the button, and the rest is
- * `BaseEmail`'s shell. See there for why it is all tables.
+ * The event's title opens `BaseEmail`'s card. Below the greeting, the intro and
+ * the summary, the date, time and location sit side by side with their labels
+ * in a tinted panel. The access note follows only for an access mode that has
+ * one -- an approval event has none, and no empty paragraph or spacing is left
+ * for it. The call to action is a link inside a coloured table cell, the full
+ * link is printed under it for a client that will not open the button, and the
+ * rest is `BaseEmail`'s shell. See there for why it is all tables.
  */
 
 import { APP_LABELS, EVENT_SHARE_EMAIL_LABELS } from "@/lib/labels";
@@ -48,18 +52,53 @@ export default function EventShareEmail({
         cellPadding={0}
         cellSpacing={0}
         border={0}
-        style={styles.detailsTable}
+        style={styles.detailsPanel}
       >
         <tbody>
-          <DetailRow label={EVENT_SHARE_EMAIL_LABELS.date} value={date} />
-          <DetailRow label={EVENT_SHARE_EMAIL_LABELS.time} value={time} />
-          <DetailRow label={EVENT_SHARE_EMAIL_LABELS.location} value={location} />
+          <tr>
+            <td className="em-inset" style={styles.detailsPanelInner}>
+              <table
+                width="100%"
+                cellPadding={0}
+                cellSpacing={0}
+                border={0}
+                style={styles.detailsTable}
+              >
+                <tbody>
+                  <DetailRow label={EVENT_SHARE_EMAIL_LABELS.date} value={date} />
+                  <DetailRow
+                    label={EVENT_SHARE_EMAIL_LABELS.time}
+                    value={time}
+                    divided
+                  />
+                  <DetailRow
+                    label={EVENT_SHARE_EMAIL_LABELS.location}
+                    value={location}
+                    divided
+                  />
+                </tbody>
+              </table>
+            </td>
+          </tr>
         </tbody>
       </table>
 
-      <p style={styles.paragraph}>{accessNote}</p>
+      {accessNote ? (
+        <>
+          <Spacer height={24} />
+          <p style={styles.note}>{accessNote}</p>
+        </>
+      ) : null}
 
-      <table cellPadding={0} cellSpacing={0} border={0} style={styles.ctaTable}>
+      <Spacer height={28} />
+
+      <table
+        cellPadding={0}
+        cellSpacing={0}
+        border={0}
+        className="em-cta"
+        style={styles.ctaTable}
+      >
         <tbody>
           <tr>
             <td align="center" style={styles.ctaCell}>
@@ -71,7 +110,7 @@ export default function EventShareEmail({
         </tbody>
       </table>
 
-      <Spacer height={20} />
+      <Spacer height={24} />
 
       <p style={styles.linkFallback}>{EVENT_SHARE_EMAIL_LABELS.linkFallback}</p>
       <p style={styles.urlText} dir="ltr">
@@ -79,8 +118,6 @@ export default function EventShareEmail({
           {eventUrl}
         </a>
       </p>
-
-      <Spacer height={28} />
     </BaseEmail>
   );
 }

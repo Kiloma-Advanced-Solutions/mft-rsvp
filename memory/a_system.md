@@ -449,6 +449,17 @@ rendered on a server in UTC and read elsewhere. The rules for each are
 in the headers of `emails/BaseEmail/BaseEmail.tsx` and
 `emails/BaseEmail/BaseEmailStyles.ts`.
 
+**The look is M11's on the organization's structure** (M11 PR 5): a compact
+navy header with the header label and the logo, a separate card that `BaseEmail`
+opens with the email's `title` above a divider, and a footer line under the
+card. The colours are the M11 tokens' values written as literals. Rounded
+corners are progressive enhancement, square in Outlook. The one `<style>` block
+adds a narrow-screen media query to the MSO resets. Its `em-*` classes only
+override values that are already inline, so a client that ignores it shows the
+620px layout. The event-share email has an access note only for open and
+invite-only events; an approval event has none, in the HTML and in the plain
+text.
+
 `npm run email:preview` serves the templates locally; see
 [u_environment.md](u_environment.md).
 

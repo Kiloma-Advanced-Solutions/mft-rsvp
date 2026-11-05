@@ -14,11 +14,10 @@ badges, filters and section navigation — is merged (PR #48). PR 3 — the
 detail page, the host's actions and sharing, and host management — is merged
 (PR #49). PR 4 — the create and edit forms, the approved removal of
 explanatory copy, the viewer's own status badges and the S9 kit cleanup — is
-implemented on `yardenah/m11-forms` and not yet pushed or merged. PR 5 — the
-email templates, redesigned to match — is planned and not started: it begins
-by inspecting the templates and their sending flows, and goes to a mockup for
-approval before anything is implemented. Until then the emails are as M10
-left them. The desktop widths are unchanged by
+merged (PR #50). PR 5 — the event-share email in the M11 look, from the
+approved mockup's "Variant C", with the approval event's access note removed —
+is implemented on `yardenah/m11-emails` and awaiting review; it is not merged,
+so M11 is not complete. The desktop widths are unchanged by
 M11: the board, the detail page and the forms keep the shell's 1120px column.
 What M11 delivered and what remains is in [TASKS.md](../TASKS.md) §5.
 
@@ -400,6 +399,10 @@ that stand-in. None of it was kept as an automated test — the repository has n
 test suite. **Not verified:** the real mail service, the real
 `MAIL_SERVICE_URL` and sender values, actual delivery, and rendering in
 Outlook 2016 — including the `data:` URI logo — none of which was available.
+M11 PR 5's redesign was checked against the approved mockup in browsers only.
+That covered desktop and phone widths, a simulated Outlook view (square
+corners, no media query), images off and long content, plus static checks of
+the rendered markup. Outlook 2016 rendering is still not verified.
 
 Sharing needs configuration in every deployment: `EVENTS_APP_BASE_URL` for the
 link at all, and `MAIL_SERVICE_URL`, `EVENTS_MAIL_SENDER_NAME`,
@@ -434,10 +437,10 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-11-04 — M11 in progress: PR 1 (design foundations, UI kit
+Last updated: 2026-11-05 — M11 in progress: PR 1 (design foundations, UI kit
 and navigation shell) merged (PR #46); PR 2 (the Events Board) merged
 (PR #48); PR 3 (the detail page, host actions and sharing, host management)
 merged (PR #49); PR 4 (the forms, the copy review, viewer badges, S9 cleanup)
-implemented on `yardenah/m11-forms`, not yet pushed or merged; PR 5 (the email
-templates) planned, not started. Pre-M11 stabilization C1–C5 merged
+merged (PR #50); PR 5 (the email, Variant C, the approval note removed)
+implemented on `yardenah/m11-emails`, awaiting review. Pre-M11 stabilization C1–C5 merged
 (PRs #41–#45); C6 follows M11; then M12 (application logging).

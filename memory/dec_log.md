@@ -1875,3 +1875,64 @@ Consequences: `SegmentedControl` and `BoardFilters` are still server
 components and their links are unchanged. Without JavaScript, or before
 hydration, the chosen option draws its own background as before. The fields
 that no longer apply still leave at once; only the card's height moves.
+
+## 2026-11-05 — The email takes the M11 look on the organization's structure
+
+Context: M11's last PR restyles the one email, the event-share email, which
+M10 built on the organization's reference shell and palette for Outlook 2016
+(the 2026-10-20 entry "Email uses the organization's transport and template
+conventions"). The M11 handoff placed email outside M11; `TASKS.md` §5 later
+brought it in as a separate PR, and that later scope is the one followed.
+Nobody here can test in Outlook 2016. Three mockup variants were compared,
+including simulated Outlook, phone and images-off views.
+
+Decision: the product owner approved the hybrid, "Variant C". It has the
+compact navy header of one variant, holding the header label and the logo at
+half size. The card and body come from the other: the title opens a separate
+card above a divider, then the greeting, the summary, a tinted panel with the
+details side by side, a plain access note, the blue button, the printed link,
+and a footer line under the card. The reference's structure and every Outlook
+technique are kept: nested zero-padded tables, the 620px column as attribute
+and style, inline literal styles, the MSO resets and font stack, explicit RTL,
+spacer cells, the table-cell button and the `data:` logo. What changes is the
+palette, which now uses the M11 token values as literals in place of the
+reference's, and the type, spacing and shape. Rounded corners are progressive
+enhancement. One media query, keyed to `em-*` classes that only override
+inline values, adapts the email to phones. There is no VML, no
+`dir="auto"`, no web font and no shadow.
+
+Rationale: the structure is the organization's convention and the reason the
+email is expected to hold up in Outlook, so only the presentation moved.
+Moving the title out of the header keeps a long title from stretching the navy
+band. Every degraded state stays complete: square corners, a fixed 620px
+column where the media query is ignored, and an alt text styled to read on
+navy where the logo is not shown. `dir="auto"` was considered for host-written
+text and left out, because Outlook 2016's handling of it is unknown and the
+explicit RTL it would replace is known.
+
+Consequences: this supersedes the 2026-10-20 entry's adoption of the
+reference *palette* only; the transport, shell structure and image convention
+stand. Outlook 2016 rendering, including the `data:` logo, is still unverified
+(`s_status.md`). An English line's end punctuation still shows on the left in
+the RTL email, as before.
+
+## 2026-11-05 — An approval event's share email has no access note
+
+Context: the share email ends with a note on what registering does, one per
+access mode. The product owner approved removing the approval event's
+sentence, "באירוע הזה ההרשמה היא בקשה, והמארחים מחליטים עליה.", with nothing
+in its place. The 2026-11-04 copy review had kept these notes unchanged.
+
+Decision: `EVENT_SHARE_ACCESS_NOTES` in [lib/labels.ts](../lib/labels.ts)
+maps every access mode to a note or `null`, and approval maps to `null`.
+`eventShareAccessNote()` returns that value, and the content object's
+`accessNote` is `string | null`. The HTML template then leaves out the note and its spacing,
+and the plain-text part leaves out its line and the blank line after it.
+
+Rationale: `null` in the one content object both parts are built from keeps
+the HTML and the text in agreement, and keeps the decision in `lib/labels.ts`,
+where the email's words live. Nothing else used the sentence.
+
+Consequences: the open and invite-only notes are unchanged, as are the
+subject, the preview text, the access rules and registration. A future access
+mode has to be given a note or `null` in the same map before it compiles.
