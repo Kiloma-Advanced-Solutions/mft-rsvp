@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import { cx } from "@/lib/cx";
 
+import { SegmentIndicator } from "./SegmentIndicator";
 import styles from "./SegmentedControl.module.css";
 
 export type SegmentOption<T extends string> = {
@@ -69,9 +70,14 @@ type LinkProps = CommonProps & {
  *   Generic over the value type, so `onChange` hands you back your own union
  *   rather than a bare string.
  *
- * The file has no `"use client"`: the link mode needs no client code, so a
- * Server Component can render it directly. The radio mode takes a handler, so
- * it can only be rendered from a Client Component, which makes it one.
+ * In both, the navy pill behind the choice is `SegmentIndicator`, which slides
+ * it to a new choice. That small piece is the only client code the link mode
+ * renders.
+ *
+ * The file has no `"use client"`: the link mode needs no client code of its
+ * own, so a Server Component can render it directly. The radio mode takes a
+ * handler, so it can only be rendered from a Client Component, which makes it
+ * one.
  */
 export function SegmentedControl<T extends string>(
   props: RadioProps<T> | LinkProps,
@@ -82,6 +88,10 @@ export function SegmentedControl<T extends string>(
   if ("links" in props) {
     return (
       <div className={groupClass} role="group" aria-label={props.label}>
+        <SegmentIndicator
+          value={props.links.find((link) => link.current)?.value ?? null}
+          className={styles.indicator}
+        />
         {props.links.map((link) => (
           <Link
             key={link.value}
@@ -89,6 +99,7 @@ export function SegmentedControl<T extends string>(
             replace
             scroll={false}
             aria-current={link.current ? "true" : undefined}
+            data-segment={link.value}
             className={cx(styles.option, link.current && styles.selected)}
           >
             {link.label}
@@ -105,11 +116,16 @@ export function SegmentedControl<T extends string>(
 
   return (
     <div className={cx(groupClass, invalid && styles.invalid)}>
+      <SegmentIndicator
+        value={options.some((option) => option.value === value) ? value : null}
+        className={styles.indicator}
+      />
       {options.map((option) => {
         const selected = option.value === value;
         return (
           <label
             key={option.value}
+            data-segment={option.value}
             className={cx(styles.option, styles.choice, selected && styles.selected)}
           >
             <input
