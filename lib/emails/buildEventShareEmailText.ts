@@ -26,8 +26,8 @@ export function buildEventShareEmailText(
     `${EVENT_SHARE_EMAIL_LABELS.time}: ${content.time}`,
     `${EVENT_SHARE_EMAIL_LABELS.location}: ${content.location}`,
     "",
-    content.accessNote,
-    "",
+    // No line, and no blank line after it, when the event has no access note.
+    ...(content.accessNote ? [content.accessNote, ""] : []),
     EVENT_SHARE_EMAIL_LABELS.linkLine,
     content.eventUrl,
     "",

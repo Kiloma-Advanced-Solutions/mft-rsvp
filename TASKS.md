@@ -465,14 +465,15 @@ PRs; each item left open above is now decided:
   menus and dialogs.
 
 Merged: the foundations, kit and shell; the board; the detail page and host
-management. Built and awaiting merge: the forms, the copy review, the viewer's
-own status badges and the kit cleanup.
+management; the forms, the copy review, the viewer's own status badges and the
+kit cleanup.
 
-Remaining: the **email templates**, redesigned to match in a separate PR. It
-starts by inspecting the templates and their sending flows. A mockup in the
-M11 design is approved before anything is implemented, and rendering, RTL,
-links and content are verified against it. Until then the emails are as M10
-left them. Which PR is where is in `memory/s_status.md`.
+Remaining: the **email templates**, redesigned to match in a separate PR. The
+approved mockup's "Variant C" and the removal of the approval event's access
+note are built and awaiting review and merge. M11 is complete when that PR
+merges. Rendering, RTL, links and content were checked against the mockup in
+browsers; Outlook 2016 itself was not available. Which PR is where is in
+`memory/s_status.md`.
 
 #### M12 — Application logging
 

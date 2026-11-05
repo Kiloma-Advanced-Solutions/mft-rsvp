@@ -859,14 +859,19 @@ export const EVENT_SHARE_EMAIL_LABELS = {
  * `ACCESS_DESCRIPTIONS`, which speaks to the host ("you decide who gets in").
  * Nothing here promises a place: the event may be full by the time the link is
  * opened, and the page says so then.
+ *
+ * An approval event has no note: its sentence was removed in M11 PR 5 by the
+ * product owner's decision, and nothing replaces it. The email shows no note
+ * at all for one, rather than an empty line. Every access mode is listed, so a
+ * new one cannot be added without deciding its note.
  */
-const EVENT_SHARE_ACCESS_NOTES: Record<EventAccess, string> = {
+const EVENT_SHARE_ACCESS_NOTES: Record<EventAccess, string | null> = {
   open: "בהרשמה לאירוע הזה המקום שלך מאושר מיד.",
-  approval: "באירוע הזה ההרשמה היא בקשה, והמארחים מחליטים עליה.",
+  approval: null,
   invite: "האירוע הזה מיועד למוזמנים בלבד.",
 };
 
-export function eventShareAccessNote(access: EventAccess): string {
+export function eventShareAccessNote(access: EventAccess): string | null {
   return EVENT_SHARE_ACCESS_NOTES[access];
 }
 
