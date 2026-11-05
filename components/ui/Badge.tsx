@@ -14,7 +14,7 @@ export type BadgeTone =
   | "draft"
   | "planned";
 
-export type BadgeVariant = "soft" | "outline" | "solid";
+type BadgeVariant = "soft" | "outline" | "solid";
 
 type BadgeProps = {
   children: ReactNode;

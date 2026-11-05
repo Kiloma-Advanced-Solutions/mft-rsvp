@@ -1,5 +1,6 @@
 /* The system's segmented control: a tinted track, with the choice as a navy pill. */
 .group {
+  position: relative;
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -22,9 +23,13 @@
   font-size: var(--text-label);
   color: var(--color-text-muted);
   white-space: nowrap;
+  /* Above the sliding pill, which comes first in the track. */
+  position: relative;
+  /* The label's colour changes at the pill's pace, so it turns light as the
+     pill arrives under it rather than ahead of it. */
   transition:
     background var(--transition-fast),
-    color var(--transition-fast);
+    color var(--transition-base);
 }
 
 /* Keeps its shape when focused; see the same rule in Button.module.css. */
@@ -39,6 +44,44 @@
 .selected {
   background: var(--color-navy);
   color: var(--color-on-navy);
+}
+
+/*
+  The sliding pill, `SegmentIndicator`, placed over the chosen option by the
+  measurements it sets. Physical `top`/`left`, because the measurements are
+  physical and so already right in either reading direction. Until it has
+  placed itself -- before hydration, or without JavaScript -- it is hidden and
+  the chosen option draws its own background; after, the track's
+  `data-indicator` hands that background over to it, so there are never two.
+*/
+.indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: var(--indicator-width);
+  height: var(--indicator-height);
+  transform: translate(var(--indicator-x), var(--indicator-y));
+  border-radius: var(--radius-lg);
+  background: var(--color-navy);
+  pointer-events: none;
+  visibility: hidden;
+  transition:
+    transform var(--transition-base),
+    width var(--transition-base),
+    height var(--transition-base);
+}
+
+.group[data-indicator] > .indicator {
+  visibility: visible;
+}
+
+/* A move that is not a change of choice -- a resize -- does not slide. */
+.indicator[data-snap] {
+  transition: none;
+}
+
+.group[data-indicator] > .selected {
+  background: transparent;
 }
 
 .count {
@@ -70,4 +113,46 @@
 .fullWidth .option {
   flex: 1;
   justify-content: center;
+}
+
+/* ---- radio mode --------------------------------------------------------- */
+
+/*
+  A segment that wraps a visually hidden radio. It anchors the input, and
+  shows the input's keyboard focus as its own -- the input itself is not seen.
+  The chosen segment also takes a heavier weight, so the choice is not told by
+  colour alone.
+*/
+.choice {
+  position: relative;
+  cursor: pointer;
+}
+
+.choice:has(:focus-visible) {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
+}
+
+.choice.selected {
+  font-weight: var(--weight-medium);
+}
+
+.invalid {
+  box-shadow: inset 0 0 0 1px var(--color-danger-border);
+}
+
+/* A full-width group stacks on a phone, where equal columns would crush the
+   labels; each segment then reads from the start, like a list. */
+@media (max-width: 760px) {
+  .fullWidth {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  /* `flex: none` undoes the row's `flex: 1`: down a column its zero basis
+     overrides the segment's height and squeezes it to its text. */
+  .fullWidth .option {
+    flex: none;
+    justify-content: flex-start;
+  }
 }

@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 
 import { cx } from "@/lib/cx";
 
+import { SegmentIndicator } from "./SegmentIndicator";
 import styles from "./SegmentedControl.module.css";
 
 export type SegmentOption<T extends string> = {
@@ -27,19 +28,25 @@ export type SegmentLink = {
 };
 
 type CommonProps = {
-  /** Describes the group for screen readers, e.g. "View mode". */
-  label: string;
   fullWidth?: boolean;
   className?: string;
 };
 
 type RadioProps<T extends string> = CommonProps & {
+  /** The form field the choice is submitted as. */
+  name: string;
   options: Array<SegmentOption<T>>;
   value: T;
   onChange: (value: T) => void;
+  /** Draws the error ring, for a field with an error. */
+  invalid?: boolean;
+  /** The id of the hint or error the options are described by. */
+  describedBy?: string;
 };
 
 type LinkProps = CommonProps & {
+  /** Describes the group for screen readers, e.g. "View mode". */
+  label: string;
   links: SegmentLink[];
 };
 
@@ -53,23 +60,38 @@ type LinkProps = CommonProps & {
  *   keep the scroll position, so trying several options is not a string of
  *   Back presses and the page does not jump. The current option is marked
  *   with `aria-current`; each option is an ordinary tab stop, as links are.
- * - **Radio** (`options`, `value`, `onChange`): a real radio group of
- *   buttons, for a choice held in client state. Generic over the value type,
- *   so `onChange` hands you back your own union rather than a bare string.
+ * - **Radio** (`name`, `options`, `value`, `onChange`): native radio inputs,
+ *   for a choice in a form. The browser gives them their keyboard -- one tab
+ *   stop for the group, the arrow keys to move and choose, in the reading
+ *   direction -- and submits the checked one under `name`, as a `<select>`
+ *   would. The inputs are visually hidden inside their segments. Put it in a
+ *   `Field` with `group`: that fieldset is the `radiogroup`, named by its
+ *   legend and carrying `aria-invalid`, so the track here is only the look.
+ *   Generic over the value type, so `onChange` hands you back your own union
+ *   rather than a bare string.
  *
- * The file has no `"use client"`: the link mode needs no client code, so a
- * Server Component can render it directly. The radio mode takes a handler, so
- * it can only be rendered from a Client Component, which makes it one.
+ * In both, the navy pill behind the choice is `SegmentIndicator`, which slides
+ * it to a new choice. That small piece is the only client code the link mode
+ * renders.
+ *
+ * The file has no `"use client"`: the link mode needs no client code of its
+ * own, so a Server Component can render it directly. The radio mode takes a
+ * handler, so it can only be rendered from a Client Component, which makes it
+ * one.
  */
 export function SegmentedControl<T extends string>(
   props: RadioProps<T> | LinkProps,
 ) {
-  const { label, fullWidth = false, className } = props;
+  const { fullWidth = false, className } = props;
   const groupClass = cx(styles.group, fullWidth && styles.fullWidth, className);
 
   if ("links" in props) {
     return (
-      <div className={groupClass} role="group" aria-label={label}>
+      <div className={groupClass} role="group" aria-label={props.label}>
+        <SegmentIndicator
+          value={props.links.find((link) => link.current)?.value ?? null}
+          className={styles.indicator}
+        />
         {props.links.map((link) => (
           <Link
             key={link.value}
@@ -77,6 +99,7 @@ export function SegmentedControl<T extends string>(
             replace
             scroll={false}
             aria-current={link.current ? "true" : undefined}
+            data-segment={link.value}
             className={cx(styles.option, link.current && styles.selected)}
           >
             {link.label}
@@ -89,27 +112,36 @@ export function SegmentedControl<T extends string>(
     );
   }
 
-  const { options, value, onChange } = props;
+  const { name, options, value, onChange, invalid, describedBy } = props;
 
   return (
-    <div className={groupClass} role="radiogroup" aria-label={label}>
+    <div className={cx(groupClass, invalid && styles.invalid)}>
+      <SegmentIndicator
+        value={options.some((option) => option.value === value) ? value : null}
+        className={styles.indicator}
+      />
       {options.map((option) => {
         const selected = option.value === value;
         return (
-          <button
+          <label
             key={option.value}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            tabIndex={selected ? 0 : -1}
-            className={cx(styles.option, selected && styles.selected)}
-            onClick={() => onChange(option.value)}
+            data-segment={option.value}
+            className={cx(styles.option, styles.choice, selected && styles.selected)}
           >
+            <input
+              type="radio"
+              className="srOnly"
+              name={name}
+              value={option.value}
+              checked={selected}
+              onChange={() => onChange(option.value)}
+              aria-describedby={describedBy}
+            />
             {option.label}
             {option.count !== undefined && (
               <span className={styles.count}>{option.count}</span>
             )}
-          </button>
+          </label>
         );
       })}
     </div>

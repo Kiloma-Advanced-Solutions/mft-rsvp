@@ -1707,3 +1707,171 @@ permission rules or what a non-manager receives: host actions, the share URL
 and the recipient list are still built only for managers. The desktop widths
 are unchanged: a proposal to widen the board and the detail page on large
 screens was considered and not taken.
+
+## 2026-11-04 — The explanatory-note review removes only sentences approved one by one
+
+Context: M11 carried the review of redundant explanatory notes deferred from
+the pre-M11 stabilization (`TASKS.md` §5): remove what is purely redundant,
+keep anything explaining a restriction, a permission or a business state, and
+anything the API reuses as a refusal. The planning made it analysis only — no
+message changes without its exact text being approved.
+
+Decision: nine sentences were approved for removal and removed wherever they
+appeared: the host sections' "only you and the other hosts see this" line, the
+edit page's description, the open registration panel's notes — the request
+note, "ההרשמה תאושר מיד", and the two notes explaining why a removed or
+rejected person may register again on a now-open event — the active invitation
+list's description, and the form's capacity and address hints. The capacity
+field's untranslated English line was removed as well. A rejected request's
+timeline now says "נדחתה" rather than "לא אושרה"; the summary hint is
+reworded. `EVENT_SHARE_ACCESS_NOTES`, which reads like some of the removed
+copy, is email content and was kept unchanged, as was everything else in the
+share email.
+
+Rationale: each removed sentence either restated what the screen already shows
+— a host-only section's privacy, the action a button names — or explained a
+state the product owner preferred the screen to show by itself. Approval per
+sentence, rather than a rule, kept the review from removing a message nobody
+had looked at. Every closed-registration note and every API refusal stayed,
+so nothing a refusal says changed.
+
+Consequences: supersedes the note half of "A rejected person may register again
+on an `open` event, and is told why" (2026-10-25), including the removed
+person's note it mirrored; the rule that lets them register is unchanged. An
+open register or request button now has no note, so the panel's note is
+optional. Elements left empty by a removal were removed with it.
+
+## 2026-11-04 — A viewer is not shown their own "removed" or "rejected", and edit mode shows no personal badge
+
+Context: after the reopened-registration notes went, a removed or rejected
+person on an open event saw their old badge beside an active register button.
+The first proposal hid the badge only while registering was open, but on a
+full event the badge would still read as the reason they could not register.
+
+Decision: `ViewerRegistrationBadge` renders nothing for `removed` and
+`rejected`, in every event state, and is what the board card, the detail
+header and the registration panel use for the viewer's own status. Every other
+status shows as before. Separately, the detail header in edit mode shows no
+personal registration badge at all — the form is the page, and where the
+editor stands is not part of editing the event.
+
+Rationale: those two statuses are a host's past decision, not where the viewer
+stands now, and the panel's action and note already say what the viewer can
+do. One presentation rule, applied wherever the viewer sees their own status,
+means the three places cannot disagree.
+
+Consequences: supersedes "the badge is kept because it is the person's true
+status" in the 2026-10-25 entry. Stored statuses, availability, capacity, the
+API and every host view are unchanged — the queue, the removed group and the
+invitation list still show both statuses through `RegistrationBadge`.
+
+## 2026-11-04 — The event form shows its choices as native radios, in section cards
+
+Context: the form's three dropdowns — location type, category and access — used
+the browser's own select popup, which opens differently on every platform and
+cannot be styled. Three options were mocked: the selects restyled, a custom
+listbox, and the choices shown outright. The planning also proposed a hard
+110-character limit on the summary.
+
+Decision: the choices are shown outright (the approved mockup's option 1) as
+native radio inputs, through radio modes added to `SegmentedControl` and
+`Chip` beside their link modes and a `Field` `group` that is a fieldset with a
+legend. They submit the same names and values the selects did. The form is
+four section cards with the detail page's headings, both pages have
+breadcrumbs, and both titles are centred — a start-aligned edit title was
+approved, built and then reversed after review in the browser. The summary
+limit was not adopted: there is still no length rule anywhere.
+
+Rationale: native radios bring the keyboard, the reading-direction arrow keys
+and form submission for free, where a custom listbox would have meant a new
+accessibility-critical primitive and the loss of the phones' own pickers. Every
+option is visible at once and nothing opens or overflows. Reusing the board's
+segments and chips makes a choice look the same wherever it is made. Keeping
+the submitted values left `readForm`, the parser and the API untouched. The
+summary limit was the product owner's call to drop after review; the card's
+line clamp continues to handle a long summary.
+
+Consequences: the kit's `Select` lost its last user, and is removed in the
+cleanup below. `Field` now has two roots, a `<label>` for one control and a
+`<fieldset>` for a group.
+
+## 2026-11-04 — The kit drops the components no screen uses
+
+Context: "The workshop pages are retired" (2026-10-22) kept the components and
+types `/styleguide` had shown but no page used — `SegmentedControl`, `Spinner`,
+`Radio`, `CardFooter` and `BadgeVariant` — for M11 to decide on. M11 left
+others unused too.
+
+Decision: removed — `Spinner` and `LoadingBlock`, `Radio`, `Select`,
+`CardHeader` with `CardBody` and `CardFooter`, `PageHeader`'s back link
+(`backHref`, `backLabel`), the barrel exports of `BadgeVariant` and
+`ButtonSize` (both types stay inside their components), and labels nothing
+reads. Kept: `SegmentedControl`, which the board and the form use.
+
+Rationale: an unused kit component is a second way to build something the kit
+already builds another way, and `TASKS.md` §7 asks for no unused exports. Each
+was checked for consumers across `app/`, `components/`, `lib/`, `emails/` and
+`scripts/` first.
+
+Consequences: supersedes the "are kept" list of the 2026-10-22 entry. A page
+that needs a loading state, a back link or a select adds one deliberately.
+`Button`'s own loading spinner is unaffected.
+
+## 2026-11-05 — A set of radios is one radiogroup: the `Field` fieldset
+
+Context: review of M11 PR 4 found that the form's three choice fields had two
+groups each — the `Field` fieldset, named by its legend, and a
+`role="radiogroup"` inside it, which carried `aria-invalid` but had no name.
+A legend names only its own fieldset. Chrome's accessibility tree confirmed
+the unnamed radiogroups; ARIA requires a radiogroup to have a name.
+
+Decision: the fieldset itself is the `radiogroup`, and it sets `aria-invalid`
+from the field's own `error`. The segment track and the chip row inside it
+have no role. Naming the inner group too (`aria-labelledby` to the legend, or
+an `aria-label` prop) was rejected: it would leave two nested groups with the
+same name.
+
+Rationale: one element then has the name, from the native legend, and the
+invalid state, on a role that supports it — `aria-invalid` is not supported on
+`group` or on a radio, which is why it had moved off the radios. jsx-a11y
+allows the fieldset-to-radiogroup role explicitly.
+
+Consequences: `Field` with `group` now means a set of radios. Keyboard,
+labels, the hint and error descriptions and the submitted values are
+unchanged.
+
+## 2026-11-05 — Segmented controls slide their choice, and the location fields slide their height
+
+Context: in the form, a new segment turned navy in place, and switching the
+location type made the "איפה" card jump — by 120px on a desktop and over
+200px on a phone to and from hybrid. The product owner asked for the choice to slide
+in every segmented control, the board's access filter included, and for the
+card to stop jumping.
+
+Decision: one internal client piece, `SegmentIndicator`, draws the pill in
+both of `SegmentedControl`'s modes by measuring the chosen option. Only a
+change of choice slides it; a layout change places it without sliding. On the
+board it follows the server-rendered `aria-current`, so it moves when the
+navigation commits. In the form, a change of location type slides the
+wrapper of the conditional fields from its old height to its new one, then
+removes the inline height; the capacity number box, shown only while "no
+limit" is unticked, slides the same way through the same hook. Both use `--transition-base`, and reduced motion is
+the global rule's.
+
+Rationale: an index-based CSS position fits only equal options, and the
+board's are unequal and form a 2×2 grid on a phone. CSS anchor positioning
+also slid after every layout change in testing, so a resize or a font load
+would have animated. Moving the board's pill at the click instead would show
+a choice whose results have not arrived — and, with `QueuedNavigation`
+holding a quick second click, one the board is not about to show yet. Making
+`SegmentedControl` or the filters client components would have hydrated the
+links for no gain. For the card, a fixed or minimum height would leave a large
+empty area in two of the three types and cannot know the height errors and
+wrapping need; CSS cannot transition a content-driven `auto` height; and
+keeping the old fields mounted to animate them out would have submitted them
+and kept typed values, which the form deliberately does not.
+
+Consequences: `SegmentedControl` and `BoardFilters` are still server
+components and their links are unchanged. Without JavaScript, or before
+hydration, the chosen option draws its own background as before. The fields
+that no longer apply still leave at once; only the card's height moves.

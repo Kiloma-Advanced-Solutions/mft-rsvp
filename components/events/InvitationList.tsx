@@ -48,11 +48,11 @@ export function InvitationList({
             <Badge tone="neutral">{invitees.length}</Badge>
           )}
         </div>
-        <p className={styles.description}>
-          {active
-            ? INVITATION_LABELS.description
-            : INVITATION_LABELS.dormantDescription}
-        </p>
+        {!active && (
+          <p className={styles.description}>
+            {INVITATION_LABELS.dormantDescription}
+          </p>
+        )}
 
         {invitees.length === 0 ? (
           <EmptyState

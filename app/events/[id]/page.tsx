@@ -8,7 +8,7 @@ import {
   CategoryLabel,
   EventMetaDetails,
   EventStatusBadge,
-  RegistrationBadge,
+  ViewerRegistrationBadge,
 } from "@/components/events/EventMeta";
 import { HostEventActions } from "@/components/events/HostEventActions";
 import { InvitationList } from "@/components/events/InvitationList";
@@ -119,7 +119,7 @@ export default async function EventDetailPage({
         breadcrumbs={breadcrumbs}
         eyebrow={<CategoryLabel category={event.category} />}
         title={editing ? MANAGE_LABELS.editTitle : event.title}
-        description={editing ? MANAGE_LABELS.editDescription : event.summary}
+        description={editing ? undefined : event.summary}
         /*
           The host's actions -- Publish, Edit, Share, More -- for whoever
           `canManageEvent()` allows, and absent from the markup for everyone
@@ -150,8 +150,12 @@ export default async function EventDetailPage({
             {event.status !== "cancelled" && (
               <EventStatusBadge event={event} size="lg" />
             )}
-            {viewerRegistration && (
-              <RegistrationBadge status={viewerRegistration.status} size="lg" />
+            {/* Where the viewer stands, not part of editing the event. */}
+            {viewerRegistration && !editing && (
+              <ViewerRegistrationBadge
+                status={viewerRegistration.status}
+                size="lg"
+              />
             )}
           </>
         }
@@ -177,16 +181,14 @@ export default async function EventDetailPage({
       )}
 
       {editing ? (
-        <Card>
-          <EventForm
-            mode={{ kind: "edit", eventId: event.id }}
-            // Converted on the server, so the client never recomputes a
-            // `datetime-local` value and cannot disagree about the timezone.
-            initialValues={toFormValues(event)}
-            goingCount={goingCount}
-            scheduleLock={scheduleLock(event)}
-          />
-        </Card>
+        // The form sets out its own section cards.
+        <EventForm
+          mode={{ kind: "edit", eventId: event.id }}
+          // Converted on the server, so the client never recomputes a
+          // `datetime-local` value and cannot disagree about the timezone.
+          initialValues={toFormValues(event)}
+          scheduleLock={scheduleLock(event)}
+        />
       ) : (
         <div className={styles.layout}>
           {/*

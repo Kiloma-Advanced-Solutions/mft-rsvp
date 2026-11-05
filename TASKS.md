@@ -60,7 +60,7 @@ CSS.
 | --- | --- |
 | `app/styles/tokens.css` | Colours, spacing, type, radii, shadows. Light and dark. |
 | `app/globals.css` | Reset and base elements. |
-| `components/ui/` | Button, Badge, Card, Field/Input/Select/Textarea, Modal, ConfirmDialog, Toast, Avatar, EmptyState, Spinner, SegmentedControl, PageHeader. |
+| `components/ui/` | Button, Badge, Card, Chip, Field/Input/Textarea/Checkbox, Icon, Menu, Modal, ConfirmDialog, Toast, Avatar, EmptyState, SegmentedControl, PageHeader — the barrel `components/ui/index.ts` is the full list. |
 | `components/events/` | `EventCard`, `EventGrid`, `DateBlock`, `AccessBadge`, `EventStatusBadge`, `RegistrationBadge`, `CapacityMeter`, `EventMetaLine`, `EventMetaDetails`. |
 | `components/layout/` | The app shell, its brand link and the persona switcher. |
 | `lib/types.ts` | The domain model. Read this first. |
@@ -435,6 +435,44 @@ stabilization work, because each depends on the Style Guide:
   kit — kept, extended or replaced.
 - How it applies to the Hebrew, right-to-left interface and to both themes.
 - The definition of done for this milestone.
+
+**Status: in progress.** The text above is kept as it was set before the Style
+Guide arrived. The Style Guide — the Iron Numbers design system — was supplied
+and reviewed in M11's planning step, which approved a design and a sequence of
+PRs; each item left open above is now decided:
+
+- **Scope.** Every screen: the tokens, the `components/ui/` kit and the app
+  shell; the board; the detail page and host management; the create and edit
+  forms; and the email templates.
+- **The Style Guide and the conventions.** The conventions in `CLAUDE.md` stand.
+  The tokens took the Style Guide's values under their existing names, with new
+  tokens added beside them, and the kit was extended rather than replaced.
+- **Hebrew, RTL and themes.** The existing RTL conventions are kept
+  (`memory/a_system.md` "Language and direction"), and light and dark are both
+  required.
+- **The retained components.** Removed: `Spinner` with `LoadingBlock`, `Radio`,
+  `CardFooter` with `CardHeader` and `CardBody`, the `BadgeVariant` export, and
+  `Select`, which the form no longer uses. Kept: `SegmentedControl`, which the
+  board's access filter and the event form now use.
+- **Category colours** are implemented, and the accent entry is superseded in
+  `memory/dec_log.md`.
+- **Explanatory notes.** The review removed only the sentences approved one by
+  one. Every note that explains a closed registration, and every message the
+  API reuses as a refusal, is kept.
+- **Definition of done**, for every M11 PR: section 7 and the `CLAUDE.md`
+  command chain, plus checks as an organizer and a member (all five personas
+  for detail-page work), in light and dark, at 375–1920px, and by keyboard for
+  menus and dialogs.
+
+Merged: the foundations, kit and shell; the board; the detail page and host
+management. Built and awaiting merge: the forms, the copy review, the viewer's
+own status badges and the kit cleanup.
+
+Remaining: the **email templates**, redesigned to match in a separate PR. It
+starts by inspecting the templates and their sending flows. A mockup in the
+M11 design is approved before anything is implemented, and rendering, RTL,
+links and content are verified against it. Until then the emails are as M10
+left them. Which PR is where is in `memory/s_status.md`.
 
 #### M12 — Application logging
 

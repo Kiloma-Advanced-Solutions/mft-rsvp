@@ -2,21 +2,25 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useId, useLayoutEffect, useRef, useState, useTransition } from "react";
 import type { FormEvent, ReactNode } from "react";
 
 import {
   Button,
+  Card,
   Checkbox,
+  Chip,
   Field,
   FieldRow,
+  Icon,
   Input,
-  Select,
+  SegmentedControl,
   Textarea,
   buttonClass,
   useToast,
 } from "@/components/ui";
 import { RequestError, fetchJson } from "@/lib/api";
+import { cx } from "@/lib/cx";
 import { toDateTimeLocalValue } from "@/lib/date";
 import { UNLIMITED, parseEventForm, readFieldErrors } from "@/lib/eventInput";
 import type { EventFieldErrors, EventFormValues } from "@/lib/eventInput";
@@ -39,6 +43,7 @@ import type {
   ScheduleLockReason,
 } from "@/lib/types";
 
+import { ACCESS_ICONS, categoryToneClass } from "./EventMeta";
 import styles from "./EventForm.module.css";
 
 /**
@@ -61,7 +66,6 @@ import styles from "./EventForm.module.css";
 export function EventForm({
   mode,
   initialValues,
-  goingCount,
   scheduleLock,
 }: {
   mode: { kind: "create" } | { kind: "edit"; eventId: string };
@@ -70,8 +74,6 @@ export function EventForm({
    * are never recomputed during a client render.
    */
   initialValues: EventFormValues;
-  /** Only for the capacity hint when editing. */
-  goingCount?: number;
   /**
    * Set when editing an event whose dates may no longer change, decided on the
    * server by `getScheduleAvailability()`. The two date inputs are disabled,
@@ -89,10 +91,21 @@ export function EventForm({
   };
 }) {
   const [locationKind, setLocationKind] = useState(initialValues.locationKind);
+  const [locationFieldsRef, measureLocationFields] =
+    useHeightTransition(locationKind);
+  const [category, setCategory] = useState(initialValues.category);
   const [access, setAccess] = useState(initialValues.access);
+  // The hint or error under each set of choices, which the choices point at.
+  const messageIds = {
+    locationKind: useId(),
+    category: useId(),
+    access: useId(),
+  };
   const [unlimited, setUnlimited] = useState(
     initialValues.capacityUnlimited !== "",
   );
+  const [capacityLimitRef, measureCapacityLimit] =
+    useHeightTransition(unlimited);
 
   const [errors, setErrors] = useState<EventFieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -112,9 +125,12 @@ export function EventForm({
   const showsLink = locationKind === "online" || locationKind === "hybrid";
 
   const datesLocked = scheduleLock !== undefined;
-  const dateHint = scheduleLock
-    ? scheduleRefusalNote(scheduleLock.reason)
-    : undefined;
+  const dateHint = scheduleLock ? (
+    <span className={styles.lockNote}>
+      <Icon name="lock" size="sm" />
+      {scheduleRefusalNote(scheduleLock.reason)}
+    </span>
+  ) : undefined;
 
   async function submit(formEvent: FormEvent<HTMLFormElement>) {
     formEvent.preventDefault();
@@ -201,41 +217,58 @@ export function EventForm({
 
   return (
     <form className={styles.form} onSubmit={submit} noValidate>
-      <div className={styles.fields}>
-        {/*
-          The free-text controls take their direction from what is typed into
-          them rather than from the document. The interface is Hebrew, but an
-          event's title or venue may not be, and an RTL text box puts an English
-          sentence's full stop at the wrong end. The structured controls -- the
-          dates, the capacity, the pickers -- are left alone.
-        */}
-        <Field label={EVENT_FORM_LABELS.title} required error={errors.title}>
-          <Input name="title" defaultValue={initialValues.title} dir="auto" />
-        </Field>
+      {/*
+        The details have no section title of their own: they are what the
+        page is about, and the form never named them.
+      */}
+      <Card>
+        <div className={styles.fields}>
+          {/*
+            The free-text controls take their direction from what is typed into
+            them rather than from the document. The interface is Hebrew, but an
+            event's title or venue may not be, and an RTL text box puts an
+            English sentence's full stop at the wrong end. The structured
+            controls -- the dates, the capacity, the pickers -- are left alone.
+          */}
+          <Field label={EVENT_FORM_LABELS.title} required error={errors.title}>
+            <Input
+              name="title"
+              defaultValue={initialValues.title}
+              dir="auto"
+              aria-invalid={invalid(errors.title)}
+            />
+          </Field>
 
-        <Field
-          label={EVENT_FORM_LABELS.summary}
-          required
-          hint={EVENT_FORM_LABELS.summaryHint}
-          error={errors.summary}
-        >
-          <Input name="summary" defaultValue={initialValues.summary} dir="auto" />
-        </Field>
+          <Field
+            label={EVENT_FORM_LABELS.summary}
+            required
+            hint={EVENT_FORM_LABELS.summaryHint}
+            error={errors.summary}
+          >
+            <Input
+              name="summary"
+              defaultValue={initialValues.summary}
+              dir="auto"
+              aria-invalid={invalid(errors.summary)}
+            />
+          </Field>
 
-        <Field
-          label={EVENT_FORM_LABELS.description}
-          required
-          hint={EVENT_FORM_LABELS.descriptionHint}
-          error={errors.description}
-        >
-          <Textarea
-            name="description"
-            rows={6}
-            defaultValue={initialValues.description}
-            dir="auto"
-          />
-        </Field>
-      </div>
+          <Field
+            label={EVENT_FORM_LABELS.description}
+            required
+            hint={EVENT_FORM_LABELS.descriptionHint}
+            error={errors.description}
+          >
+            <Textarea
+              name="description"
+              rows={6}
+              defaultValue={initialValues.description}
+              dir="auto"
+              aria-invalid={invalid(errors.description)}
+            />
+          </Field>
+        </div>
+      </Card>
 
       <Section title={EVENT_FORM_LABELS.sectionWhen}>
         <FieldRow>
@@ -250,6 +283,7 @@ export function EventForm({
               name="startsAt"
               defaultValue={initialValues.startsAt}
               disabled={datesLocked}
+              aria-invalid={invalid(errors.startsAt)}
               // The earliest start the picker offers, from the browser's clock
               // at the moment it is used. Set on focus rather than rendered, so
               // the server's markup never carries a time the client disagrees
@@ -272,127 +306,161 @@ export function EventForm({
               name="endsAt"
               defaultValue={initialValues.endsAt}
               disabled={datesLocked}
+              aria-invalid={invalid(errors.endsAt)}
             />
           </Field>
         </FieldRow>
       </Section>
 
       <Section title={EVENT_FORM_LABELS.sectionWhere}>
+        {/*
+          The three choices below are radios, not menus: every option shows,
+          and each set submits under the same name the select it replaced did.
+        */}
         <Field
           label={EVENT_FORM_LABELS.locationKind}
           required
           error={errors.location}
+          group
+          messageId={messageIds.locationKind}
         >
-          <Select
+          <SegmentedControl<string>
             name="locationKind"
+            fullWidth
+            options={LOCATION_KINDS.map((kind) => ({
+              value: kind,
+              label: LOCATION_KIND_LABELS[kind],
+            }))}
             value={locationKind}
-            onChange={(changed) => setLocationKind(changed.target.value)}
-          >
-            {LOCATION_KINDS.map((kind) => (
-              <option key={kind} value={kind}>
-                {LOCATION_KIND_LABELS[kind]}
-              </option>
-            ))}
-          </Select>
+            onChange={(kind) => {
+              measureLocationFields();
+              setLocationKind(kind);
+            }}
+            invalid={Boolean(errors.location)}
+            describedBy={errors.location ? messageIds.locationKind : undefined}
+          />
         </Field>
 
         {/*
           Only the fields `EventLocation.kind` calls meaningful are rendered, and
           the parser drops the rest -- so a hybrid event switched to online does
-          not keep its old street address.
+          not keep its old street address. Their wrapper's height slides from
+          the old set of fields to the new one; see `useHeightTransition`.
         */}
-        {showsVenue && (
-          <FieldRow>
-            <Field
-              label={EVENT_FORM_LABELS.venue}
-              required
-              error={errors.locationVenue}
-            >
-              <Input
-                name="locationVenue"
-                defaultValue={initialValues.locationVenue}
-                dir="auto"
-              />
-            </Field>
-            <Field
-              label={EVENT_FORM_LABELS.address}
-              optional
-              hint={EVENT_FORM_LABELS.addressHint}
-            >
-              <Input
-                name="locationAddress"
-                defaultValue={initialValues.locationAddress}
-                dir="auto"
-              />
-            </Field>
-          </FieldRow>
-        )}
+        <div ref={locationFieldsRef} className={styles.locationFields}>
+          {showsVenue && (
+            <FieldRow>
+              <Field
+                label={EVENT_FORM_LABELS.venue}
+                required
+                error={errors.locationVenue}
+              >
+                <Input
+                  name="locationVenue"
+                  defaultValue={initialValues.locationVenue}
+                  dir="auto"
+                  aria-invalid={invalid(errors.locationVenue)}
+                />
+              </Field>
+              <Field label={EVENT_FORM_LABELS.address} optional>
+                <Input
+                  name="locationAddress"
+                  defaultValue={initialValues.locationAddress}
+                  dir="auto"
+                />
+              </Field>
+            </FieldRow>
+          )}
 
-        {showsLink && (
-          <FieldRow>
-            <Field
-              label={EVENT_FORM_LABELS.url}
-              required
-              error={errors.locationUrl}
-            >
-              <Input
-                name="locationUrl"
-                defaultValue={initialValues.locationUrl}
-                dir="auto"
-              />
-            </Field>
-            <Field
-              label={EVENT_FORM_LABELS.platform}
-              optional
-              hint={EVENT_FORM_LABELS.platformHint}
-            >
-              <Input
-                name="locationPlatform"
-                defaultValue={initialValues.locationPlatform}
-                dir="auto"
-              />
-            </Field>
-          </FieldRow>
-        )}
+          {showsLink && (
+            <FieldRow>
+              <Field
+                label={EVENT_FORM_LABELS.url}
+                required
+                error={errors.locationUrl}
+              >
+                <Input
+                  name="locationUrl"
+                  defaultValue={initialValues.locationUrl}
+                  dir="auto"
+                  aria-invalid={invalid(errors.locationUrl)}
+                />
+              </Field>
+              <Field
+                label={EVENT_FORM_LABELS.platform}
+                optional
+                hint={EVENT_FORM_LABELS.platformHint}
+              >
+                <Input
+                  name="locationPlatform"
+                  defaultValue={initialValues.locationPlatform}
+                  dir="auto"
+                />
+              </Field>
+            </FieldRow>
+          )}
+        </div>
       </Section>
 
       <Section title={EVENT_FORM_LABELS.sectionWho}>
-        <FieldRow>
-          <Field
-            label={EVENT_FORM_LABELS.category}
-            required
-            error={errors.category}
-          >
-            <Select name="category" defaultValue={initialValues.category}>
-              <option value="">—</option>
-              {CATEGORY_ORDER.map((category) => (
-                <option key={category} value={category}>
-                  {CATEGORY_LABELS[category]}
-                </option>
-              ))}
-            </Select>
-          </Field>
+        {/*
+          No category is chosen on a new event -- the select's "—" -- so none
+          of these is checked, nothing is submitted, and the rule asks for one.
+        */}
+        <Field
+          label={EVENT_FORM_LABELS.category}
+          required
+          error={errors.category}
+          group
+          messageId={messageIds.category}
+        >
+          <div className={styles.chips}>
+            {CATEGORY_ORDER.map((option) => (
+              <Chip
+                key={option}
+                name="category"
+                value={option}
+                selected={category === option}
+                onChange={setCategory}
+                dot
+                className={cx(styles.categoryChip, categoryToneClass(option))}
+                invalid={Boolean(errors.category)}
+                describedBy={errors.category ? messageIds.category : undefined}
+              >
+                {CATEGORY_LABELS[option]}
+              </Chip>
+            ))}
+          </div>
+        </Field>
 
-          <Field
-            label={EVENT_FORM_LABELS.access}
-            required
-            hint={accessHint(access)}
-            error={errors.access}
-          >
-            <Select
-              name="access"
-              value={access}
-              onChange={(changed) => setAccess(changed.target.value)}
-            >
-              <option value="">—</option>
-              {ACCESS_ORDER.map((option) => (
-                <option key={option} value={option}>
+        <Field
+          label={EVENT_FORM_LABELS.access}
+          required
+          hint={accessHint(access)}
+          error={errors.access}
+          group
+          messageId={messageIds.access}
+        >
+          <SegmentedControl<string>
+            name="access"
+            fullWidth
+            options={ACCESS_ORDER.map((option) => ({
+              value: option,
+              label: (
+                <>
+                  <Icon name={ACCESS_ICONS[option]} size="sm" />
                   {ACCESS_LABELS[option]}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </FieldRow>
+                </>
+              ),
+            }))}
+            value={access}
+            onChange={setAccess}
+            invalid={Boolean(errors.access)}
+            describedBy={
+              errors.access || accessHint(access) ? messageIds.access : undefined
+            }
+          />
+        </Field>
 
         <div className={styles.capacity}>
           <Checkbox
@@ -403,29 +471,39 @@ export function EventForm({
             value={UNLIMITED}
             label={EVENT_FORM_LABELS.capacityUnlimited}
             checked={unlimited}
-            onChange={(changed) => setUnlimited(changed.target.checked)}
+            onChange={(changed) => {
+              measureCapacityLimit();
+              setUnlimited(changed.target.checked);
+            }}
           />
-          {!unlimited && (
-            <Field
-              label={EVENT_FORM_LABELS.capacity}
-              hint={capacityHint(goingCount)}
-              error={errors.capacity}
-            >
-              <Input
-                type="number"
-                min={1}
-                step={1}
-                name="capacity"
-                placeholder={EVENT_FORM_LABELS.capacityPlaceholder}
-                defaultValue={initialValues.capacity}
-              />
-            </Field>
-          )}
+          {/*
+            The number box is rendered only while there is a limit, as before;
+            its wrapper's height slides as it comes and goes. The checkbox
+            stays outside it, so its focus ring is never clipped by the slide.
+          */}
+          <div ref={capacityLimitRef} className={styles.capacityLimit}>
+            {!unlimited && (
+              <div className={styles.capacityField}>
+                <Field label={EVENT_FORM_LABELS.capacity} error={errors.capacity}>
+                  <Input
+                    type="number"
+                    min={1}
+                    step={1}
+                    name="capacity"
+                    placeholder={EVENT_FORM_LABELS.capacityPlaceholder}
+                    defaultValue={initialValues.capacity}
+                    aria-invalid={invalid(errors.capacity)}
+                  />
+                </Field>
+              </div>
+            )}
+          </div>
         </div>
       </Section>
 
       {formError && (
         <p className={styles.formError} role="alert">
+          <span className={styles.formErrorDot} aria-hidden />
           {formError}
         </p>
       )}
@@ -441,6 +519,7 @@ export function EventForm({
           href={cancelHref}
           className={buttonClass({
             variant: "ghost",
+            size: "lg",
             className: busy ? styles.linkBusy : undefined,
           })}
           aria-disabled={busy}
@@ -448,7 +527,7 @@ export function EventForm({
         >
           {MANAGE_LABELS.cancel}
         </Link>
-        <Button type="submit" loading={busy}>
+        <Button type="submit" size="lg" loading={busy}>
           {creating ? MANAGE_LABELS.createSubmit : MANAGE_LABELS.editSubmit}
         </Button>
       </div>
@@ -473,18 +552,17 @@ function accessHint(access: string): string | undefined {
 }
 
 /**
- * Lowering capacity below the people already confirmed is allowed -- it does
- * not remove anybody -- so this says what is already true rather than refusing.
+ * `aria-invalid` for a control whose field has an error, and nothing
+ * otherwise. The message itself is announced by `Field`, inside the label.
  */
-function capacityHint(goingCount?: number): string {
-  if (goingCount === undefined || goingCount === 0) {
-    return EVENT_FORM_LABELS.capacityHint;
-  }
-  const people = goingCount === 1 ? "person has" : "people have";
-  return `${goingCount} ${people} a confirmed place already.`;
+function invalid(error: string | undefined): true | undefined {
+  return error ? true : undefined;
 }
 
-/** One titled group of fields, so a long form still reads as sections. */
+/**
+ * One titled group of fields on a section card of its own, as the detail page
+ * sets out its sections, so a long form still reads as parts.
+ */
 function Section({
   title,
   children,
@@ -493,11 +571,85 @@ function Section({
   children: ReactNode;
 }) {
   return (
-    <section className={styles.section}>
-      <h2 className={styles.sectionTitle}>{title}</h2>
-      <div className={styles.fields}>{children}</div>
-    </section>
+    <Card>
+      <section>
+        <h2 className={styles.sectionTitle}>{title}</h2>
+        <div className={styles.fields}>{children}</div>
+      </section>
+    </Card>
   );
+}
+
+/**
+ * Slides an element's height from what it was to what it is after `key`
+ * changes, so the card does not jump when a choice swaps the fields under it:
+ * the location type's fields, the number box behind "no limit".
+ *
+ * Put the returned ref on the element, and call the returned `measure` just
+ * before the change -- in the handler, while the old content is still on
+ * screen. After React has rendered the new content, the element is set to the
+ * old height and transitioned to the new one, clipped while it moves, and then
+ * given back its natural height: an inline height is never left behind, so
+ * errors, wrapping and resizes go on reshaping it as before. A change
+ * mid-slide starts from the height on screen. The content itself is swapped at
+ * once, as it always was, so nothing is kept mounted for the animation's sake.
+ * With reduced motion the global rule makes the transition instant.
+ */
+function useHeightTransition(key: string | boolean) {
+  const ref = useRef<HTMLDivElement>(null);
+  const from = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    const element = ref.current;
+    const start = from.current;
+    from.current = null;
+    if (!element || start === null) return;
+
+    element.style.height = "";
+    const end = element.getBoundingClientRect().height;
+    if (Math.abs(end - start) < 0.5) {
+      delete element.dataset.resizing;
+      return;
+    }
+
+    element.dataset.resizing = "";
+    element.style.height = `${start}px`;
+    // Commit the old height before asking for the new one, or there is no
+    // change for the transition to animate.
+    void element.offsetHeight;
+    element.style.height = `${end}px`;
+
+    const sliding = () =>
+      element
+        .getAnimations()
+        .some(
+          (animation) =>
+            animation instanceof CSSTransition &&
+            animation.transitionProperty === "height",
+        );
+    const finish = (event: TransitionEvent) => {
+      if (event.target !== element || event.propertyName !== "height") return;
+      // A cancel can be the earlier slide's, which this one replaced and
+      // which is reported only now; this one is still running then.
+      if (event.type === "transitioncancel" && sliding()) return;
+      element.style.height = "";
+      delete element.dataset.resizing;
+      element.removeEventListener("transitionend", finish);
+      element.removeEventListener("transitioncancel", finish);
+    };
+    element.addEventListener("transitionend", finish);
+    element.addEventListener("transitioncancel", finish);
+    return () => {
+      element.removeEventListener("transitionend", finish);
+      element.removeEventListener("transitioncancel", finish);
+    };
+  }, [key]);
+
+  function measure() {
+    from.current = ref.current?.getBoundingClientRect().height ?? null;
+  }
+
+  return [ref, measure] as const;
 }
 
 /**

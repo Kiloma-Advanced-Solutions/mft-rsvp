@@ -243,7 +243,6 @@ function eventCount(n: number): string {
 
 /** The event detail screen's own words: its sections and its host tools. */
 export const DETAIL_LABELS = {
-  back: "חזרה ללוח",
   /** The title of the card holding the date, time and place. */
   whenWhere: "מתי ואיפה",
   about: "על האירוע",
@@ -252,8 +251,6 @@ export const DETAIL_LABELS = {
   /** The title of the registration panel. */
   registration: "הרשמה",
   noAttendees: "אף אחד עוד לא נרשם.",
-  hostTools: "כלי מארח",
-  hostToolsDescription: "רק אתם והמארחים האחרים רואים את זה.",
   edit: "עריכה",
   /** The header's icon buttons: their accessible names and tooltips. */
   share: "שיתוף",
@@ -274,8 +271,11 @@ export const DETAIL_LABELS = {
 type RegistrationCtaCopy = {
   /** The primary action's label, or `null` when there is nothing to offer. */
   action: string | null;
-  /** One line telling the viewer where they stand. */
-  note: string;
+  /**
+   * One line telling the viewer where they stand, or `null` when the action
+   * says it alone -- an open event's register or request button.
+   */
+  note: string | null;
 };
 
 const CLOSED_NOTES: Record<RegistrationClosedReason, string> = {
@@ -305,36 +305,8 @@ const CANCELLED_EVENT_NOTES: Partial<Record<RegistrationStatus, string>> = {
 };
 
 /**
- * What a removed person reads once the event has been opened to everyone. Their
- * badge still says they were removed, which on its own would contradict the
- * register button beside it; this says why both are true.
- */
-const REMOVED_REOPENED_NOTE =
-  "הוסרתם מהאירוע בעבר, אבל עכשיו הוא פתוח ואפשר להירשם שוב. ההרשמה תאושר מיד.";
-
-/**
- * The same, for someone whose request was turned down: their badge still says
- * so, and the register button beside it needs the reason it is there.
- */
-const REJECTED_REOPENED_NOTE =
-  "הבקשה שלכם לא אושרה בעבר, אבל עכשיו האירוע פתוח ואפשר להירשם. ההרשמה תאושר מיד.";
-
-/**
- * Notes for a registration that would otherwise close, but may be reclaimed
- * because the event is now open. `getRegistrationAvailability()` lets these two
- * statuses register only on an `open` event, so `register` with one of them
- * means exactly that.
- */
-const REOPENED_NOTES: Partial<Record<RegistrationStatus, string>> = {
-  removed: REMOVED_REOPENED_NOTE,
-  rejected: REJECTED_REOPENED_NOTE,
-};
-
-/**
  * `viewerStatus` only changes the wording for a cancelled event -- see
- * `CANCELLED_EVENT_NOTES` -- and for a removed or rejected person who may
- * register again because the event is now open -- see `REOPENED_NOTES`.
- * Everything else is decided by `availability` alone.
+ * `CANCELLED_EVENT_NOTES`. Everything else is decided by `availability` alone.
  */
 export function registrationCtaCopy(
   availability: RegistrationAvailability,
@@ -343,16 +315,8 @@ export function registrationCtaCopy(
   switch (availability.state) {
     case "open":
       return availability.action === "request"
-        ? {
-            action: "בקשת מקום",
-            note: "מארח מחליט מי נכנס, ולכן זו בקשה ולא הרשמה.",
-          }
-        : {
-            action: "הרשמה",
-            note:
-              (viewerStatus ? REOPENED_NOTES[viewerStatus] : undefined) ??
-              "ההרשמה תאושר מיד.",
-          };
+        ? { action: "בקשת מקום", note: null }
+        : { action: "הרשמה", note: null };
 
     /*
       English called both of these "Withdraw". Hebrew names what is being
@@ -428,7 +392,6 @@ export const REGISTRATION_ACTION_COPY = {
  */
 export const QUEUE_LABELS = {
   title: "בקשות",
-  description: "רק אתם והמארחים האחרים רואים את זה.",
   rejectedTitle: "לא אושרו",
   emptyTitle: "אין בקשות ממתינות",
   emptyDescription:
@@ -462,7 +425,7 @@ export function requestTimelineLabel(
   const requested = `הבקשה הוגשה ${requestedRelative}`;
   if (!decidedRelative) return requested;
 
-  return `${requested} · לא אושרה ${decidedRelative}`;
+  return `${requested} · נדחתה ${decidedRelative}`;
 }
 
 /**
@@ -541,11 +504,7 @@ export const MANAGE_LABELS = {
   createDescription:
     "האירוע מתחיל כטיוטה, כך שאף אחד אחר לא יראה אותו עד שתפרסמו.",
   createSubmit: "יצירת טיוטה",
-  /** Leaves edit mode without leaving the event. */
-  backToEvent: "חזרה לאירוע",
   editTitle: "עריכת האירוע",
-  editDescription:
-    "כולם עדיין רואים את אותו מסך. לכם מוצגות גם אפשרויות העריכה.",
   editSubmit: "שמירת השינויים",
   cancel: "ביטול",
 };
@@ -558,7 +517,7 @@ export const EVENT_FORM_LABELS = {
    * Guidance, not a limit. Nothing enforces a length -- the card line-clamps a
    * long summary, so a host is trusted to write a sensible one.
    */
-  summaryHint: "משפט אחד, שמוצג על הכרטיסים. סביב 110 תווים נקרא הכי טוב.",
+  summaryHint: "תיאור קצר שיופיע בכרטיס האירוע.",
   description: "תיאור",
   descriptionHint: "השאירו שורה ריקה בין פסקאות.",
   startsAt: "מתחיל",
@@ -566,13 +525,11 @@ export const EVENT_FORM_LABELS = {
   category: "קטגוריה",
   access: "אופן הכניסה",
   capacity: "קיבולת",
-  capacityHint: "משתתפים מאושרים. השאירו ללא הגבלה כדי לא לקבוע תקרה.",
   capacityUnlimited: "ללא הגבלת משתתפים",
   capacityPlaceholder: "למשל 40",
   locationKind: "איך משתתפים",
   venue: "מקום",
   address: "כתובת",
-  addressHint: "מוצגת מתחת למקום בעמוד האירוע.",
   url: "קישור להצטרפות",
   platform: "פלטפורמה",
   platformHint: 'למשל "Zoom", "Google Meet".',
@@ -813,11 +770,9 @@ export const SHARE_LABELS = {
  * purpose -- this adds nobody to anything, and the hint says so.
  */
 export const SHARE_EMAIL_LABELS = {
-  pickerLabel: "שליחת הקישור במייל",
   /** The Share menu's item that opens the picker. */
   menuItem: "שליחת הקישור במייל…",
   hint: "המייל כולל את הקישור לאירוע. הוא לא מזמין, לא רושם ולא נותן גישה.",
-  choosePeople: "בחירת נמענים",
   pickerTitle: "בחירת נמענים",
   pickerDescription: "מופיעים כאן רק מי שכבר יכולים לראות את האירוע.",
   filterLabel: "חיפוש",
@@ -943,7 +898,6 @@ export const ATTENDEE_LABELS = {
   remove: "הסרה",
   restore: "החזרה",
   removedTitle: "הוסרו מהאירוע",
-  removedDescription: "רק אתם והמארחים האחרים רואים את זה.",
   /**
    * The host's empty list when everyone confirmed was removed. "Nobody has
    * registered yet" would contradict the removed group right below it; only a
@@ -1039,16 +993,9 @@ export const ATTENDEE_ACTION_COPY = {
 export const INVITATION_LABELS = {
   title: "מוזמנים",
   /**
-   * An active list, in every state it is shown in -- draft, published, started
-   * and cancelled. It says who the event is restricted to rather than who sees
-   * it or may register right now, which differs between those states; whether
-   * registering or inviting is open is said elsewhere on the page.
-   */
-  description:
-    "הגישה לאירוע שמורה למי שברשימה, למארחים ולמנהלי המערכת. את הרשימה רואים רק אתם והמארחים האחרים.",
-  /**
    * A dormant list: the event is not invite-only, so the rows decide nothing,
    * but they are kept as they were and count again if it becomes invite-only.
+   * An active list has no description.
    */
   dormantDescription:
     "האירוע לא בהזמנה בלבד כרגע, ולכן הרשימה הזו לא פעילה ולא משפיעה על מי שרואה אותו. היא נשמרת כמו שהיא, ותחזור לתוקף אם האירוע יחזור להיות בהזמנה בלבד.",
@@ -1379,21 +1326,16 @@ export function nowViewingAsLabel(name: string): string {
  * The words the UI kit says on its own behalf.
  *
  * A primitive in `components/ui/` knows nothing about events, but it still has
- * to say "close" and "loading" somewhere. These are its defaults; anything
+ * to say "close" and "optional" somewhere. These are its defaults; anything
  * event-specific is still passed in by the caller.
  */
 export const UI_LABELS = {
-  back: "חזרה",
   /** The accessible name of a page's breadcrumb trail. */
   breadcrumbs: "פירורי לחם",
   close: "סגירה",
   confirm: "אישור",
   cancel: "ביטול",
   optional: "אופציונלי",
-  /** The spinner's accessible name. */
-  loading: "טוען",
-  /** `LoadingBlock`'s visible text, which is the same word plus its ellipsis. */
-  loadingEllipsis: "טוען…",
   notifications: "התראות",
   dismissNotification: "סגירת ההתראה",
   /** The avatar stack's accessible name when there is nobody in it. */

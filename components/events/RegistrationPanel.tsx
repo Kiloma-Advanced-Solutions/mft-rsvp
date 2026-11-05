@@ -11,7 +11,7 @@ import type {
   RegistrationAvailability,
 } from "@/lib/types";
 
-import { CapacityMeter, RegistrationBadge } from "./EventMeta";
+import { CapacityMeter, ViewerRegistrationBadge } from "./EventMeta";
 import { RegistrationActions } from "./RegistrationActions";
 import styles from "./RegistrationPanel.module.css";
 
@@ -59,7 +59,10 @@ export function RegistrationPanel({
         <div className={styles.head}>
           <h2 className={styles.title}>{DETAIL_LABELS.registration}</h2>
           {viewerRegistration && (
-            <RegistrationBadge status={viewerRegistration.status} size="lg" />
+            <ViewerRegistrationBadge
+              status={viewerRegistration.status}
+              size="lg"
+            />
           )}
         </div>
 
@@ -78,7 +81,7 @@ export function RegistrationPanel({
           />
         )}
 
-        <p className={styles.note}>{copy.note}</p>
+        {copy.note && <p className={styles.note}>{copy.note}</p>}
       </section>
     </Card>
   );

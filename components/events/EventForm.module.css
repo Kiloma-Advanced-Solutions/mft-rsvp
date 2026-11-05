@@ -1,7 +1,11 @@
+/*
+  The form as a column of section cards, the way the detail page lays out its
+  sections: the same gap between cards, and the actions under the last one.
+*/
 .form {
   display: flex;
   flex-direction: column;
-  gap: var(--space-8);
+  gap: var(--space-card-gap);
 }
 
 .fields {
@@ -10,38 +14,102 @@
   gap: var(--space-5);
 }
 
-.section {
+/* The detail page's section heading, so both screens title a card alike. */
+.sectionTitle {
+  margin-bottom: var(--space-5);
+  font-size: var(--text-section-title);
+  font-weight: var(--weight-bold);
+  line-height: var(--leading-tight);
+}
+
+/*
+  The location type's fields. Their own column, with the card's gap, so their
+  height can slide when the type swaps them -- `useHeightTransition` sets it
+  only while sliding, clipped meanwhile, and then hands it back to the content.
+*/
+.locationFields {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
-  padding-top: var(--space-6);
-  border-top: 1px solid var(--color-border);
+  gap: var(--space-5);
+  transition: height var(--transition-base);
 }
 
-.sectionTitle {
-  margin: 0;
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-wide);
-  text-transform: uppercase;
-  color: var(--color-text-subtle);
+.locationFields[data-resizing] {
+  overflow: hidden;
 }
 
+/* The category chips wrap onto as many lines as the card needs. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* Each chip's dot in its category's colour, as on the board's filter. */
+.categoryChip {
+  --chip-dot: var(--category-dot);
+}
+
+/*
+  The checkbox, then the number box while there is a limit. The space between
+  them is the number box's own, so that with no limit the empty wrapper takes
+  none -- a gap would still separate it.
+*/
 .capacity {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
 }
 
+/* The number box's wrapper, whose height slides as the box comes and goes;
+   the same as `.locationFields`. */
+.capacityLimit {
+  transition: height var(--transition-base);
+}
+
+.capacityLimit[data-resizing] {
+  overflow: hidden;
+}
+
+/* The number box takes half the card on a wide screen, as a field in a two-up
+   row would, rather than stretching across it for a number of a few digits. */
+.capacityField {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* Padding, not a margin: a margin would collapse through the wrapper until
+     the slide clips it, and jump when it did. */
+  padding-top: var(--space-4);
+}
+
+/* A locked date says why with the lock beside it. */
+.lockNote {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+/*
+  A refusal the server sent for the whole form, in the tone of the cancelled
+  notice: a tinted block with its dot level with the first line.
+*/
 .formError {
-  margin: 0;
-  padding: var(--space-3) var(--space-4);
-  border: 1px solid var(--color-danger);
-  border-radius: var(--radius-md);
-  background: var(--color-danger-soft);
-  color: var(--color-danger-text);
-  font-size: var(--text-sm);
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-card);
+  background: var(--tone-blocked-bg);
+  color: var(--tone-blocked-fg);
+  font-size: var(--text-label);
   line-height: var(--leading-normal);
+}
+
+.formErrorDot {
+  flex: none;
+  width: var(--dot-size-lg);
+  height: var(--dot-size-lg);
+  margin-top: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--tone-blocked-dot);
 }
 
 .actions {
@@ -49,8 +117,6 @@
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: var(--space-3);
-  padding-top: var(--space-6);
-  border-top: 1px solid var(--color-border);
 }
 
 /**
@@ -62,4 +128,20 @@
  */
 .linkBusy {
   pointer-events: none;
+}
+
+/*
+  On a phone the number box takes the full width, and the primary action
+  stretches across what Cancel leaves, as the board header's action does. The
+  two stay on one row in source order, so the keyboard meets them in the order
+  they are seen.
+*/
+@media (max-width: 760px) {
+  .capacityField {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .actions > :last-child {
+    flex: 1;
+  }
 }
