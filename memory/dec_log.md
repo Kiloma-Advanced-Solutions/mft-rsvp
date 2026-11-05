@@ -1816,3 +1816,62 @@ was checked for consumers across `app/`, `components/`, `lib/`, `emails/` and
 Consequences: supersedes the "are kept" list of the 2026-10-22 entry. A page
 that needs a loading state, a back link or a select adds one deliberately.
 `Button`'s own loading spinner is unaffected.
+
+## 2026-11-05 — A set of radios is one radiogroup: the `Field` fieldset
+
+Context: review of M11 PR 4 found that the form's three choice fields had two
+groups each — the `Field` fieldset, named by its legend, and a
+`role="radiogroup"` inside it, which carried `aria-invalid` but had no name.
+A legend names only its own fieldset. Chrome's accessibility tree confirmed
+the unnamed radiogroups; ARIA requires a radiogroup to have a name.
+
+Decision: the fieldset itself is the `radiogroup`, and it sets `aria-invalid`
+from the field's own `error`. The segment track and the chip row inside it
+have no role. Naming the inner group too (`aria-labelledby` to the legend, or
+an `aria-label` prop) was rejected: it would leave two nested groups with the
+same name.
+
+Rationale: one element then has the name, from the native legend, and the
+invalid state, on a role that supports it — `aria-invalid` is not supported on
+`group` or on a radio, which is why it had moved off the radios. jsx-a11y
+allows the fieldset-to-radiogroup role explicitly.
+
+Consequences: `Field` with `group` now means a set of radios. Keyboard,
+labels, the hint and error descriptions and the submitted values are
+unchanged.
+
+## 2026-11-05 — Segmented controls slide their choice, and the location fields slide their height
+
+Context: in the form, a new segment turned navy in place, and switching the
+location type made the "איפה" card jump — by 120px on a desktop and over
+200px on a phone to and from hybrid. The product owner asked for the choice to slide
+in every segmented control, the board's access filter included, and for the
+card to stop jumping.
+
+Decision: one internal client piece, `SegmentIndicator`, draws the pill in
+both of `SegmentedControl`'s modes by measuring the chosen option. Only a
+change of choice slides it; a layout change places it without sliding. On the
+board it follows the server-rendered `aria-current`, so it moves when the
+navigation commits. In the form, a change of location type slides the
+wrapper of the conditional fields from its old height to its new one, then
+removes the inline height; the capacity number box, shown only while "no
+limit" is unticked, slides the same way through the same hook. Both use `--transition-base`, and reduced motion is
+the global rule's.
+
+Rationale: an index-based CSS position fits only equal options, and the
+board's are unequal and form a 2×2 grid on a phone. CSS anchor positioning
+also slid after every layout change in testing, so a resize or a font load
+would have animated. Moving the board's pill at the click instead would show
+a choice whose results have not arrived — and, with `QueuedNavigation`
+holding a quick second click, one the board is not about to show yet. Making
+`SegmentedControl` or the filters client components would have hydrated the
+links for no gain. For the card, a fixed or minimum height would leave a large
+empty area in two of the three types and cannot know the height errors and
+wrapping need; CSS cannot transition a content-driven `auto` height; and
+keeping the old fields mounted to animate them out would have submitted them
+and kept typed values, which the form deliberately does not.
+
+Consequences: `SegmentedControl` and `BoardFilters` are still server
+components and their links are unchanged. Without JavaScript, or before
+hydration, the chosen option draws its own background as before. The fields
+that no longer apply still leave at once; only the card's height moves.

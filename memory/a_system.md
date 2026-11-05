@@ -260,9 +260,24 @@ so the browser supplies the keyboard (one tab stop per group, the arrow keys
 in the reading direction) and submits the checked value under its `name`.
 A set of radios is not one control, so it sits in a `Field` with `group`, a
 `<fieldset>` whose `<legend>` names it, rather than in `Field`'s usual
-`<label>`; the row carries `role="radiogroup"` and `aria-invalid`, and each
-radio points at the field's hint or error through `messageId`. The event form
-is the radio modes' only user.
+`<label>`. That fieldset is also the set's `role="radiogroup"`, and carries
+`aria-invalid` while the field has an error, so the one group a screen reader
+meets has both the name and the state; the segment track and the chip row
+inside it are only layout. Each radio points at the field's hint or error
+through `messageId`. The event form is the radio modes' only user.
+
+**The sliding choice.** In both modes the segmented control's navy pill is
+[components/ui/SegmentIndicator.tsx](../components/ui/SegmentIndicator.tsx),
+an `aria-hidden` client piece inside the track, which slides it to a new
+choice over `--transition-base`. It measures the chosen option, since the
+options are not always equal — the board's links are as wide as their labels
+and sit two by two on a phone, the form's stack into a column — and a measured
+position is right in either reading direction. Only a change of choice slides;
+a resize, a breakpoint or the web font arriving puts it straight in place.
+Until it has placed itself — before hydration, or without JavaScript — the
+chosen option draws its own background, and the track's `data-indicator`
+then hands that over, so there are never two. `SegmentedControl` itself stays
+renderable from a Server Component. Reduced motion is the global rule's.
 
 ### Styling layer — `app/styles/tokens.css`
 
@@ -588,6 +603,12 @@ the server as before.
   bar. It holds no state and never takes focus on first render or from an
   element that still has it.
 
+The access filter's sliding pill (see "The sliding choice") is client code
+too, but presentation only. Its choice is the server-rendered `aria-current`,
+so it moves when a filter's navigation commits — with the results, never
+ahead of them — and a click `QueuedNavigation` holds moves it only once
+replayed.
+
 Why the board works this way: [dec_log.md](dec_log.md).
 
 ### The detail screen — `/events/[id]`
@@ -767,7 +788,12 @@ the selects they replaced did, so nothing downstream of the form changed. A
 field with an error marks its control `aria-invalid`; locked dates show a lock
 beside their reason; a whole-form refusal from the server is a tinted notice
 above the actions. On a phone the segments stack and the primary action
-stretches beside Cancel, in source order.
+stretches beside Cancel, in source order. Switching the location type, or
+ticking and unticking "no limit", slides the height of the fields it shows
+(`useHeightTransition` in the form) rather than jumping: the fields are still
+swapped at once and the ones that no longer apply leave the DOM as before, and
+the inline height is only there while it slides. The "no limit" checkbox stays
+outside the sliding wrapper, so its focus ring is never clipped.
 
 **Shared validation.** [lib/eventInput.ts](../lib/eventInput.ts) turns untrusted
 input into a valid event, and is deliberately free of the store, the session and
