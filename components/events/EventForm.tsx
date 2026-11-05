@@ -404,11 +404,7 @@ export function EventForm({
           group
           messageId={messageIds.category}
         >
-          <div
-            className={styles.chips}
-            role="radiogroup"
-            aria-invalid={invalid(errors.category)}
-          >
+          <div className={styles.chips}>
             {CATEGORY_ORDER.map((option) => (
               <Chip
                 key={option}

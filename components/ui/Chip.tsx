@@ -23,7 +23,7 @@ type RadioProps = CommonProps & {
   onChange: (value: string) => void;
   /**
    * Draws the error border, for a field with an error. `aria-invalid` is the
-   * row's to carry, on the `radiogroup` the chips sit in.
+   * group's to carry, on the `Field` fieldset the chips sit in.
    */
   invalid?: boolean;
   /** The id of the hint or error the option is described by. */
@@ -41,8 +41,8 @@ type RadioProps = CommonProps & {
  * - **Radio** (`name`, `value`, `onChange`): a native radio input, visually
  *   hidden inside the chip, for a choice in a form. Give every chip in a row
  *   the same `name`; the browser gives the row its keyboard and submits the
- *   checked one. Make the row a `radiogroup` and put it in a `Field` with
- *   `group`, whose legend names it.
+ *   checked one. Put the row in a `Field` with `group`, whose fieldset is the
+ *   `radiogroup` and whose legend names it.
  *
  * `dot` adds a leading colour dot. Its colour is `--chip-dot`, set by the
  * caller on the chip or an ancestor -- the chip itself knows nothing about

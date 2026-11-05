@@ -37,7 +37,7 @@ type RadioProps<T extends string> = CommonProps & {
   options: Array<SegmentOption<T>>;
   value: T;
   onChange: (value: T) => void;
-  /** Marks the group `aria-invalid`, for a field with an error. */
+  /** Draws the error ring, for a field with an error. */
   invalid?: boolean;
   /** The id of the hint or error the options are described by. */
   describedBy?: string;
@@ -63,9 +63,9 @@ type LinkProps = CommonProps & {
  *   for a choice in a form. The browser gives them their keyboard -- one tab
  *   stop for the group, the arrow keys to move and choose, in the reading
  *   direction -- and submits the checked one under `name`, as a `<select>`
- *   would. The inputs are visually hidden inside their segments. The group is
- *   a `radiogroup`, which is where `aria-invalid` belongs, but it has no name
- *   of its own: put it in a `Field` with `group`, whose legend names it.
+ *   would. The inputs are visually hidden inside their segments. Put it in a
+ *   `Field` with `group`: that fieldset is the `radiogroup`, named by its
+ *   legend and carrying `aria-invalid`, so the track here is only the look.
  *   Generic over the value type, so `onChange` hands you back your own union
  *   rather than a bare string.
  *
@@ -104,11 +104,7 @@ export function SegmentedControl<T extends string>(
   const { name, options, value, onChange, invalid, describedBy } = props;
 
   return (
-    <div
-      className={cx(groupClass, invalid && styles.invalid)}
-      role="radiogroup"
-      aria-invalid={invalid || undefined}
-    >
+    <div className={cx(groupClass, invalid && styles.invalid)}>
       {options.map((option) => {
         const selected = option.value === value;
         return (

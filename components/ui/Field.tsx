@@ -23,8 +23,11 @@ import styles from "./Field.module.css";
  *
  * A group of radios cannot sit in a `<label>`, which names one control. With
  * `group` the field is a `<fieldset>` instead and its label the `<legend>`,
- * which is what names a set of choices. The hint and the error are then
- * outside any label, so give the field a `messageId` and point the choices'
+ * which is what names a set of choices. The fieldset is also the set's
+ * `radiogroup`, so the group the legend names is the one that carries
+ * `aria-invalid` while there is an error -- a separate radiogroup inside it
+ * would have no name of its own. The hint and the error are then outside any
+ * label, so give the field a `messageId` and point the choices'
  * `aria-describedby` at it.
  */
 type FieldProps = {
@@ -35,7 +38,7 @@ type FieldProps = {
   required?: boolean;
   /** Renders an "Optional" marker instead of the required asterisk. */
   optional?: boolean;
-  /** A set of choices rather than one control: a fieldset with a legend. */
+  /** A set of radios rather than one control: a fieldset with a legend. */
   group?: boolean;
   /** The id of whichever of the hint and the error is showing. */
   messageId?: string;
@@ -57,7 +60,11 @@ export function Field({
   const LabelRow = group ? "legend" : "span";
 
   return (
-    <Root className={cx(styles.field, group && styles.group, className)}>
+    <Root
+      className={cx(styles.field, group && styles.group, className)}
+      role={group ? "radiogroup" : undefined}
+      aria-invalid={group && error ? true : undefined}
+    >
       <LabelRow className={styles.labelRow}>
         <span className={styles.label}>
           {label}
