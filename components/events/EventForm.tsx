@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useId, useState, useTransition } from "react";
+import { useId, useLayoutEffect, useRef, useState, useTransition } from "react";
 import type { FormEvent, ReactNode } from "react";
 
 import {
@@ -91,6 +91,8 @@ export function EventForm({
   };
 }) {
   const [locationKind, setLocationKind] = useState(initialValues.locationKind);
+  const [locationFieldsRef, measureLocationFields] =
+    useHeightTransition(locationKind);
   const [category, setCategory] = useState(initialValues.category);
   const [access, setAccess] = useState(initialValues.access);
   // The hint or error under each set of choices, which the choices point at.
@@ -102,6 +104,8 @@ export function EventForm({
   const [unlimited, setUnlimited] = useState(
     initialValues.capacityUnlimited !== "",
   );
+  const [capacityLimitRef, measureCapacityLimit] =
+    useHeightTransition(unlimited);
 
   const [errors, setErrors] = useState<EventFieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
@@ -328,7 +332,10 @@ export function EventForm({
               label: LOCATION_KIND_LABELS[kind],
             }))}
             value={locationKind}
-            onChange={setLocationKind}
+            onChange={(kind) => {
+              measureLocationFields();
+              setLocationKind(kind);
+            }}
             invalid={Boolean(errors.location)}
             describedBy={errors.location ? messageIds.locationKind : undefined}
           />
@@ -337,59 +344,62 @@ export function EventForm({
         {/*
           Only the fields `EventLocation.kind` calls meaningful are rendered, and
           the parser drops the rest -- so a hybrid event switched to online does
-          not keep its old street address.
+          not keep its old street address. Their wrapper's height slides from
+          the old set of fields to the new one; see `useHeightTransition`.
         */}
-        {showsVenue && (
-          <FieldRow>
-            <Field
-              label={EVENT_FORM_LABELS.venue}
-              required
-              error={errors.locationVenue}
-            >
-              <Input
-                name="locationVenue"
-                defaultValue={initialValues.locationVenue}
-                dir="auto"
-                aria-invalid={invalid(errors.locationVenue)}
-              />
-            </Field>
-            <Field label={EVENT_FORM_LABELS.address} optional>
-              <Input
-                name="locationAddress"
-                defaultValue={initialValues.locationAddress}
-                dir="auto"
-              />
-            </Field>
-          </FieldRow>
-        )}
+        <div ref={locationFieldsRef} className={styles.locationFields}>
+          {showsVenue && (
+            <FieldRow>
+              <Field
+                label={EVENT_FORM_LABELS.venue}
+                required
+                error={errors.locationVenue}
+              >
+                <Input
+                  name="locationVenue"
+                  defaultValue={initialValues.locationVenue}
+                  dir="auto"
+                  aria-invalid={invalid(errors.locationVenue)}
+                />
+              </Field>
+              <Field label={EVENT_FORM_LABELS.address} optional>
+                <Input
+                  name="locationAddress"
+                  defaultValue={initialValues.locationAddress}
+                  dir="auto"
+                />
+              </Field>
+            </FieldRow>
+          )}
 
-        {showsLink && (
-          <FieldRow>
-            <Field
-              label={EVENT_FORM_LABELS.url}
-              required
-              error={errors.locationUrl}
-            >
-              <Input
-                name="locationUrl"
-                defaultValue={initialValues.locationUrl}
-                dir="auto"
-                aria-invalid={invalid(errors.locationUrl)}
-              />
-            </Field>
-            <Field
-              label={EVENT_FORM_LABELS.platform}
-              optional
-              hint={EVENT_FORM_LABELS.platformHint}
-            >
-              <Input
-                name="locationPlatform"
-                defaultValue={initialValues.locationPlatform}
-                dir="auto"
-              />
-            </Field>
-          </FieldRow>
-        )}
+          {showsLink && (
+            <FieldRow>
+              <Field
+                label={EVENT_FORM_LABELS.url}
+                required
+                error={errors.locationUrl}
+              >
+                <Input
+                  name="locationUrl"
+                  defaultValue={initialValues.locationUrl}
+                  dir="auto"
+                  aria-invalid={invalid(errors.locationUrl)}
+                />
+              </Field>
+              <Field
+                label={EVENT_FORM_LABELS.platform}
+                optional
+                hint={EVENT_FORM_LABELS.platformHint}
+              >
+                <Input
+                  name="locationPlatform"
+                  defaultValue={initialValues.locationPlatform}
+                  dir="auto"
+                />
+              </Field>
+            </FieldRow>
+          )}
+        </div>
       </Section>
 
       <Section title={EVENT_FORM_LABELS.sectionWho}>
@@ -461,23 +471,33 @@ export function EventForm({
             value={UNLIMITED}
             label={EVENT_FORM_LABELS.capacityUnlimited}
             checked={unlimited}
-            onChange={(changed) => setUnlimited(changed.target.checked)}
+            onChange={(changed) => {
+              measureCapacityLimit();
+              setUnlimited(changed.target.checked);
+            }}
           />
-          {!unlimited && (
-            <div className={styles.capacityField}>
-              <Field label={EVENT_FORM_LABELS.capacity} error={errors.capacity}>
-                <Input
-                  type="number"
-                  min={1}
-                  step={1}
-                  name="capacity"
-                  placeholder={EVENT_FORM_LABELS.capacityPlaceholder}
-                  defaultValue={initialValues.capacity}
-                  aria-invalid={invalid(errors.capacity)}
-                />
-              </Field>
-            </div>
-          )}
+          {/*
+            The number box is rendered only while there is a limit, as before;
+            its wrapper's height slides as it comes and goes. The checkbox
+            stays outside it, so its focus ring is never clipped by the slide.
+          */}
+          <div ref={capacityLimitRef} className={styles.capacityLimit}>
+            {!unlimited && (
+              <div className={styles.capacityField}>
+                <Field label={EVENT_FORM_LABELS.capacity} error={errors.capacity}>
+                  <Input
+                    type="number"
+                    min={1}
+                    step={1}
+                    name="capacity"
+                    placeholder={EVENT_FORM_LABELS.capacityPlaceholder}
+                    defaultValue={initialValues.capacity}
+                    aria-invalid={invalid(errors.capacity)}
+                  />
+                </Field>
+              </div>
+            )}
+          </div>
         </div>
       </Section>
 
@@ -558,6 +578,78 @@ function Section({
       </section>
     </Card>
   );
+}
+
+/**
+ * Slides an element's height from what it was to what it is after `key`
+ * changes, so the card does not jump when a choice swaps the fields under it:
+ * the location type's fields, the number box behind "no limit".
+ *
+ * Put the returned ref on the element, and call the returned `measure` just
+ * before the change -- in the handler, while the old content is still on
+ * screen. After React has rendered the new content, the element is set to the
+ * old height and transitioned to the new one, clipped while it moves, and then
+ * given back its natural height: an inline height is never left behind, so
+ * errors, wrapping and resizes go on reshaping it as before. A change
+ * mid-slide starts from the height on screen. The content itself is swapped at
+ * once, as it always was, so nothing is kept mounted for the animation's sake.
+ * With reduced motion the global rule makes the transition instant.
+ */
+function useHeightTransition(key: string | boolean) {
+  const ref = useRef<HTMLDivElement>(null);
+  const from = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    const element = ref.current;
+    const start = from.current;
+    from.current = null;
+    if (!element || start === null) return;
+
+    element.style.height = "";
+    const end = element.getBoundingClientRect().height;
+    if (Math.abs(end - start) < 0.5) {
+      delete element.dataset.resizing;
+      return;
+    }
+
+    element.dataset.resizing = "";
+    element.style.height = `${start}px`;
+    // Commit the old height before asking for the new one, or there is no
+    // change for the transition to animate.
+    void element.offsetHeight;
+    element.style.height = `${end}px`;
+
+    const sliding = () =>
+      element
+        .getAnimations()
+        .some(
+          (animation) =>
+            animation instanceof CSSTransition &&
+            animation.transitionProperty === "height",
+        );
+    const finish = (event: TransitionEvent) => {
+      if (event.target !== element || event.propertyName !== "height") return;
+      // A cancel can be the earlier slide's, which this one replaced and
+      // which is reported only now; this one is still running then.
+      if (event.type === "transitioncancel" && sliding()) return;
+      element.style.height = "";
+      delete element.dataset.resizing;
+      element.removeEventListener("transitionend", finish);
+      element.removeEventListener("transitioncancel", finish);
+    };
+    element.addEventListener("transitionend", finish);
+    element.addEventListener("transitioncancel", finish);
+    return () => {
+      element.removeEventListener("transitionend", finish);
+      element.removeEventListener("transitioncancel", finish);
+    };
+  }, [key]);
+
+  function measure() {
+    from.current = ref.current?.getBoundingClientRect().height ?? null;
+  }
+
+  return [ref, measure] as const;
 }
 
 /**

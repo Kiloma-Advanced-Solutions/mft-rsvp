@@ -22,6 +22,22 @@
   line-height: var(--leading-tight);
 }
 
+/*
+  The location type's fields. Their own column, with the card's gap, so their
+  height can slide when the type swaps them -- `useHeightTransition` sets it
+  only while sliding, clipped meanwhile, and then hands it back to the content.
+*/
+.locationFields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  transition: height var(--transition-base);
+}
+
+.locationFields[data-resizing] {
+  overflow: hidden;
+}
+
 /* The category chips wrap onto as many lines as the card needs. */
 .chips {
   display: flex;
@@ -34,10 +50,24 @@
   --chip-dot: var(--category-dot);
 }
 
+/*
+  The checkbox, then the number box while there is a limit. The space between
+  them is the number box's own, so that with no limit the empty wrapper takes
+  none -- a gap would still separate it.
+*/
 .capacity {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+}
+
+/* The number box's wrapper, whose height slides as the box comes and goes;
+   the same as `.locationFields`. */
+.capacityLimit {
+  transition: height var(--transition-base);
+}
+
+.capacityLimit[data-resizing] {
+  overflow: hidden;
 }
 
 /* The number box takes half the card on a wide screen, as a field in a two-up
@@ -45,6 +75,9 @@
 .capacityField {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* Padding, not a margin: a margin would collapse through the wrapper until
+     the slide clips it, and jump when it did. */
+  padding-top: var(--space-4);
 }
 
 /* A locked date says why with the lock beside it. */
