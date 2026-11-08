@@ -10,8 +10,9 @@ import { useLayoutEffect, useRef } from "react";
  *
  * Render it as the first child of the track, and give each option a
  * `data-segment`. It only measures: it sets `--indicator-x`, `--indicator-y`,
- * `--indicator-width` and `--indicator-height`, and while it is showing, the
- * track's `data-indicator`. What it draws is the caller's CSS --
+ * `--indicator-width` and `--indicator-height` on itself, and sets
+ * `data-indicator` on the track while it is placed -- removing it when no
+ * option is chosen, or none matches. What it draws is the caller's CSS --
  * `SegmentedControl` covers the option with a pill; the board's section
  * navigation, `BoardSectionNav`, draws an underline from the same
  * measurements. The CSS should honour `data-snap` by turning its transitions
