@@ -16,7 +16,9 @@ import { useLayoutEffect, useRef } from "react";
  * `SegmentedControl` covers the option with a pill; the board's section
  * navigation, `BoardSectionNav`, draws an underline from the same
  * measurements. The CSS should honour `data-snap` by turning its transitions
- * off.
+ * off, and give the indicator no transitions or animations other than its
+ * slide: whatever the caller draws, a running one is taken to be a slide
+ * under way.
  *
  * It measures rather than computing a position from the option's index,
  * because the options are not always equal: the board's links are as wide as
