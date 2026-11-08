@@ -8,16 +8,20 @@ progresses — it is current state, not a changelog.
 **M11, the system redesign — in progress.** M11 restyles the whole UI to the
 Iron Numbers design system, which has been supplied, and changes presentation
 only: no rule, API, schema or permission changes. It is delivered in five
-sequential PRs. PR 1 — design foundations, the shared UI kit and the
-navigation shell — is merged (PR #46). PR 2 — the Events Board: its cards and
-badges, filters and section navigation — is merged (PR #48). PR 3 — the
+sequential PRs and approved follow-ups. PR 1 — design foundations, the
+shared UI kit and the navigation shell — is merged (PR #46). PR 2 — the
+Events Board: its cards and badges, filters and section navigation — is
+merged (PR #48). PR 3 — the
 detail page, the host's actions and sharing, and host management — is merged
 (PR #49). PR 4 — the create and edit forms, the approved removal of
 explanatory copy, the viewer's own status badges and the S9 kit cleanup — is
 merged (PR #50). PR 5 — the event-share email in the M11 look, from the
 approved mockup's "Variant C", with the approval event's access note removed —
-is implemented on `yardenah/m11-emails` and awaiting review; it is not merged,
-so M11 is not complete. The desktop widths are unchanged by
+is merged (PR #51). PR 6 — the board's section navigation slides its bar to a
+new section, as the segmented control slides its pill — is implemented on
+`yardenah/m11-tab-animation` and awaiting review. A background
+visual-identity exploration is planned after it, so M11 is not complete. The
+desktop widths are unchanged by
 M11: the board, the detail page and the forms keep the shell's 1120px column.
 What M11 delivered and what remains is in [TASKS.md](../TASKS.md) §5.
 
@@ -437,10 +441,12 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-11-05 — M11 in progress: PR 1 (design foundations, UI kit
+Last updated: 2026-11-08 — M11 in progress: PR 1 (design foundations, UI kit
 and navigation shell) merged (PR #46); PR 2 (the Events Board) merged
 (PR #48); PR 3 (the detail page, host actions and sharing, host management)
 merged (PR #49); PR 4 (the forms, the copy review, viewer badges, S9 cleanup)
 merged (PR #50); PR 5 (the email, Variant C, the approval note removed)
-implemented on `yardenah/m11-emails`, awaiting review. Pre-M11 stabilization C1–C5 merged
+merged (PR #51); PR 6 (the section navigation's sliding bar) implemented on
+`yardenah/m11-tab-animation`, awaiting review; a background visual-identity
+exploration planned. Pre-M11 stabilization C1–C5 merged
 (PRs #41–#45); C6 follows M11; then M12 (application logging).

@@ -273,11 +273,19 @@ choice over `--transition-base`. It measures the chosen option, since the
 options are not always equal — the board's links are as wide as their labels
 and sit two by two on a phone, the form's stack into a column — and a measured
 position is right in either reading direction. Only a change of choice slides;
-a resize, a breakpoint or the web font arriving puts it straight in place.
-Until it has placed itself — before hydration, or without JavaScript — the
-chosen option draws its own background, and the track's `data-indicator`
-then hands that over, so there are never two. `SegmentedControl` itself stays
-renderable from a Server Component. Reduced motion is the global rule's.
+a resize, a breakpoint or the web font arriving puts it straight in place —
+except while a slide is under way, when a resize that comes with the choice
+(a section link turning heavier) moves where the slide is heading instead of
+cutting it short. Until it has placed itself — before hydration, or without
+JavaScript — the chosen option draws its own background, and the track's
+`data-indicator` then hands that over, so there are never two.
+`SegmentedControl` itself stays renderable from a Server Component. Reduced
+motion is the global rule's.
+
+`SegmentIndicator` only measures; what it draws is the caller's CSS. The
+board's section navigation, `BoardSectionNav`, uses the same piece for the
+navy underline under the current section, in its own `<nav>`, from its own
+stylesheet — the links and their semantics are unchanged.
 
 ### Styling layer — `app/styles/tokens.css`
 
@@ -614,11 +622,12 @@ the server as before.
   bar. It holds no state and never takes focus on first render or from an
   element that still has it.
 
-The access filter's sliding pill (see "The sliding choice") is client code
-too, but presentation only. Its choice is the server-rendered `aria-current`,
-so it moves when a filter's navigation commits — with the results, never
-ahead of them — and a click `QueuedNavigation` holds moves it only once
-replayed.
+The access filter's sliding pill and the section navigation's sliding
+underline (see "The sliding choice") are client code too, but presentation
+only. Each follows the server-rendered `aria-current`, so it moves when a
+navigation commits — with the results, never ahead of them — and a click
+`QueuedNavigation` holds moves it only once replayed. The cards and the
+section's content are not animated.
 
 Why the board works this way: [dec_log.md](dec_log.md).
 
