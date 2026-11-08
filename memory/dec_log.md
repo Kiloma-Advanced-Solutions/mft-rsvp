@@ -1936,3 +1936,46 @@ where the email's words live. Nothing else used the sentence.
 Consequences: the open and invite-only notes are unchanged, as are the
 subject, the preview text, the access rules and registration. A future access
 mode has to be given a note or `null` in the same map before it compiles.
+
+## 2026-11-08 — The section navigation slides its bar with the segmented control's indicator
+
+Context: on the board, the navy bar under the current section — upcoming,
+cancelled, past — vanished from one link and appeared under the next, because
+it was the current link's own `::after`. The product owner asked for it to
+slide, consistent with the segmented control's pill, with the label and count
+colours changing at the same pace, and nothing else animated. Two decisions
+were taken with the request: the current section keeps its medium weight, its
+small shift of the neighbouring links accepted; and the bar moves when the
+navigation commits, not at the click.
+
+Decision: `BoardSectionNav` renders `SegmentIndicator` — now exported from the
+`components/ui` barrel — as the first child of its `<nav>`, with each link's
+`data-segment`, and its own stylesheet draws the measurements as the same
+3px underline, inset as before, over `--transition-base`. The link's `::after`
+stays as the bar before hydration and without JavaScript, handed over through
+the nav's `data-indicator`. The label and count colours move to
+`--transition-base`. `SegmentIndicator` gained one rule: while a slide caused
+by a change of value is under way, a resize retargets the slide instead of
+snapping it into place.
+
+Rationale: rendering the section links through `SegmentedControl` would have
+turned the underline tabs into a pill track, and replaced the `<nav>`
+landmark and `aria-current="page"` that `FocusRestoringNav` relies on; an
+underline variant of `SegmentedControl` would have joined two different
+controls for one animation. The indicator already measures, so it handles the
+links' unequal widths, the phone's equal columns and RTL without special
+cases. The retarget rule is needed because the heavier weight resizes the
+links in the same frame the slide starts: the resize observer then snapped
+the bar into place, so in testing it jumped rather than slid. Whether a slide
+is under way is read from the indicator's running transitions rather than kept
+in a flag: a flag set on a change of value went stale whenever no transition
+followed — on mount under React's development double effects, or a slide
+cancelled before it ended — and then the next unrelated resize slid. Moving
+the bar at the click is the 2026-11-05 entry's rejected alternative, for the
+same reason.
+
+Consequences: `BoardSectionNav` stays a Server Component and its links,
+`QueuedNavigation` and `FocusRestoringNav` are unchanged. A resize during the
+200ms of a slide now slides too; every other resize still puts the indicator
+straight in place. The access filter and the form's segments, whose options
+do not resize when chosen, behave as before.

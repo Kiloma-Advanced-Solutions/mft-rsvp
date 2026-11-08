@@ -466,13 +466,15 @@ PRs; each item left open above is now decided:
 
 Merged: the foundations, kit and shell; the board; the detail page and host
 management; the forms, the copy review, the viewer's own status badges and the
-kit cleanup.
+kit cleanup; and the **email templates** — the approved mockup's "Variant C",
+with the approval event's access note removed. The email's rendering, RTL,
+links and content were checked against the mockup in browsers; Outlook 2016
+itself was not available.
 
-Remaining: the **email templates**, redesigned to match in a separate PR. The
-approved mockup's "Variant C" and the removal of the approval event's access
-note are built and awaiting review and merge. M11 is complete when that PR
-merges. Rendering, RTL, links and content were checked against the mockup in
-browsers; Outlook 2016 itself was not available. Which PR is where is in
+Remaining: two approved follow-ups. The board's section navigation slides its
+bar to a new section, as the segmented control slides its pill — only the
+selection, not the content. Then a background visual-identity exploration.
+M11 is not complete until both are resolved. Which PR is where is in
 `memory/s_status.md`.
 
 #### M12 — Application logging

@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-import { FocusRestoringNav } from "@/components/ui";
+import { FocusRestoringNav, SegmentIndicator } from "@/components/ui";
 import { BOARD_SECTIONS, boardHref, sectionIntent } from "@/lib/board";
 import type { BoardSection, BoardState } from "@/lib/board";
 import { cx } from "@/lib/cx";
@@ -27,6 +27,12 @@ import styles from "./BoardSectionNav.module.css";
  * exists; focus then comes here, to the current section, instead of being
  * dropped. Each link's `data-nav-intent` lets a held click on a vanished jump
  * link be replayed through the matching section link here.
+ *
+ * The navy bar under the current section is the segmented control's
+ * `SegmentIndicator`, drawn as an underline, so it slides to a new section.
+ * Its value is the section the server rendered, so it moves when the
+ * navigation commits, with the section's cards -- never ahead of them. It is
+ * presentation only; the links keep their own semantics.
  */
 export function BoardSectionNav({
   state,
@@ -41,6 +47,7 @@ export function BoardSectionNav({
       label={BOARD_LABELS.sectionNav}
       className={styles.nav}
     >
+      <SegmentIndicator value={state.section} className={styles.indicator} />
       {BOARD_SECTIONS.map((section) => {
         const current = section === state.section;
         return (
@@ -51,6 +58,7 @@ export function BoardSectionNav({
             scroll={false}
             aria-current={current ? "page" : undefined}
             data-nav-intent={sectionIntent(section)}
+            data-segment={section}
             className={cx(styles.link, current && styles.current)}
           >
             {/*
