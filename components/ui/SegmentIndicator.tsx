@@ -4,9 +4,18 @@ import { useLayoutEffect, useRef } from "react";
 
 /**
  * The navy pill behind a segmented control's chosen option, which slides to
- * the new option when the choice changes. Internal to `SegmentedControl`, and
- * only presentation: the options keep their own semantics -- a checked radio,
- * a link with `aria-current` -- and this is `aria-hidden`.
+ * the new option when the choice changes. Only presentation: the options keep
+ * their own semantics -- a checked radio, a link with `aria-current` -- and
+ * this is `aria-hidden`.
+ *
+ * Render it as the first child of the track, and give each option a
+ * `data-segment`. It only measures: it sets `--indicator-x`, `--indicator-y`,
+ * `--indicator-width` and `--indicator-height`, and while it is showing, the
+ * track's `data-indicator`. What it draws is the caller's CSS --
+ * `SegmentedControl` covers the option with a pill; the board's section
+ * navigation, `BoardSectionNav`, draws an underline from the same
+ * measurements. The CSS should honour `data-snap` by turning its transitions
+ * off.
  *
  * It measures rather than computing a position from the option's index,
  * because the options are not always equal: the board's links are as wide as
@@ -15,14 +24,18 @@ import { useLayoutEffect, useRef } from "react";
  *
  * Only a change of `value` slides. Anything else that moves the option -- a
  * resize, a breakpoint, the web font arriving -- puts the pill straight where
- * the option now is, so it never trails behind a layout change. Before the
- * first measurement the chosen option draws its own background, as it does
- * without JavaScript; once the pill is placed, the track's `data-indicator`
- * hands the background over to it, in the same frame.
+ * the option now is, so it never trails behind a layout change. The one
+ * exception is a layout change that comes with the choice itself -- the board's
+ * section links turn heavier when chosen, which resizes them in the same frame
+ * as the slide begins. While a slide is under way, a resize moves where it is
+ * heading rather than cutting it short. Before the first measurement the
+ * chosen option draws its own background, as it does without JavaScript; once
+ * the pill is placed, the track's `data-indicator` hands the background over
+ * to it, in the same frame.
  *
  * On the board the value comes from the server-rendered `aria-current`, so the
- * pill moves when a filter's navigation commits, with the results it filters,
- * never ahead of them.
+ * pill moves when a filter's or a section's navigation commits, with the
+ * results, never ahead of them.
  */
 export function SegmentIndicator({
   value,
@@ -49,7 +62,11 @@ export function SegmentIndicator({
     if (!indicator || !track) return;
 
     const observer = new ResizeObserver(() => {
-      placed.current = place(indicator, valueRef.current, false);
+      // Only a change of value starts a transition -- every other move is
+      // made with transitions off -- so one still running is a slide under
+      // way. Asked of the element, not remembered, so it cannot go stale.
+      const sliding = indicator.getAnimations().length > 0;
+      placed.current = place(indicator, valueRef.current, sliding);
     });
     observer.observe(track);
     for (const option of track.children) {

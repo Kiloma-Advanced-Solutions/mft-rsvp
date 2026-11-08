@@ -25,6 +25,7 @@ export { ConfirmDialog, Modal } from "./Modal";
 export { PageHeader } from "./PageHeader";
 export type { Breadcrumb } from "./PageHeader";
 export { QueuedNavigation } from "./QueuedNavigation";
+export { SegmentIndicator } from "./SegmentIndicator";
 export { SegmentedControl } from "./SegmentedControl";
 export type { SegmentLink, SegmentOption } from "./SegmentedControl";
 export { ToastProvider, useToast } from "./Toast";

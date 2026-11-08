@@ -4,6 +4,9 @@
   count would fall below AA, and a zero is information too.
 */
 .nav {
+  /* Positions the sliding bar, and keeps its stacking inside the nav. */
+  position: relative;
+  isolation: isolate;
   display: flex;
   gap: var(--space-2);
   margin-bottom: var(--space-5);
@@ -23,9 +26,10 @@
   font-size: var(--text-body);
   color: var(--color-text-muted);
   white-space: nowrap;
+  /* The label's colour changes at the bar's pace, as the bar arrives. */
   transition:
     background var(--transition-fast),
-    color var(--transition-fast);
+    color var(--transition-base);
 }
 
 .link:hover:not(.current) {
@@ -55,6 +59,48 @@
   background: var(--color-navy);
 }
 
+/*
+  The same bar, sliding: `SegmentIndicator`, from the measurements it sets --
+  only the current link's place and width; the bar keeps its own height and
+  the inset above. Physical `left` and `translate`, because the measurements
+  are physical and so already right in either reading direction. Until it has
+  placed itself -- before hydration, or without JavaScript -- it is hidden and
+  the current link draws its own bar; after, the nav's `data-indicator` hands
+  the bar over to it, in the same frame, so there are never two.
+*/
+.indicator {
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  width: calc(var(--indicator-width) - 2 * var(--space-3));
+  height: var(--tab-indicator-height);
+  transform: translateX(calc(var(--indicator-x) + var(--space-3)));
+  border-start-start-radius: var(--tab-indicator-height);
+  border-start-end-radius: var(--tab-indicator-height);
+  background: var(--color-navy);
+  /* Over the links' hover backgrounds, as the link's own bar was. It sits at
+     their bottom edge, clear of their text and focus rings. */
+  z-index: 1;
+  pointer-events: none;
+  visibility: hidden;
+  transition:
+    transform var(--transition-base),
+    width var(--transition-base);
+}
+
+.nav[data-indicator] > .indicator {
+  visibility: visible;
+}
+
+/* A move that is not a change of section -- a resize -- does not slide. */
+.indicator[data-snap] {
+  transition: none;
+}
+
+.nav[data-indicator] > .current::after {
+  content: none;
+}
+
 .count {
   display: inline-flex;
   align-items: center;
@@ -68,6 +114,9 @@
   font-size: var(--text-caption);
   font-weight: var(--weight-medium);
   font-variant-numeric: tabular-nums;
+  transition:
+    background var(--transition-base),
+    color var(--transition-base);
 }
 
 .current .count {
