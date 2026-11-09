@@ -1979,3 +1979,54 @@ Consequences: `BoardSectionNav` stays a Server Component and its links,
 200ms of a slide now slides too; every other resize still puts the indicator
 straight in place. The access filter and the form's segments, whose options
 do not resize when chosen, behave as before.
+
+## 2026-11-08 — The board carries a decorative illustration, drawn inline and from no data
+
+Context: M11's last approved follow-up was a background visual identity tied
+to what the product is for. After an exploration of seven mockups outside the
+repository, the product owner approved "Option G": an invitation still life —
+an envelope, an invitation with its RSVP row, a date leaf — held at half
+strength low beside the page action, its foot under the first row of cards;
+and a line drawing of the plan — a tilted calendar, the guests, a dotted path
+through a clock and a pin — cropped by the top of the page. Tried on the
+detail page, the edit form and the create form, it fitted the forms on wide
+screens, but collided with the host's header actions on detail, and at phone
+width with the long breadcrumb trails of detail and edit; on the create form
+it only crowded the short trail. The mockup's date read as one real day: a
+month, a weekday and the 15th.
+
+Decision: one Server Component,
+[components/events/EventBackdrop.tsx](../components/events/EventBackdrop.tsx),
+rendered by the board page alone. It is inline SVG. Each drawing's geometry is
+in its own units, as `Icon`'s paths are, and every colour comes from the
+module's paint classes over new `--color-backdrop-*` tokens. Its placements
+are `--backdrop-*` tokens and its breakpoints literal. Between 761px and
+1099px a tablet step moves the plan outward and further into the crop, clear
+of the title, and drops the invitation below the wrapped filters, deeper
+below 922px, where they take an extra row. The shell's
+`<main>` gains `position: relative` so the backdrop can cover and clip to it,
+with `z-index: -1` and no stacking context. `<main>`'s padding moved to
+`--shell-padding-*` tokens, values unchanged, which the backdrop reads to line
+up with the column. The date leaf keeps its numeral, and the month and weekday
+became neutral bars. The words it shows are `BACKDROP_LABELS`.
+
+Rationale: inline SVG is the only form in which the art can use the tokens,
+so the light and dark palettes follow it with no second copy. An external SVG
+file cannot read the page's CSS variables. It also costs no request and runs
+no JavaScript: the rendered markup is about 14 KB, 2 KB compressed. The board is where
+the design was drawn and the only screen it fits unchanged at every width. The
+other screens would each have needed a placement of their own, which is a
+design change. `isolation: isolate` on `<main>`, as in the mockup, was
+rejected: it would have made `<main>` a stacking context, and the detail
+page's menus, at `z-index: 30`, could then no longer draw over the phone's top
+bar, at 20. A bare numeral shows a date leaf without naming a day, so it
+neither goes stale nor reads as something happening then. A date computed on
+the server would look like live data.
+
+Consequences: the artwork can reveal nothing — it is static, the same for
+every viewer, and reads no event, registration or session. It is
+`aria-hidden`, inert to the pointer and to the keyboard, and hidden in forced
+colours and in print. Its placement depends on the shell's padding tokens and
+on where the board's first card row begins; a change to either needs the art
+rechecked. Other screens are unchanged. Extending the illustration to them is
+a possible later enhancement, not scheduled.

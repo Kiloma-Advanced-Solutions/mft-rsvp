@@ -239,6 +239,20 @@ function eventCount(n: number): string {
   return `${n} אירועים`;
 }
 
+/**
+ * The words drawn into the board's decorative illustration, `EventBackdrop`.
+ * It is hidden from assistive technology, but people still see them.
+ *
+ * `day` is a bare numeral on purpose: the drawing shows a date leaf, never a
+ * date -- no month, no weekday, nothing calculated and nothing taken from an
+ * event -- so it cannot be read as something happening on a particular day.
+ */
+export const BACKDROP_LABELS = {
+  invitation: "הזמנה",
+  rsvp: "אישור הגעה",
+  day: "15",
+};
+
 /* ------------------------------------------------------------------ detail */
 
 /** The event detail screen's own words: its sections and its host tools. */

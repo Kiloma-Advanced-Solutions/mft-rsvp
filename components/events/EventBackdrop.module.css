@@ -1,0 +1,165 @@
+/*
+  Covers the shell's main area exactly (the shell positions it) and clips the
+  art to it, so the plan is cropped at the area's top edge and nothing can
+  widen the page. Behind every in-flow element of the page, and inert.
+*/
+.backdrop {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* Laid exactly over the content column, so the art is placed against it. */
+.column {
+  position: absolute;
+  inset: var(--shell-padding-top) var(--shell-padding-inline) 0;
+  max-width: var(--layout-max);
+  margin-inline: auto;
+}
+
+.invite,
+.plan,
+.mark {
+  position: absolute;
+  max-width: none;
+  height: auto;
+}
+
+/* Low in the corner beside the page action; its foot runs under the cards. */
+.invite {
+  top: var(--backdrop-invite-top);
+  inset-inline-end: var(--backdrop-invite-inset);
+  width: var(--backdrop-invite-width);
+  opacity: var(--backdrop-invite-opacity);
+}
+
+.sheet {
+  filter: var(--backdrop-sheet-shadow);
+}
+
+/* Raised past the area's top edge, which crops the calendar and the path. */
+.plan {
+  top: calc(-1 * var(--shell-padding-top) - var(--backdrop-plan-raise));
+  inset-inline-end: var(--backdrop-plan-inset);
+  width: var(--backdrop-plan-width);
+  overflow: visible;
+}
+
+.mark {
+  display: none;
+  top: calc(-1 * var(--shell-padding-top-compact) - var(--space-2));
+  inset-inline-end: 0;
+  width: var(--backdrop-mark-width);
+}
+
+.markInvite {
+  opacity: var(--backdrop-invite-opacity);
+}
+
+/* Wide screens have room for the whole still life beside the column. */
+@media (min-width: 1600px) {
+  .invite {
+    top: var(--backdrop-invite-top-wide);
+    inset-inline-end: var(--backdrop-invite-inset-wide);
+    width: var(--backdrop-invite-width-wide);
+  }
+}
+
+/*
+  Laptops: the outer margin is too narrow for the still life to bleed into,
+  so it comes inward at a smaller size, and the envelope -- which could only
+  ever show as an edge -- is left out.
+*/
+@media (max-width: 1359px) {
+  .invite {
+    top: var(--backdrop-invite-top-compact);
+    inset-inline-end: var(--backdrop-invite-inset-compact);
+    width: var(--backdrop-invite-width-compact);
+  }
+
+  .envelope {
+    display: none;
+  }
+}
+
+/*
+  Tablets: the column narrows towards the page action, so the title comes
+  within reach of the plan's clock and pin, and the category chips wrap into
+  the invitation's corner. The plan moves outward and rises further into the
+  crop; the invitation drops below the chips.
+*/
+@media (min-width: 761px) and (max-width: 1099px) {
+  .plan {
+    top: calc(-1 * var(--shell-padding-top) - var(--backdrop-plan-raise-tablet));
+    inset-inline-end: var(--backdrop-plan-inset-tablet);
+  }
+
+  .invite {
+    top: var(--backdrop-invite-top-tablet);
+  }
+}
+
+/* Below 922px the filters take an extra row, and the cards start lower. */
+@media (min-width: 761px) and (max-width: 921px) {
+  .invite {
+    top: var(--backdrop-invite-top-tablet-narrow);
+  }
+}
+
+/* Phone width: one small mark in the corner above the page action. */
+@media (max-width: 760px) {
+  .column {
+    inset: var(--shell-padding-top-compact) var(--shell-padding-inline-compact) 0;
+  }
+
+  .invite,
+  .plan {
+    display: none;
+  }
+
+  .mark {
+    display: block;
+  }
+}
+
+/* Forced colours would repaint the art in system colours; print needs none. */
+@media (forced-colors: active), print {
+  .backdrop {
+    display: none;
+  }
+}
+
+.text {
+  font-family: var(--font-sans);
+}
+
+/* ---- paints ------------------------------------------------------------- */
+
+.fillLine { fill: var(--color-backdrop-line); }
+.fillInk { fill: var(--color-backdrop-ink); }
+.fillInkFaint { fill: var(--color-backdrop-ink-faint); }
+.fillPaper { fill: var(--color-backdrop-paper); }
+.fillPage { fill: var(--color-bg); }
+.fillPrimary { fill: var(--color-primary); }
+.fillPrimarySoft { fill: var(--color-primary-soft); }
+.fillPrimaryText { fill: var(--color-primary-text); }
+.fillApprovedBg { fill: var(--tone-approved-bg); }
+.fillActiveBg { fill: var(--tone-active-bg); }
+.fillActiveFg { fill: var(--tone-active-fg); }
+.fillDesignDot { fill: var(--category-design-dot); }
+.fillSocialDot { fill: var(--category-social-dot); }
+.fillLearningDot { fill: var(--category-learning-dot); }
+.fillProductDot { fill: var(--category-product-dot); }
+.fillAvatar1 { fill: var(--color-avatar-1); }
+.fillAvatar2 { fill: var(--color-avatar-2); }
+.fillAvatar4 { fill: var(--color-avatar-4); }
+
+.strokeLine { stroke: var(--color-backdrop-line); }
+.strokeLineSoft { stroke: var(--color-backdrop-line-soft); }
+.strokeInkFaint { stroke: var(--color-backdrop-ink-faint); }
+.strokePaperEdge { stroke: var(--color-backdrop-paper-edge); }
+.strokePage { stroke: var(--color-bg); }
+.strokePrimaryText { stroke: var(--color-primary-text); }
+.strokeApprovedFg { stroke: var(--tone-approved-fg); }

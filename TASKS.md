@@ -469,13 +469,17 @@ management; the forms, the copy review, the viewer's own status badges and the
 kit cleanup; and the **email templates** — the approved mockup's "Variant C",
 with the approval event's access note removed. The email's rendering, RTL,
 links and content were checked against the mockup in browsers; Outlook 2016
-itself was not available.
+itself was not available. Then the first of two approved follow-ups: the
+board's section navigation slides its bar to a new section, as the segmented
+control slides its pill — only the selection, not the content.
 
-Remaining: two approved follow-ups. The board's section navigation slides its
-bar to a new section, as the segmented control slides its pill — only the
-selection, not the content. Then a background visual-identity exploration.
-M11 is not complete until both are resolved. Which PR is where is in
-`memory/s_status.md`.
+Remaining: the second follow-up, the background visual identity. The
+exploration ended with an approved design, "Option G": a decorative
+illustration of an invitation and of planning an event, behind the **Events
+Board only**, purely decorative and drawn from no data. It is implemented and
+verified, and M11 is complete when it merges. Showing it on other screens is a
+possible later enhancement, not part of M11 and not scheduled. Which PR is
+where is in `memory/s_status.md`.
 
 #### M12 — Application logging
 

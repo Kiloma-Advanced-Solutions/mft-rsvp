@@ -341,6 +341,63 @@
   --rail-width: 80px;
   --shell-bar-height: 56px;
   --persona-menu-width: 290px;
+  /*
+    The space between the shell's main area and the content column, on wide
+    screens and at phone width. Read by the shell, and by the board's backdrop,
+    which lines its art up with the column and crops it at the area's top edge.
+  */
+  --shell-padding-top: calc(var(--space-8) + var(--space-1));
+  --shell-padding-inline: var(--space-12);
+  --shell-padding-top-compact: var(--space-card-gap);
+  --shell-padding-inline-compact: var(--space-4);
+
+  /* ---- Backdrop -------------------------------------------------------- */
+  /*
+    The board's decorative illustration, `EventBackdrop`: an invitation still
+    life low in the corner beside the page action, and a line drawing of the
+    plan along the top. Its inks are translucent so it stays behind the
+    interface in either theme; the invitation is held at half strength.
+  */
+  --color-backdrop-line: rgba(0, 89, 196, 0.34);
+  --color-backdrop-line-soft: rgba(0, 89, 196, 0.18);
+  --color-backdrop-ink: rgba(13, 22, 58, 0.17);
+  --color-backdrop-ink-faint: rgba(13, 22, 58, 0.07);
+  --color-backdrop-paper: var(--color-surface);
+  --color-backdrop-paper-edge: rgba(13, 22, 58, 0.06);
+  --color-backdrop-shadow: rgba(13, 22, 58, 0.1);
+  --backdrop-invite-opacity: 0.5;
+  --backdrop-sheet-shadow: drop-shadow(0 12px 20px var(--color-backdrop-shadow));
+
+  /*
+    Where the two pieces sit, against the content column. The plan rises
+    above the main area's top edge, which crops it; the invitation's foot
+    slides under the first row of cards. The invitation has three sizes --
+    wide screens, the default, and laptops, where the outer margin is narrow.
+  */
+  --backdrop-plan-width: 700px;
+  --backdrop-plan-inset: 150px;
+  --backdrop-plan-raise: 146px;
+  --backdrop-invite-width: 440px;
+  --backdrop-invite-top: 64px;
+  --backdrop-invite-inset: -320px;
+  --backdrop-invite-width-wide: 480px;
+  --backdrop-invite-top-wide: 54px;
+  --backdrop-invite-inset-wide: -370px;
+  --backdrop-invite-width-compact: 330px;
+  --backdrop-invite-top-compact: 126px;
+  --backdrop-invite-inset-compact: -170px;
+  /*
+    Tablets, where the title comes closer and the filters wrap: the plan moves
+    outward and rises further into the crop, clear of the title; the
+    invitation drops below the chips, to where the cards start -- deeper when
+    the filters take an extra row.
+  */
+  --backdrop-plan-inset-tablet: 40px;
+  --backdrop-plan-raise-tablet: 186px;
+  --backdrop-invite-top-tablet: 190px;
+  --backdrop-invite-top-tablet-narrow: 224px;
+  /* At phone width both pieces give way to one small mark in the free corner. */
+  --backdrop-mark-width: 160px;
 }
 
 /*
@@ -466,6 +523,15 @@
     --shadow-raised: 0 8px 34px -10px rgba(0, 0, 0, 0.75);
     --shadow-primary: 0 4px 12px -6px rgba(30, 102, 214, 0.9);
     --shadow-danger: 0 4px 12px -6px rgba(196, 39, 30, 0.8);
+
+    --color-backdrop-line: rgba(138, 184, 255, 0.32);
+    --color-backdrop-line-soft: rgba(138, 184, 255, 0.16);
+    --color-backdrop-ink: rgba(229, 233, 247, 0.14);
+    --color-backdrop-ink-faint: rgba(229, 233, 247, 0.06);
+    --color-backdrop-paper: #161e3e;
+    --color-backdrop-paper-edge: rgba(229, 233, 247, 0.07);
+    --color-backdrop-shadow: rgba(0, 0, 0, 0.45);
+    --backdrop-invite-opacity: 0.55;
   }
 }
 
@@ -586,4 +652,13 @@
   --shadow-raised: 0 8px 34px -10px rgba(0, 0, 0, 0.75);
   --shadow-primary: 0 4px 12px -6px rgba(30, 102, 214, 0.9);
   --shadow-danger: 0 4px 12px -6px rgba(196, 39, 30, 0.8);
+
+  --color-backdrop-line: rgba(138, 184, 255, 0.32);
+  --color-backdrop-line-soft: rgba(138, 184, 255, 0.16);
+  --color-backdrop-ink: rgba(229, 233, 247, 0.14);
+  --color-backdrop-ink-faint: rgba(229, 233, 247, 0.06);
+  --color-backdrop-paper: #161e3e;
+  --color-backdrop-paper-edge: rgba(229, 233, 247, 0.07);
+  --color-backdrop-shadow: rgba(0, 0, 0, 0.45);
+  --backdrop-invite-opacity: 0.55;
 }

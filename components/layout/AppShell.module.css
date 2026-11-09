@@ -45,10 +45,18 @@
 
 /* ---- main --------------------------------------------------------------- */
 
+/*
+  Positioned so a page's backdrop can cover exactly this area -- see
+  `EventBackdrop`. Deliberately no z-index and no isolation: either would make
+  this a stacking context, and a menu opened in the content could then no
+  longer draw over the bar across the top at phone width. Nor a background,
+  here or on `.shell`: the backdrop sits at `z-index: -1`, beneath it.
+*/
 .main {
+  position: relative;
   flex: 1;
   min-width: 0;
-  padding: calc(var(--space-8) + var(--space-1)) var(--space-12) var(--space-16);
+  padding: var(--shell-padding-top) var(--shell-padding-inline) var(--space-16);
 }
 
 .page {
@@ -88,6 +96,7 @@
   }
 
   .main {
-    padding: var(--space-card-gap) var(--space-4) var(--space-12);
+    padding: var(--shell-padding-top-compact) var(--shell-padding-inline-compact)
+      var(--space-12);
   }
 }
