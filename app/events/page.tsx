@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import { BoardFilters } from "@/components/events/BoardFilters";
 import { BoardSectionNav } from "@/components/events/BoardSectionNav";
+import { EventBackdrop } from "@/components/events/EventBackdrop";
 import { EventCard, EventGrid } from "@/components/events/EventCard";
 import {
   EmptyState,
@@ -109,6 +110,9 @@ export default async function BoardPage({ searchParams }: PageProps<"/events">) 
 
   return (
     <div>
+      {/* Only the board carries the illustration, and it takes no data. */}
+      <EventBackdrop />
+
       <PageHeader
         title={BOARD_LABELS.title}
         description={eventCountLabel(matching.length, visible.length)}

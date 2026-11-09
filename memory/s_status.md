@@ -18,9 +18,10 @@ explanatory copy, the viewer's own status badges and the S9 kit cleanup — is
 merged (PR #50). PR 5 — the event-share email in the M11 look, from the
 approved mockup's "Variant C", with the approval event's access note removed —
 is merged (PR #51). PR 6 — the board's section navigation slides its bar to a
-new section, as the segmented control slides its pill — is implemented on
-`yardenah/m11-tab-animation` and awaiting review. A background
-visual-identity exploration is planned after it, so M11 is not complete. The
+new section, as the segmented control slides its pill — is merged (PR #52).
+PR 7 — the background visual identity: the approved "Option G" illustration,
+on the Events Board only — is implemented and verified on
+`yardenah/m11-background`; it is not merged, so M11 is not complete. The
 desktop widths are unchanged by
 M11: the board, the detail page and the forms keep the shell's 1120px column.
 What M11 delivered and what remains is in [TASKS.md](../TASKS.md) §5.
@@ -446,7 +447,7 @@ and navigation shell) merged (PR #46); PR 2 (the Events Board) merged
 (PR #48); PR 3 (the detail page, host actions and sharing, host management)
 merged (PR #49); PR 4 (the forms, the copy review, viewer badges, S9 cleanup)
 merged (PR #50); PR 5 (the email, Variant C, the approval note removed)
-merged (PR #51); PR 6 (the section navigation's sliding bar) implemented on
-`yardenah/m11-tab-animation`, awaiting review; a background visual-identity
-exploration planned. Pre-M11 stabilization C1–C5 merged
+merged (PR #51); PR 6 (the section navigation's sliding bar) merged
+(PR #52); PR 7 (the board's background illustration, Option G) implemented and
+verified on `yardenah/m11-background`, not merged. Pre-M11 stabilization C1–C5 merged
 (PRs #41–#45); C6 follows M11; then M12 (application logging).

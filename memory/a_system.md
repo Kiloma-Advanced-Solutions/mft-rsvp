@@ -244,7 +244,8 @@ logic that lives in the route is turning that answer into a status code. See
   `ShareEventActions` (`ShareMenu` and its email dialog), and the
   `EventMeta` family (`DateBlock`, `AccessBadge`, `EventStatusBadge`,
   `RegistrationBadge`, `ViewerRegistrationBadge`, `EventMetaLine`,
-  `EventMetaDetails`, `CapacityMeter`).
+  `EventMetaDetails`, `CapacityMeter`), and `EventBackdrop`, the board's
+  decorative illustration.
 - `layout/` — the app frame: `AppShell` (the navigation rail, or the top bar on a
   narrow screen), `RailLink` and `PersonaSwitcher`.
 
@@ -628,6 +629,17 @@ only. Each follows the server-rendered `aria-current`, so it moves when a
 navigation commits — with the results, never ahead of them — and a click
 `QueuedNavigation` holds moves it only once replayed. The cards and the
 section's content are not animated.
+
+**The illustration.** Behind the board, and only the board, is a decorative
+drawing of an invitation and of planning an event:
+[components/events/EventBackdrop.tsx](../components/events/EventBackdrop.tsx),
+a Server Component of static inline SVG that reads no data, so it can reveal
+nothing. It covers the shell's `<main>`, which is positioned for it but is
+not a stacking context, at `z-index: -1`, and it lines its art up with the
+content column through the shell's `--shell-padding-*` tokens. It is hidden from
+assistive technology, ignores the pointer, and is hidden in forced colours and
+in print. At phone width it becomes one small mark in the corner above the
+page action.
 
 Why the board works this way: [dec_log.md](dec_log.md).
 
