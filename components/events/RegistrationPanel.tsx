@@ -3,6 +3,7 @@ import { isPast } from "@/lib/date";
 import {
   DETAIL_LABELS,
   closedAttendanceLabel,
+  hostParticipationNote,
   registrationCtaCopy,
 } from "@/lib/labels";
 import type {
@@ -36,29 +37,45 @@ import styles from "./RegistrationPanel.module.css";
  * An event that has already started drops the meter for the same reason, but
  * keeps a plain headcount in its place -- the same words a closed event's card
  * uses.
+ *
+ * For one of the event's hosts -- `viewerIsHost`, from `isHost()` -- it is a
+ * participation panel instead, whatever closed registration: titled for that,
+ * with no badge and no action, only the headcount and, for a draft, cancelled
+ * or past event, the line that says so. A host has no registration, so nothing
+ * here mentions one. The headcount stays on a cancelled event too, as a plain
+ * count: the panel is about who takes part, and has nothing else to say.
  */
 export function RegistrationPanel({
   event,
   availability,
-  goingCount,
+  attendanceCount,
   viewerRegistration,
+  viewerIsHost,
 }: {
   event: Pick<EventRecord, "id" | "capacity" | "status" | "startsAt">;
   availability: RegistrationAvailability;
-  goingCount: number;
+  attendanceCount: number;
   viewerRegistration: Registration | null;
+  viewerIsHost: boolean;
 }) {
-  const copy = registrationCtaCopy(
-    availability,
-    viewerRegistration?.status ?? null,
-  );
+  const copy = viewerIsHost
+    ? { action: null, note: hostParticipationNote(availability) }
+    : registrationCtaCopy(availability, viewerRegistration?.status ?? null);
+
+  const cancelled = event.status === "cancelled";
+  // Everyone but a host loses the headcount on a cancelled event.
+  const showCount = viewerIsHost || !cancelled;
 
   return (
     <Card>
       <section className={styles.panel}>
         <div className={styles.head}>
-          <h2 className={styles.title}>{DETAIL_LABELS.registration}</h2>
-          {viewerRegistration && (
+          <h2 className={styles.title}>
+            {viewerIsHost
+              ? DETAIL_LABELS.participation
+              : DETAIL_LABELS.registration}
+          </h2>
+          {viewerRegistration && !viewerIsHost && (
             <ViewerRegistrationBadge
               status={viewerRegistration.status}
               size="lg"
@@ -66,11 +83,11 @@ export function RegistrationPanel({
           )}
         </div>
 
-        {event.status !== "cancelled" &&
-          (isPast(event.startsAt) ? (
-            <p className={styles.count}>{closedAttendanceLabel(goingCount)}</p>
+        {showCount &&
+          (cancelled || isPast(event.startsAt) ? (
+            <p className={styles.count}>{closedAttendanceLabel(attendanceCount)}</p>
           ) : (
-            <CapacityMeter going={goingCount} capacity={event.capacity} />
+            <CapacityMeter going={attendanceCount} capacity={event.capacity} />
           ))}
 
         {copy.action && (

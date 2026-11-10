@@ -1506,9 +1506,8 @@ event on its row — more contention than before, briefly, per event. The
 statements are short and no measurable effect was seen, but no load test was
 run. A future write to registration rows must take the event-row lock first.
 The behaviour has been observed only on Azure SQL DEV; it has not been run on a
-real SQL Server 2008 R2. This replaces the lock-free design in
-[docs/pre-m11-stabilization-plan.md](../docs/pre-m11-stabilization-plan.md) §3
-"C5" and §6, which record the change.
+real SQL Server 2008 R2. This replaces the lock-free design in §3 "C5" and §6
+(the since-retired pre-M11 stabilization plan), which record the change.
 
 ---
 
@@ -2030,3 +2029,89 @@ colours and in print. Its placement depends on the shell's padding tokens and
 on where the board's first card row begins; a change to either needs the art
 rechecked. Other screens are unchanged. Extending the illustration to them is
 a possible later enhancement, not scheduled.
+
+---
+
+## 2026-11-10 — Hosts take part by role, with no registration; attendance is the hosts plus everyone `going`
+
+Context: change 7 of the pre-M11 stabilization asked that every host — the
+organizer and each co-host — be a participant of the event they host. Until
+C6, [TASKS.md](../TASKS.md) §4 said the opposite: "A host is not automatically
+an attendee. They register like everyone else." A host who wanted to be
+counted held an ordinary registration row, like anyone else.
+
+Decision: a host takes part **by virtue of the role**, with no registration
+row. An event's attendance is its unique hosts plus its `going` registrations,
+computed by one function, `countAttendance()` in
+[lib/permissions.ts](../lib/permissions.ts), over `getHostIds()` and the
+unchanged SQL `countGoing` — on the screens and inside the seat protocol alike,
+so the number shown is the number capacity is enforced against. Hosts count
+toward capacity; a capacity below the host count is allowed and reads as full.
+`getRegistrationAvailability()` closes with reason `host` after the draft,
+cancelled and started closures and before everything else, so register,
+request and withdraw are refused (409) for hosts, and `claimSeat` re-runs it
+under the event-row lock. An admin who does not host the event is unaffected.
+The read-only "משתתפים" panel is chosen by `isHost()`, not by the closure
+reason, so a host sees it on a draft, cancelled or past event too.
+
+Rationale: a registration row for a host would be a second, mutable statement
+of a fact the event already holds, and the two could disagree. Three ways of
+counting were weighed: reading every `going` user id and de-duplicating the
+hosts in TypeScript (more data per claim); a SQL count that excludes hosts
+(the rule restated in T-SQL, across three tables); and the plain `going` count
+plus the host count, chosen because the statement the seat protocol runs is
+the one it already ran, with no new round trip, and the rule stays in one
+TypeScript function. Its cost is that it relies on an invariant — no host
+holds a registration on an event they host — which is held by the protocol,
+the seed and the absence of any product path that changes hosts, and is
+written down in [a_system.md](a_system.md) "Seat-taking and concurrency" with
+what a future host-changing feature must do. Draft, cancelled and started come
+first so those events keep explaining themselves to their hosts.
+
+Consequences: this supersedes the host half of 2026-08-26 "Invite-only
+registration admits invited users or managers" — a host no longer registers,
+on an invite-only event or any other — while its admin half stands: an admin
+who does not host an invite-only event may still register without being
+invited. It supersedes the host half of 2026-09-30 "A manager's place is not
+removable, and removing never touches an invitation" — a host has no place to
+remove, and the host-managed list shows hosts as plain rows — while the rule
+still applies to an admin who holds a place. A new event shows one participant,
+its organizer, and `capacity: 1` is full on creation. Existing events can read
+as over capacity; nobody is removed. No screen has an empty-attendance state
+any more, and the cancel and delete confirmations count the hosts.
+
+---
+
+## 2026-11-10 — Legacy host registrations were removed from DEV, not filtered at read time
+
+Context: before C6, hosts could hold registrations on their own events, and
+the shared DEV database had such rows. Under the 2026-11-10 decision above
+each one counts its host twice. The original plan (decision H1 of the pre-M11
+stabilization) was to keep them and exclude them at read time everywhere —
+counts, attendee lists, the queue, every business operation.
+
+Decision: the read-time exclusion was not built. Instead, after C6's host
+closure was in place, a one-off, separately approved cleanup removed the
+host-held registrations on live events from the DEV database: nine rows, each
+reviewed and approved by id. One host-held row on a soft-deleted event was
+kept deliberately, since nothing reads it. The cleanup ran as a single guarded
+transaction — database identity checked, every row compared column by column
+with a verified backup taken beforehand outside the repository, the event
+rows locked before the registrations, exactly nine deleted, anything else
+rolled back — and a read-only check immediately afterwards found no host-held
+registration left on any live event. The seed's one such row was removed in
+the same change, and the utility itself is not part of the repository.
+
+Rationale: excluding the rows at read time would have meant legacy-only code
+in every layer that reads registrations, all of it permanently defending
+against data the product can no longer create. Removing the rows once keeps
+one invariant and one way of counting. The cleanup was a data operation on a
+shared database, not product behaviour, so it was reviewed, run and verified
+on its own rather than shipped as code.
+
+Consequences: the result is a historical fact about DEV, not a guarantee
+about future writes. A pre-C6 build writing to the same database could create
+new host-held rows; a `db:reset` from a version whose seed still has the
+legacy row would recreate it; and nothing in the database refuses either.
+Either would over-count attendance, which errs towards "full", and both are
+listed in [s_status.md](s_status.md) "Known limitations".

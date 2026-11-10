@@ -67,12 +67,14 @@ VALUES
 `;
 
 /**
- * How many people hold a confirmed place.
+ * How many people hold a confirmed place by registering.
  *
- * `going` is the only status that counts against capacity -- `TASKS.md` section
- * 4, and `toEventContext` in `lib/events.ts` counts the same way. The literal is
- * a domain constant rather than caller data, which is why it is written into
- * the statement instead of bound.
+ * `going` is the only status that takes a place. The event's attendance is
+ * this count plus its hosts, who take part without a registration row; the sum
+ * is `countAttendance()` in `lib/permissions.ts`, which `toEventContext` in
+ * `lib/events.ts` calls too, so who counts as a host is never restated here.
+ * The literal is a domain constant rather than caller data, which is why it is
+ * written into the statement instead of bound.
  *
  * Read inside the seat-claim transaction, where the event row is already
  * U-locked, this count is stable until that transaction commits: no other
@@ -179,7 +181,8 @@ export async function getRegistration(id: string): Promise<Registration | null> 
  */
 
 /**
- * How many confirmed places are taken at this event, right now.
+ * How many confirmed places are taken at this event by registration, right
+ * now.
  *
  * Deliberately **not** guarded with `isUuid`, unlike every other read in this
  * file. Those answer a malformed id with "nothing matched", which is harmless

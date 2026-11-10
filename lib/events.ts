@@ -21,8 +21,10 @@ import { db } from "./db";
 import {
   canManageEvent,
   canViewEvent,
+  countAttendance,
   getAttendeeRemovalAvailability,
   getAttendeeRestoreAvailability,
+  getHostIds,
   getInvitationAvailability,
   getInvitationListAvailability,
   getInvitationRevocationAvailability,
@@ -145,22 +147,27 @@ export async function getEventDetailForViewer(
 
   return {
     ...context,
-    // Registration order, and a row whose user has since disappeared is
-    // dropped rather than left as a hole — the same treatment as a stale host.
-    attendees: rows
-      .filter((row) => row.status === "going")
-      .map((row) => usersById.get(row.userId))
-      .filter((user): user is User => user !== undefined),
+    // The same people `attendanceCount` counts: the hosts -- organizer first,
+    // then co-hosts -- and then everyone who is `going`, in registration order.
+    // A row whose user has since disappeared is dropped rather than left as a
+    // hole — the same treatment as a stale host.
+    attendees: [
+      ...context.hosts,
+      ...rows
+        .filter((row) => row.status === "going")
+        .map((row) => usersById.get(row.userId))
+        .filter((user): user is User => user !== undefined),
+    ],
     // Who asked and what they wrote is host-only, so it is not assembled at all
     // for anyone else. Gating the render would be enough for the page, but this
     // way a future caller that forgets to gate has nothing to leak.
     requests: context.viewerCanManage
-      ? toRequests(event, rows, usersById, context.goingCount)
+      ? toRequests(event, rows, usersById, context.attendanceCount)
       : [],
     // Registration ids and who was removed are host-only for the same reason,
     // and are not assembled for anyone else either.
     managedAttendees: context.viewerCanManage
-      ? toManagedAttendees(event, rows, usersById, context.goingCount)
+      ? toManagedAttendees(event, rows, usersById, context.attendanceCount)
       : [],
     // Who is invited and who could be is host-only too -- an invitee does not
     // get to see who else was asked -- so it is `null` for everyone else.
@@ -259,7 +266,7 @@ function toManagedAttendees(
   event: EventRecord,
   rows: Registration[],
   usersById: Map<string, User>,
-  goingCount: number,
+  attendanceCount: number,
 ): ManagedAttendee[] {
   const managed: ManagedAttendee[] = [];
 
@@ -285,7 +292,7 @@ function toManagedAttendees(
         attendee,
         attendeeCanView: canViewEvent(event, attendee),
         restore: getAttendeeRestoreAvailability(event, {
-          goingCount,
+          attendanceCount,
           registration,
         }),
       });
@@ -311,7 +318,7 @@ function toRequests(
   event: EventRecord,
   rows: Registration[],
   usersById: Map<string, User>,
-  goingCount: number,
+  attendanceCount: number,
 ): EventRequest[] {
   return rows
     .filter((row) => row.status === "pending" || row.status === "rejected")
@@ -324,7 +331,7 @@ function toRequests(
         requester,
         requesterCanView: canViewEvent(event, requester),
         decision: getRequestDecisionAvailability(event, {
-          goingCount,
+          attendanceCount,
           registration,
         }),
       };
@@ -347,11 +354,16 @@ function toEventContext(
     event,
     // Organizer first, then co-hosts, skipping anyone no longer in the user
     // list so a stale id cannot put a hole in the array.
-    hosts: [event.organizerId, ...event.coHostIds]
+    hosts: getHostIds(event)
       .map((id) => usersById.get(id))
       .filter((user): user is User => user !== undefined),
-    // Only `going` counts against capacity — see TASKS.md section 4.
-    goingCount: rows.filter((row) => row.status === "going").length,
+    // Hosts plus everyone who is `going` -- the same function the seat
+    // protocol counts with under the lock, so the number a screen shows is the
+    // number capacity is enforced against.
+    attendanceCount: countAttendance(
+      event,
+      rows.filter((row) => row.status === "going").length,
+    ),
     pendingCount: rows.filter((row) => row.status === "pending").length,
     viewerRegistration: rows.find((row) => row.userId === viewer.id) ?? null,
     viewerCanManage: canManageEvent(event, viewer),

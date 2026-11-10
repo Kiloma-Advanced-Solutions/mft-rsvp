@@ -76,7 +76,7 @@ function availabilityFor(
   viewer: User,
 ): RegistrationAvailability {
   return getRegistrationAvailability(detail.event, viewer, {
-    goingCount: detail.goingCount,
+    attendanceCount: detail.attendanceCount,
     viewerRegistration: detail.viewerRegistration,
   });
 }

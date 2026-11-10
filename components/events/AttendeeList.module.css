@@ -20,11 +20,6 @@
   gap: var(--space-4) var(--space-card-gap);
 }
 
-.muted {
-  font-size: var(--text-sm);
-  color: var(--color-text-subtle);
-}
-
 /* ---- the host's rows ---------------------------------------------------- */
 
 .rows {

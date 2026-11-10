@@ -6,9 +6,10 @@
  * and the row it returns. This module is the exception, and it exists because
  * one invariant cannot be expressed as a constraint:
  *
- *     the number of `going` registrations never exceeds the event's capacity
+ *     no seat-taking write lifts the event's attendance -- its hosts plus
+ *     everyone who is `going` -- past its capacity
  *
- * A CHECK constraint cannot say that -- it spans rows, and two tables -- so it
+ * A CHECK constraint cannot say that -- it spans rows, and three tables -- so it
  * can only be a transaction protocol. This is that protocol, in one file, so
  * there is one place to read and one place to get it wrong.
  *
@@ -16,8 +17,10 @@
  * order, inside one transaction:
  *
  *   1. take the event row with `WITH (UPDLOCK, ROWLOCK)` -- the mutex;
- *   2. read the event's facts, the `going` count and the registration row,
- *      all under that lock;
+ *   2. read the event's facts (its hosts included), the `going` count and the
+ *      registration row, all under that lock, and work out attendance from
+ *      them with `countAttendance()` -- the function `lib/events.ts` counts
+ *      with too, so the screen and the transaction cannot count differently;
  *   3. re-run the SAME pure rule from `lib/permissions.ts` the route ran, now
  *      against facts that cannot change underneath it;
  *   4. write, with the row's expected status as a predicate;
@@ -73,6 +76,7 @@ import {
   updateRegistrationOn,
 } from "./registrations";
 import {
+  countAttendance,
   getAttendeeRestoreAvailability,
   getRegistrationAvailability,
   getRequestDecisionAvailability,
@@ -152,7 +156,10 @@ export async function claimSeat({
       const event = await readEventForUpdate(transaction, eventId);
       if (!event) return { outcome: "gone" };
 
-      const goingCount = await countGoing(transaction, eventId);
+      const attendanceCount = countAttendance(
+        event,
+        await countGoing(transaction, eventId),
+      );
       const existing = await readRegistrationForUser(
         transaction,
         eventId,
@@ -161,7 +168,7 @@ export async function claimSeat({
 
       // 3 -- the same rule the route ran, on facts that cannot now move.
       const availability = getRegistrationAvailability(event, viewer, {
-        goingCount,
+        attendanceCount,
         viewerRegistration: existing,
       });
 
@@ -259,7 +266,10 @@ export async function approveRequest({
       const event = await readEventForUpdate(transaction, eventId);
       if (!event) return { outcome: "gone" };
 
-      const goingCount = await countGoing(transaction, eventId);
+      const attendanceCount = countAttendance(
+        event,
+        await countGoing(transaction, eventId),
+      );
       const registration = await readRegistrationById(
         transaction,
         registrationId,
@@ -273,7 +283,7 @@ export async function approveRequest({
       }
 
       const availability = getRequestDecisionAvailability(event, {
-        goingCount,
+        attendanceCount,
         registration,
       });
 
@@ -329,7 +339,10 @@ export async function restoreAttendee({
     const event = await readEventForUpdate(transaction, eventId);
     if (!event) return { outcome: "gone" };
 
-    const goingCount = await countGoing(transaction, eventId);
+    const attendanceCount = countAttendance(
+      event,
+      await countGoing(transaction, eventId),
+    );
     const registration = await readRegistrationById(
       transaction,
       registrationId,
@@ -342,7 +355,7 @@ export async function restoreAttendee({
     }
 
     const availability = getAttendeeRestoreAvailability(event, {
-      goingCount,
+      attendanceCount,
       registration,
     });
 

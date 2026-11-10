@@ -341,7 +341,7 @@ export function createSeedEvents(): EventRecord[] {
       },
       category: "learning",
       accent: "violet",
-      capacity: 3,
+      capacity: 4,
       access: "approval",
       status: "published",
       organizerId: SEED_USER_IDS.maya,
@@ -565,7 +565,8 @@ export function createSeedRegistrations(): Registration[] {
       status: "going",
     },
 
-    // Capacity 3 and three confirmed: this event is full.
+    // Capacity 4: its organizer, Maya, plus three confirmed. This event is
+    // exactly full.
     {
       id: "650bf708-5d19-4a5c-bb98-10895b941bb9",
       eventId: SEED_EVENT_IDS.oncallTraining,
@@ -610,12 +611,6 @@ export function createSeedRegistrations(): Registration[] {
       id: "fc36c27c-648a-4794-a44c-034449933880",
       eventId: SEED_EVENT_IDS.sprintRetro,
       userId: SEED_USER_IDS.tom,
-      status: "going",
-    },
-    {
-      id: "3542b8f4-0c99-4751-b8db-6f96728de06d",
-      eventId: SEED_EVENT_IDS.sprintRetro,
-      userId: SEED_USER_IDS.daniel,
       status: "going",
     },
     {

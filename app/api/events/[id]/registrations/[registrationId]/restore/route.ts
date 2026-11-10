@@ -69,10 +69,10 @@ export const POST = withErrorHandling(
 
     // The refusal the host sees, from the snapshot this request loaded. The
     // right basis for the message, the wrong one for the write:
-    // `detail.goingCount` was true when it was read, and restoring is exactly
-    // the action that can make it untrue.
+    // `detail.attendanceCount` was true when it was read, and restoring is
+    // exactly the action that can make it untrue.
     const availability = getAttendeeRestoreAvailability(detail.event, {
-      goingCount: detail.goingCount,
+      attendanceCount: detail.attendanceCount,
       registration,
     });
 

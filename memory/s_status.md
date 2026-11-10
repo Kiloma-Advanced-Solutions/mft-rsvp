@@ -5,9 +5,20 @@ progresses — it is current state, not a changelog.
 
 ## Active milestone
 
-**M11, the system redesign — in progress.** M11 restyles the whole UI to the
-Iron Numbers design system, which has been supplied, and changes presentation
-only: no rule, API, schema or permission changes. It is delivered in five
+**C6, host participation — implemented and verified on
+`yardenah/host-participation`, not merged.** The last of the pre-M11
+stabilization branches. Hosts — the organizer and each co-host — take part in
+their own events by role, with no registration: attendance is the hosts plus
+everyone `going`, capacity is measured against it, and a host cannot register,
+request a place or withdraw there. Delivered as one branch in four slices:
+counting and capacity; the host closure; the attendee list and the cancel and
+delete confirmations; and the seed and documentation. The rules are in
+[TASKS.md](../TASKS.md) §4, why in [dec_log.md](dec_log.md), the invariant it
+relies on in [a_system.md](a_system.md) "Seat-taking and concurrency".
+
+**M11, the system redesign — complete.** M11 restyled the whole UI to the
+Iron Numbers design system, which was supplied, and changed presentation
+only: no rule, API, schema or permission changes. It was delivered in five
 sequential PRs and approved follow-ups. PR 1 — design foundations, the
 shared UI kit and the navigation shell — is merged (PR #46). PR 2 — the
 Events Board: its cards and badges, filters and section navigation — is
@@ -20,23 +31,20 @@ approved mockup's "Variant C", with the approval event's access note removed —
 is merged (PR #51). PR 6 — the board's section navigation slides its bar to a
 new section, as the segmented control slides its pill — is merged (PR #52).
 PR 7 — the background visual identity: the approved "Option G" illustration,
-on the Events Board only — is implemented and verified on
-`yardenah/m11-background`; it is not merged, so M11 is not complete. The
+on the Events Board only — is merged (PR #53), which completed M11. The
 desktop widths are unchanged by
 M11: the board, the detail page and the forms keep the shell's 1120px column.
-What M11 delivered and what remains is in [TASKS.md](../TASKS.md) §5.
+What M11 delivered is in [TASKS.md](../TASKS.md) §5.
 
-**Pre-M11 stabilization — C1–C5 merged, C6 after M11.** Eleven fixes and
+**Pre-M11 stabilization — C1–C5 merged, C6 on its branch.** Eleven fixes and
 behaviour changes requested after M10 were planned in six branches, C1–C6; two
 of them were deferred into M11 — category colours (done in M11 PR 2) and the
-explanatory-note review (done in M11 PR 4). The approved requirements, branch
-boundaries and decisions H1–H3 are in
-[docs/pre-m11-stabilization-plan.md](../docs/pre-m11-stabilization-plan.md),
-a temporary plan that C6 retires; its order — C6 before M11 — has since been
-changed, and M11 now comes first. Merged: C1 (removing the workshop pages,
-PR #41), C2 (UI text fixes, PR #42), C3 (rejected users on open events,
-PR #43), C4 (event date rules, PR #44) and C5 (soft deletion, PR #45, with
-migration `0003`). C6 (host participation) has not started.
+explanatory-note review (done in M11 PR 4). Their temporary plan is retired:
+each branch's rules are in [TASKS.md](../TASKS.md) §4 and its decisions in
+[dec_log.md](dec_log.md). M11 ran before C6, reversing the planned order.
+Merged: C1 (removing the workshop pages, PR #41), C2 (UI text fixes, PR #42),
+C3 (rejected users on open events, PR #43), C4 (event date rules, PR #44) and
+C5 (soft deletion, PR #45, with migration `0003`). C6 is above.
 
 M1–M10 are complete and merged into
 `yardenah/events-board`: the original assignment's three `must` and two
@@ -48,7 +56,7 @@ shareable event links and email sharing (PR #38). The UI is also
 localized to Hebrew and RTL (PR #25), which changed presentation only; what it
 fixed in place is in [a_system.md](a_system.md).
 
-**After M11 and C6, M12 — future work.** M12 (application logging) is
+**After C6, M12 — future work.** M12 (application logging) is
 specified in [TASKS.md](../TASKS.md) §5. The
 rest of the original stretch list — the calendar view first, then the waitlist,
 search, "my events", optimistic UI and a theme toggle — is also unstarted.
@@ -91,10 +99,17 @@ Since C5, deleting an event is **soft**. The event row
 stays, stamped with `DeletedAt`, and from then on it does not exist for anyone
 — absent from the board, a 404 on its page and on every route, admins
 included. Its registrations, co-hosts and invitations stay in the database,
-unreachable. Nothing restores or purges a deleted event. The delete
-confirmation and its wording are unchanged. How it works is in
+unreachable. Nothing restores or purges a deleted event. How it works is in
 [a_system.md](a_system.md) "Data layer" and "Managing events"; why, in
 [dec_log.md](dec_log.md).
+
+Since C6, hosts take part in their own events by role. Every count includes
+them; "Who is going" lists the organizer, then the co-hosts, then everyone
+`going`, and a host's version shows the hosts as plain rows with nothing to
+remove or restore. A host's registration panel is a read-only "משתתפים"
+panel. The cancel and delete confirmations open with the attendance, hosts
+included, and any pending requests; the delete one then says the event is
+removed for every user and cannot be restored.
 
 A cancelled event stays on the board, in a section of its own, and its detail
 page stays readable to whoever could see it before; registering, withdrawing
@@ -201,6 +216,17 @@ The shape of all of it is in [a_system.md](a_system.md).
 Not missing — decided against, for this milestone or for the exercise. A later
 session should not treat any of these as an oversight to fix.
 
+From C6's scope — why each was decided is in [dec_log.md](dec_log.md):
+
+- **No host registration status.** A host is a participant by role; nothing
+  new was added to `RegistrationStatus`.
+- **No host badge or label.** Hosts appear as ordinary people in every list.
+- **No filtering of legacy host registrations.** None is expected to exist;
+  DEV's were removed once instead.
+- **No host reassignment and no co-host management.** Nothing in the product
+  changes an event's organizer or co-hosts after creation; a feature that did
+  would have to resolve that person's registration under the event-row lock.
+
 From M11 PR 4's scope — why each was decided is in [dec_log.md](dec_log.md):
 
 - **No length limit on an event's summary.** A hard 110-character limit was
@@ -220,8 +246,8 @@ From C5's scope — why each was decided is in
 - **No admin view of deleted events.** Deletion hides an event from admins too.
 - **No new event status.** Deleted is not a lifecycle state; it is the event
   ceasing to exist for every reader.
-- **No change to the delete confirmation** or its wording, which stays true
-  from the user's side.
+- **No change to the delete confirmation** in C5 itself; C6 later reworded it
+  (see "Status").
 
 From M10's scope — why the sharing and email items were decided is in
 [dec_log.md](dec_log.md). Send history was outside M10's scope rather than a
@@ -325,10 +351,31 @@ on their behalf.
 
 The capacity invariant is held by an application protocol, not a database
 constraint, and a host may still lower capacity below current attendance —
-M4's rule, kept deliberately — so `goingCount > capacity` remains a reachable
-state. What cannot happen is a seat-taking operation adding to it. Seat claims
-for one event serialize on its row. See [a_system.md](a_system.md)
-"Seat-taking and concurrency".
+M4's rule, kept deliberately — so attendance above capacity remains a
+reachable state. Since C6 attendance is the hosts plus everyone `going`, not
+the `going` count alone, so an event whose capacity is below its host count is
+full from the start. What cannot happen is a seat-taking operation adding to
+it. Seat claims for one event serialize on its row. See
+[a_system.md](a_system.md) "Seat-taking and concurrency".
+
+C6 relies on an invariant nothing in the database enforces: no host holds a
+registration on an event they host.
+
+- **The seed.** The fix to `lib/seed.ts` is on C6's branch. Until it reaches
+  `yardenah/events-board`, a `db:reset` from the older integration version
+  would recreate the one legacy host registration it carried.
+- **Older builds.** A pre-C6 build of the application writing to the DEV
+  database could create new host registrations. Either case over-counts that
+  host, erring towards "full"; DEV's existing ones were removed once (see
+  [dec_log.md](dec_log.md)), and one on a soft-deleted event was kept.
+- **Co-hosts** are verified by pure rule checks and on a past seeded event,
+  but by no database-backed test: no live event in DEV has a co-host, and the
+  product cannot create one.
+- **A capacity-label grammar quirk** is deferred: the meter's "N מתוך
+  {capacity} משתתפים" reads "1 מתוך משתתף אחד" at capacity 1, and similarly
+  awkwardly when attendance exceeds a capacity of two.
+- **SQL Server 2008 R2.** C6's queries pass the static `check:tsql` floor and
+  ran on Azure SQL DEV; they have not run on a real 2008 R2.
 
 An event read is stitched from several reads of committed data, not one
 snapshot; accepted for rendering. Only capacity-sensitive writes and invitation
@@ -442,12 +489,8 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-11-08 — M11 in progress: PR 1 (design foundations, UI kit
-and navigation shell) merged (PR #46); PR 2 (the Events Board) merged
-(PR #48); PR 3 (the detail page, host actions and sharing, host management)
-merged (PR #49); PR 4 (the forms, the copy review, viewer badges, S9 cleanup)
-merged (PR #50); PR 5 (the email, Variant C, the approval note removed)
-merged (PR #51); PR 6 (the section navigation's sliding bar) merged
-(PR #52); PR 7 (the board's background illustration, Option G) implemented and
-verified on `yardenah/m11-background`, not merged. Pre-M11 stabilization C1–C5 merged
-(PRs #41–#45); C6 follows M11; then M12 (application logging).
+Last updated: 2026-11-10 — M11 complete: PRs #46 and #48–#53 merged, the
+last being PR 7 (the board's background illustration, Option G). Pre-M11
+stabilization C1–C5 merged (PRs #41–#45); C6 (host participation) implemented
+and verified on `yardenah/host-participation`, not merged; its temporary plan
+retired. Then M12 (application logging).

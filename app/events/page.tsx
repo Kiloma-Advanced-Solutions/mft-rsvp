@@ -154,15 +154,17 @@ export default async function BoardPage({ searchParams }: PageProps<"/events">) 
             />
           ) : (
             <EventGrid>
-              {items.map(({ event, hosts, goingCount, viewerRegistration }) => (
-                <EventCard
-                  key={event.id}
-                  event={event}
-                  goingCount={goingCount}
-                  viewerStatus={viewerRegistration?.status ?? null}
-                  hostName={hosts[0]?.name}
-                />
-              ))}
+              {items.map(
+                ({ event, hosts, attendanceCount, viewerRegistration }) => (
+                  <EventCard
+                    key={event.id}
+                    event={event}
+                    attendanceCount={attendanceCount}
+                    viewerStatus={viewerRegistration?.status ?? null}
+                    hostName={hosts[0]?.name}
+                  />
+                ),
+              )}
             </EventGrid>
           )}
         </section>

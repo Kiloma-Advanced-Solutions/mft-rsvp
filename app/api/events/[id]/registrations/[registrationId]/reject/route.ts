@@ -74,7 +74,7 @@ export const POST = withErrorHandling(
     }
 
     const availability = getRequestDecisionAvailability(detail.event, {
-      goingCount: detail.goingCount,
+      attendanceCount: detail.attendanceCount,
       registration,
     });
 

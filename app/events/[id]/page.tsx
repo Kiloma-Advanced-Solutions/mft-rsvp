@@ -30,6 +30,7 @@ import {
   getRegistrationAvailability,
   getScheduleAvailability,
   getSharingAvailability,
+  isHost,
 } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
 import { buildEventShareUrl } from "@/lib/shareLinks";
@@ -71,7 +72,7 @@ export default async function EventDetailPage({
   const {
     event,
     hosts,
-    goingCount,
+    attendanceCount,
     pendingCount,
     attendees,
     requests,
@@ -83,7 +84,7 @@ export default async function EventDetailPage({
   } = detail;
 
   const availability = getRegistrationAvailability(event, viewer, {
-    goingCount,
+    attendanceCount,
     viewerRegistration,
   });
 
@@ -132,7 +133,7 @@ export default async function EventDetailPage({
               eventId={event.id}
               isDraft={event.status === "draft"}
               canCancel={getCancellationAvailability(event).state === "open"}
-              goingCount={goingCount}
+              attendanceCount={attendanceCount}
               pendingCount={pendingCount}
               // Built only for a manager, so never `null` here.
               share={shareState(event, shareRecipients ?? [])}
@@ -201,8 +202,9 @@ export default async function EventDetailPage({
             <RegistrationPanel
               event={event}
               availability={availability}
-              goingCount={goingCount}
+              attendanceCount={attendanceCount}
               viewerRegistration={viewerRegistration}
+              viewerIsHost={isHost(event, viewer)}
             />
           </aside>
 
@@ -252,8 +254,9 @@ export default async function EventDetailPage({
             */}
             <AttendeeList
               event={event}
+              hosts={hosts}
               attendees={attendees}
-              goingCount={goingCount}
+              attendanceCount={attendanceCount}
               managed={viewerCanManage ? managedAttendees : null}
             />
 

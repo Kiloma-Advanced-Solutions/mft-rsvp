@@ -27,8 +27,9 @@ in [a_system.md](a_system.md).
 - **host** — *not a role*. A host is the event's `organizerId`, or anyone in its
   `coHostIds`. This is the term that decides who may edit, publish, cancel,
   delete, decide requests on, remove or restore attendees of, manage the
-  invitations to, and share a specific event. A host is not automatically an
-  attendee.
+  invitations to, and share a specific event. A host is also a **participant**
+  of the event by virtue of the role, with no registration: counted in its
+  attendance, and unable to register, request a place or withdraw there.
 - **invite list** / **invited user** — the people, beyond its hosts and admins,
   who may see an invite-only event; an invited user is someone on it (an event's
   `invitedUserIds`). Being invited is **not a registration and not a seat**: it
@@ -99,7 +100,8 @@ for the five seeded personas and what each is useful for.
 
 - **registration** — one person's standing with respect to one event. A person has
   at most one per event, and it carries an optional message plus who decided it.
-- `going` — confirmed. The only status that counts against capacity.
+- `going` — confirmed. The only registration status that counts toward
+  attendance, and so against capacity. A host takes part without one.
 - `pending` — awaiting a host's decision. Only occurs on `approval` events.
 - `rejected` — a host declined the request. Not final from the host's side: the
   person may not ask again, but a host may still approve them later. Once the
@@ -134,11 +136,15 @@ Import the copy from [lib/labels.ts](../lib/labels.ts) rather than inventing it.
 
 ## Capacity
 
-- **capacity** — the maximum number of confirmed attendees. `null` means
-  unlimited.
-- **full** — the number of `going` registrations has reached capacity. Only
-  `going` counts; `pending`, `cancelled`, `rejected`, `waitlisted` and
-  `removed` do not.
+- **attendance** — who takes part in an event: its hosts (the organizer and
+  each co-host, counted once) by role, plus everyone with a `going`
+  registration. Being a participant and holding a registration are different
+  things — a host is the first without the second. `pending`, `cancelled`,
+  `rejected`, `waitlisted` and `removed` registrations do not count.
+- **capacity** — the maximum attendance. `null` means unlimited. It may be set
+  below the number of hosts.
+- **full** — attendance has reached capacity, which includes an event whose
+  capacity is below its host count.
 
 → [TASKS.md](../TASKS.md) §4 for when registration is closed and how capacity
 interacts with each access mode.
@@ -199,10 +205,11 @@ interacts with each access mode.
   a draft, a cancelled event and one that has started. It gives the same answer
   as cancellation availability today, but is a separate question.
 - **`EventWithContext`** — the derived view-model an event screen usually needs:
-  the event plus its hosts, the going and pending counts, the viewer's own
-  registration, and whether the viewer may manage it. Built by
-  [lib/events.ts](../lib/events.ts), after visibility has been applied. The
-  detail screen's version adds the confirmed attendees themselves, the
+  the event plus its hosts, its `attendanceCount` (attendance, hosts included)
+  and `pendingCount`, the viewer's own registration, and whether the viewer may
+  manage it. Built by [lib/events.ts](../lib/events.ts), after visibility has
+  been applied. The detail screen's version adds the participants themselves —
+  hosts first, organizer before co-hosts, then everyone `going` — the
   approval queue's rows, the **managed attendees** — the `going` and
   `removed` rows with what a host may do about each — and the host's view of
   the **invite list**, with the **candidates** who may be added, and the
