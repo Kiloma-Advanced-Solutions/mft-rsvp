@@ -124,9 +124,12 @@ An event you cannot see should **404**, not 403. A 403 confirms it exists.
 | Edit / delete an event | no | no | yes | yes |
 | Publish a draft | no | no | yes | yes |
 | Approve or reject requests | no | no | yes | yes |
-| Register | yes | yes | yes | yes |
+| Register | yes | yes | no — takes part as a host | yes, on an event they do not host |
 
-A host is not automatically an attendee. They register like everyone else.
+A host takes part in their own event **by virtue of the role**, with no
+registration: the organizer and every co-host are participants of it. A host
+therefore cannot register, request a place or withdraw on an event they host.
+An admin who does not host the event registers like anyone else.
 
 ### Registering
 
@@ -140,11 +143,18 @@ Registration is **closed** when any of these is true:
 
 - the event is a `draft` or is `cancelled`;
 - the event has already started;
+- the person hosts the event;
 - the event is full and its mode is `open` or `invite`.
 
-An event is **full** when the number of `going` registrations reaches
-`capacity`. `capacity: null` means unlimited. Only `going` counts — `pending`,
-`cancelled` and `rejected` do not.
+They are checked in that order, so a draft, cancelled or started event says
+so even to its hosts.
+
+An event's **attendance** is its hosts — the organizer and each co-host,
+counted once — plus everyone with a `going` registration. `pending`,
+`cancelled`, `rejected` and `removed` registrations do not count. An event is
+**full** when its attendance reaches `capacity`. `capacity: null` means
+unlimited. Capacity may be lower than the number of hosts; such an event is
+simply full.
 
 On an `approval` event that is full, people may still request a place, but a
 host cannot approve past capacity.
@@ -152,6 +162,8 @@ host cannot approve past capacity.
 ### Withdrawing
 
 Anyone who is `going` or `pending` may withdraw, which sets them to `cancelled`.
+A host has no registration on an event they host, so there is nothing for
+them to withdraw.
 They may register again afterwards. Someone who was `rejected` may not
 re-request — the host can still approve them from the queue. The exception is
 an event whose access is currently `open`: there they may register again like
@@ -436,8 +448,8 @@ stabilization work, because each depends on the Style Guide:
 - How it applies to the Hebrew, right-to-left interface and to both themes.
 - The definition of done for this milestone.
 
-**Status: in progress.** The text above is kept as it was set before the Style
-Guide arrived. The Style Guide — the Iron Numbers design system — was supplied
+**Status: complete — the last PR merged as PR #53.** The text above is kept
+as it was set before the Style Guide arrived. The Style Guide — the Iron Numbers design system — was supplied
 and reviewed in M11's planning step, which approved a design and a sequence of
 PRs; each item left open above is now decided:
 
@@ -473,13 +485,12 @@ itself was not available. Then the first of two approved follow-ups: the
 board's section navigation slides its bar to a new section, as the segmented
 control slides its pill — only the selection, not the content.
 
-Remaining: the second follow-up, the background visual identity. The
-exploration ended with an approved design, "Option G": a decorative
-illustration of an invitation and of planning an event, behind the **Events
-Board only**, purely decorative and drawn from no data. It is implemented and
-verified, and M11 is complete when it merges. Showing it on other screens is a
-possible later enhancement, not part of M11 and not scheduled. Which PR is
-where is in `memory/s_status.md`.
+Then the second follow-up, the background visual identity, which completed
+M11 (PR #53). The exploration ended with an approved design, "Option G": a
+decorative illustration of an invitation and of planning an event, behind the
+**Events Board only**, purely decorative and drawn from no data. Showing it on
+other screens is a possible later enhancement, not part of M11 and not
+scheduled.
 
 #### M12 — Application logging
 

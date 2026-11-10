@@ -91,10 +91,10 @@ export const POST = withErrorHandling(
 
     // The refusal the host sees, from the snapshot this request loaded. As on
     // the registration route, it is the right basis for the message and the
-    // wrong basis for the write -- `detail.goingCount` was true when it was
-    // read, and approving is exactly the action that can make it untrue.
+    // wrong basis for the write -- `detail.attendanceCount` was true when it
+    // was read, and approving is exactly the action that can make it untrue.
     const availability = getRequestDecisionAvailability(detail.event, {
-      goingCount: detail.goingCount,
+      attendanceCount: detail.attendanceCount,
       registration,
     });
 

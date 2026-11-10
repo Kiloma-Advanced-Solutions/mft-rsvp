@@ -1,19 +1,13 @@
 import { Badge, Card, Person } from "@/components/ui";
-import { isPast } from "@/lib/date";
-import {
-  ATTENDEE_LABELS,
-  CAPACITY_LABELS,
-  DETAIL_LABELS,
-  attendeeRestoreClosedNote,
-} from "@/lib/labels";
+import { ATTENDEE_LABELS, DETAIL_LABELS, attendeeRestoreClosedNote } from "@/lib/labels";
 import type { EventRecord, ManagedAttendee, User } from "@/lib/types";
 
 import { AttendeeActions } from "./AttendeeActions";
 import styles from "./AttendeeList.module.css";
 
 /**
- * Who is going — and, for a host, the action beside each of them and the people
- * who were removed.
+ * Who is taking part — and, for a host, the action beside each registered
+ * attendee and the people who were removed.
  *
  * A Server Component, and it derives nothing. `managed` is built by
  * `lib/events.ts` only for a viewer who may manage the event, with every row's
@@ -21,45 +15,42 @@ import styles from "./AttendeeList.module.css";
  * who get the plain list they always had. Registration ids and the removed
  * group therefore never reach a viewer who is not a host.
  *
- * `goingCount` rather than a length is the headline, because only `going` rows
- * count and a row whose person has left the company still holds a place.
- *
- * Nobody coming to an event that is cancelled or has started reads as a plain
- * fact, in the words a closed event's card uses, not as "nobody has registered
- * yet".
+ * The headline is `attendanceCount` — every host plus everyone `going`,
+ * `countAttendance()` — rather than a length, because a row whose person has
+ * left the company still holds a place. Hosts always take part, so the list is
+ * never empty and the count is never zero.
  *
  * The one interactive part is `AttendeeActions`, which receives an id, a name
  * and what it may do — nothing about anybody else.
  */
 export function AttendeeList({
   event,
+  hosts,
   attendees,
-  goingCount,
+  attendanceCount,
   managed,
 }: {
-  event: Pick<EventRecord, "id" | "access" | "status" | "startsAt">;
+  event: Pick<EventRecord, "id" | "access">;
+  /** Organizer first, then co-hosts — the host's list shows them first, as rows. */
+  hosts: User[];
+  /** Everyone taking part, hosts first: what everybody else sees. */
   attendees: User[];
-  goingCount: number;
-  /** The host's view of the same rows, or `null` for anyone who is not one. */
+  attendanceCount: number;
+  /** The host's view of the registration rows, or `null` for anyone who is not one. */
   managed: ManagedAttendee[] | null;
 }) {
-  const empty =
-    event.status === "cancelled" || isPast(event.startsAt)
-      ? CAPACITY_LABELS.noRegistrations
-      : DETAIL_LABELS.noAttendees;
-
   return (
     <Card>
       <section>
         <div className={styles.head}>
           <h2 className={styles.title}>{DETAIL_LABELS.attendees}</h2>
-          {goingCount > 0 && <Badge tone="neutral">{goingCount}</Badge>}
+          <Badge tone="neutral">{attendanceCount}</Badge>
         </div>
 
         {managed === null ? (
-          <People attendees={attendees} empty={empty} />
+          <People attendees={attendees} />
         ) : (
-          <ManagedPeople event={event} managed={managed} empty={empty} />
+          <ManagedPeople event={event} hosts={hosts} managed={managed} />
         )}
       </section>
     </Card>
@@ -70,11 +61,7 @@ export function AttendeeList({
  * The list everybody but a host sees, unchanged from before M8 apart from its
  * layout: a grid of people, as the page's hosts are shown.
  */
-function People({ attendees, empty }: { attendees: User[]; empty: string }) {
-  if (attendees.length === 0) {
-    return <p className={styles.muted}>{empty}</p>;
-  }
-
+function People({ attendees }: { attendees: User[] }) {
   return (
     <div className={styles.grid}>
       {attendees.map((attendee) => (
@@ -85,39 +72,40 @@ function People({ attendees, empty }: { attendees: User[]; empty: string }) {
 }
 
 /**
- * The host's list, as rows. A confirmed attendee gets a remove button only
- * where the rule allows it; where it does not — an open event, somebody who
- * manages the event, an event that is cancelled or over — the row is just the
- * person, and the page's own notices say why the event is closed.
+ * The host's list, as rows: the hosts first — organizer, then co-hosts — then
+ * everyone confirmed, in registration order. A host has no registration, so
+ * their row is just the person, with nothing to remove or restore. A confirmed
+ * attendee gets a remove button only where the rule allows it; where it does
+ * not — an open event, somebody who manages the event, an event that is
+ * cancelled or over — the row is just the person, and the page's own notices
+ * say why the event is closed.
  */
 function ManagedPeople({
   event,
+  hosts,
   managed,
-  empty,
 }: {
   event: Pick<EventRecord, "id" | "access">;
+  hosts: User[];
   managed: ManagedAttendee[];
-  /** What an empty list says; see `AttendeeList`. */
-  empty: string;
 }) {
   const going = managed.filter((row) => row.status === "going");
   const removed = managed.filter((row) => row.status === "removed");
 
   return (
     <>
-      {going.length === 0 ? (
-        <p className={styles.muted}>
-          {removed.length > 0
-            ? ATTENDEE_LABELS.noConfirmedAttendees
-            : empty}
-        </p>
-      ) : (
-        <div className={styles.rows}>
-          {going.map((row) => (
-            <GoingRow key={row.registrationId} event={event} row={row} />
-          ))}
-        </div>
-      )}
+      <div className={styles.rows}>
+        {hosts.map((host) => (
+          <div key={host.id} className={styles.row}>
+            <div className={styles.rowText}>
+              <Person user={host} />
+            </div>
+          </div>
+        ))}
+        {going.map((row) => (
+          <GoingRow key={row.registrationId} event={event} row={row} />
+        ))}
+      </div>
 
       {/*
         Kept apart from the confirmed list, the way the queue keeps rejected

@@ -28,29 +28,32 @@ import styles from "./EventCard.module.css";
  * an anchor is invalid, and a card with three click targets is a card nobody
  * knows how to click.
  *
- * Everything it renders is passed in. Working out `goingCount`, who the
+ * Everything it renders is passed in. Working out `attendanceCount`, who the
  * attendees are, and what the viewer's own status is, is the caller's job.
  */
 export function EventCard({
   event,
   attendees = [],
-  goingCount,
+  attendanceCount,
   viewerStatus,
   hostName,
   href,
 }: {
   event: EventRecord;
-  /** Confirmed attendees, for the avatar stack. A slice of 4 or so is plenty. */
+  /** People taking part, for the avatar stack. A slice of 4 or so is plenty. */
   attendees?: Array<Pick<User, "id" | "name" | "initials" | "accent">>;
-  /** Total confirmed attendees. Defaults to `attendees.length`. */
-  goingCount?: number;
+  /**
+   * Everyone taking part: every host plus everyone `going` --
+   * `countAttendance()`. Never zero, since the organizer always counts.
+   */
+  attendanceCount: number;
   /** The viewer's own registration status, if they have one. */
   viewerStatus?: RegistrationStatus | null;
   /** Shown bottom-right when there is no avatar stack to show. */
   hostName?: string;
   href?: string;
 }) {
-  const going = goingCount ?? attendees.length;
+  const going = attendanceCount;
   const cancelled = event.status === "cancelled";
   // Cancelled or already started: nobody can join it any more. Its attendance
   // line is a plain headcount with no capacity bar, and it is never "full" --

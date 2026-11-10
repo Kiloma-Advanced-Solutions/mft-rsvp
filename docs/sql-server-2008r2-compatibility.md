@@ -292,7 +292,7 @@ during M6, because there is no access to the real SQL Server 2008 R2 server.
 | **Driver compatibility** | That `mssql`/Tedious can talk to that specific deployment at all. |
 | **Collation** | A case-sensitive or binary collation would affect the lowercase status literals in the `CHECK` constraints. |
 | **Permissions** | Whether the deployment account may create the application's tables. |
-| **Locking / runtime behaviour** | `UPDLOCK` semantics under that server's optimizer, and `@@ROWCOUNT` behaviour in its engine — including C5's soft delete racing edits, lifecycle transitions, seat claims and the event-locked registration transitions, verified so far only on Azure SQL DEV (see "Soft deletion (C5)"). |
+| **Locking / runtime behaviour** | `UPDLOCK` semantics under that server's optimizer, and `@@ROWCOUNT` behaviour in its engine — including C5's soft delete racing edits, lifecycle transitions, seat claims and the event-locked registration transitions, verified so far only on Azure SQL DEV (see "Soft deletion (C5)"); and C6's attendance-aware seat claims, run on Azure SQL DEV over HTTP and checked statically by `check:tsql`, but likewise never on a real 2008 R2. |
 
 The preflight script (`scripts/check-target-compatibility.mts`, added in the
 connectivity slice) runs these checks against whatever server it is pointed at.
@@ -302,19 +302,28 @@ Running it against the real target is the outstanding verification item.
 
 One product invariant cannot be a constraint:
 
-> the number of `going` registrations never exceeds the event's capacity
+> no seat-taking write lifts the event's attendance — its hosts plus everyone
+> `going` — past its capacity
 
-It spans rows and two tables, so no `CHECK` can express it. It is a transaction
-protocol instead, implemented once in [lib/data/seats.ts](../lib/data/seats.ts).
-Every write that can raise the `going` count — direct registration, a host's
-approval, and a host restoring a removed attendee — does this inside one
-transaction:
+Since C6, attendance counts the event's unique hosts (organizer and co-hosts)
+as well as its `going` registrations, because hosts take part by role with no
+registration row. It spans rows and three tables, so no `CHECK` can express
+it. It is a transaction protocol instead, implemented once in
+[lib/data/seats.ts](../lib/data/seats.ts). Every write that can raise the
+`going` count — direct registration, a host's approval, and a host restoring a
+removed attendee — does this inside one transaction:
 
 1. take the event row with `WITH (UPDLOCK, ROWLOCK)`;
-2. read the event, the `going` count and the registration row, all under it;
+2. read the event — its co-host rows in the same transaction — the `going`
+   count and the registration row, all under it, and add the unique hosts to
+   the count (`countAttendance()` in TypeScript; the SQL is still the plain
+   `COUNT(*)` of `going` rows);
 3. re-run the same pure rule from `lib/permissions.ts` the route already ran;
 4. write, with the row's expected status as a predicate;
 5. commit, which releases the lock.
+
+C6 changed what is counted, not how: no statement, hint, lock order or
+transaction boundary changed.
 
 `UPDLOCK` is the load-bearing part: an update lock is held to the end of the
 transaction and is incompatible with another update lock, so the count read at

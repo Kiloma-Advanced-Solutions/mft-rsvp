@@ -662,11 +662,27 @@ in CSS would still ship it.
 (`isPast`, so one in progress too) shows attendance as a plain headcount —
 `closedAttendanceLabel()` on the board card, never "full", "be the first" or
 places left. On the detail page a started event shows that headcount in place
-of the capacity meter. An empty "Who is going" on a cancelled or started event
-says "אין נרשמים" rather than "nobody has registered yet". A cancelled event
-otherwise keeps its own detail-page presentation: no meter and no headcount in
-the panel. Presentation only — what is open or closed is still decided by
+of the capacity meter. A cancelled event otherwise keeps its own detail-page
+presentation: no meter and no headcount in the registration panel.
+Presentation only — what is open or closed is still decided by
 `lib/permissions.ts`.
+
+**Attendance includes the hosts (C6).** Every count a screen shows — the card,
+the meter, the headcount, the badge on "Who is going" — is `attendanceCount`:
+the event's hosts plus everyone `going`. Since the organizer always counts, it
+is never zero, so no screen has an empty-attendance state any more: no "be the
+first", no "nobody has registered", no empty "Who is going". "Who is going"
+lists the hosts first — organizer, then co-hosts — then everyone `going`, in
+registration order.
+
+**A host's panel is read-only (C6).** For a viewer who hosts the event —
+`isHost()`, not whichever closure `getRegistrationAvailability()` happened to
+report — the registration panel becomes a participation panel titled
+"משתתפים": the attendance (the meter, or a headcount once the event is past or
+cancelled), no status badge, no action, and no note — except on a draft,
+cancelled or past event, which keeps a short line saying so, worded without
+registration (`hostParticipationNote()` in [lib/labels.ts](../lib/labels.ts)).
+Everyone else keeps the registration panel unchanged.
 
 **Layout (M11 PR 3).** Breadcrumbs — the board, then the event, then "edit" in
 edit mode — replace the back link. The title and summary are centred on the
@@ -753,6 +769,15 @@ event, so withdrawing **transitions the row to `cancelled` rather than deleting
 it**, and registering again revives that same row; a revived row starts a new
 cycle, so the previous cycle's decision fields and message are cleared. Nothing
 here writes `waitlisted`.
+
+**Hosts are refused (C6).** A host takes part by role and holds no
+registration, so `getRegistrationAvailability()` closes with reason `host` for
+anyone who hosts the event — after the draft, cancelled and started closures,
+which still say so to hosts, and before everything else. Registering, requesting
+and withdrawing all answer 409 with that note. `claimSeat` re-runs the same rule
+after it has locked the event row and read its hosts in the same transaction,
+so the refusal does not depend on the snapshot the route loaded. An admin who
+does not host the event is not a host and registers normally.
 
 A `rejected` or `removed` row is revived the same way, but only while the
 event's access is `open`; on `approval` and `invite` it stays closed and only a
@@ -915,8 +940,9 @@ unlimited, omitting it on create is unlimited too, and omitting it on `PATCH`
 keeps whatever is stored. In the form it takes ticking "no limit" — a blank
 number box is a validation error rather than a silent removal of the event's
 limit, so clearing the field to retype it cannot uncap the event by accident.
-Lowering capacity below the number already `going` is allowed and removes
-nobody; the event simply reads as full.
+Capacity is measured against attendance — the hosts plus everyone `going`
+(C6). Lowering it below current attendance, even below the number of hosts, is
+allowed and removes nobody; the event simply reads as full.
 
 **Location** is one value. Supplying it on a `PATCH` replaces the whole object,
 and fields that are not meaningful to the chosen `kind` are dropped, so an event
@@ -928,9 +954,11 @@ including when switching to `invite`, which removes visibility for people not on
 the invite list while leaving their rows intact. Deleting keeps them too —
 since C5 the rows stay in the database — but takes every one of them out of
 reach with the event, so from the user's side the places and requests are
-lost. That is why the UI puts a confirmation in front of it that names how many
-confirmed places and pending requests go. The dialog is an affordance; the
-`DELETE` handler is what authorises and performs the deletion.
+lost. That is why the UI puts a confirmation in front of it that first states,
+in bold, the attendance — hosts included — and any pending requests
+separately, and then says the event is removed for every user and cannot be
+restored. The cancel confirmation opens with the same line. Both dialogs are
+affordances; the `DELETE` and cancel handlers are what authorise and act.
 
 ### Deciding requests — the approval queue
 
@@ -1062,6 +1090,14 @@ removed — are built in [lib/events.ts](../lib/events.ts) as `managedAttendees`
 an empty array, and the page hands `AttendeeList` `null` and renders the plain
 list. The one client leaf, `AttendeeActions`, receives an id, a name and what
 it may do.
+
+**Hosts in the host's list (C6).** The host's version lists the hosts first —
+the organizer, then the co-hosts, from the `hosts` the page already holds — as
+plain rows with no remove or restore action, since they hold no registration
+to act on; then the `going` rows, in registration order, each with whatever
+the rule allows; then the removed group. `managedAttendees` itself is still
+only registration rows. The badge is `attendanceCount`, so it matches the rows
+above the removed group.
 
 **How the writes are made safe.** Removing lowers the `going` count, so it
 cannot overfill an event: it is an expected-status transition from `going`,
@@ -1248,12 +1284,15 @@ Current position: [s_status.md](s_status.md).
 ## Seat-taking and concurrency
 
 The capacity rule is a rule about seat-taking: **a seat-taking operation may add
-a `going` registration only while the authoritative `going` count is below the
-event's capacity, or when capacity is unlimited.** It is not a promise that the
-count never exceeds capacity — see the last point below. The rule spans rows and
-tables, so no database constraint can express it. **Capacity is not enforced by
-the database.** It is held by an application protocol, and the distinction is
-what a future change must not blur.
+a `going` registration only while the event's authoritative attendance is below
+its capacity, or when capacity is unlimited.** Attendance is the event's unique
+hosts — organizer and co-hosts — plus its `going` registrations
+(`countAttendance()` in [lib/permissions.ts](../lib/permissions.ts), over
+`getHostIds()` and the SQL `countGoing`); C6 added the hosts. It is not a
+promise that attendance never exceeds capacity — see the last point below. The
+rule spans rows and tables, so no database constraint can express it.
+**Capacity is not enforced by the database.** It is held by an application
+protocol, and the distinction is what a future change must not blur.
 
 **What the database does guarantee**, by constraint: at most one registration
 per person per event; valid enum values; a capacity that is unlimited or at
@@ -1270,8 +1309,10 @@ helpers perform the physical write on its behalf. Each runs as one transaction
 that:
 
 1. locks the event row;
-2. re-reads the authoritative state under that lock — the event, the `going`
-   count, the registration row;
+2. re-reads the authoritative state under that lock — the event with its
+   co-hosts, the `going` count, the registration row — and works out
+   attendance from them with `countAttendance()`, the same function the
+   screens count with;
 3. re-runs the same pure rule from [lib/permissions.ts](../lib/permissions.ts)
    the route already ran, so the business rule is never restated in T-SQL;
 4. writes with the row's expected status as a predicate;
@@ -1324,9 +1365,19 @@ The rest of the rules around it:
   is bootstrap, not a runtime seat claim, so the seat-taking rule does not
   apply to it.
 - **Capacity lowered by a host is not a seat claim.** M4 lets a host lower
-  capacity below current attendance and evicts nobody, so `goingCount >
-  capacity` stays a reachable state; what the protocol prevents is a seat-taking
-  operation adding to it.
+  capacity below current attendance — even below the host count — and evicts
+  nobody, so attendance above capacity stays a reachable state; what the
+  protocol prevents is a seat-taking operation adding to it.
+- **No host holds a registration on an event they host (C6).** Hosts are
+  counted by role, so a host's own `going` row would count them twice. The
+  invariant is held, not constrained: the seat claim refuses hosts under the
+  lock; a new event has no rows; no product path changes an event's
+  `organizerId` or co-hosts after creation (`POST /api/events` sets no
+  co-hosts and `PATCH` cannot reach either); and the seed has none. If it is
+  ever broken, attendance over-counts, which errs towards "full". A future
+  feature that makes somebody a host — co-host management or transferring an
+  event — must resolve that person's registration in the same transaction,
+  under this event-row lock.
 
 Deeper detail — the lock hints, why no range lock is needed, and how the
 isolation level is left alone — is in the header of

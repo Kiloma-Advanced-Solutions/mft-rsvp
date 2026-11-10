@@ -44,11 +44,50 @@ import type {
 } from "./types";
 
 /**
- * A host is the event's organizer or anyone in `coHostIds`. Not a role — it is
- * answered per event, which is why it takes both arguments.
+ * Everyone who hosts this event: the organizer first, then the co-hosts, each
+ * once. Nothing stops the organizer also being stored as a co-host, so the
+ * list is de-duplicated rather than trusted.
+ *
+ * The one definition of "host". `isHost` below asks it, and so does the
+ * attendance count, which is what keeps "who manages this event" and "who
+ * participates in it by hosting" from drifting apart.
  */
-function isHost(event: EventRecord, user: User): boolean {
-  return event.organizerId === user.id || event.coHostIds.includes(user.id);
+export function getHostIds(
+  event: Pick<EventRecord, "organizerId" | "coHostIds">,
+): string[] {
+  return [...new Set([event.organizerId, ...event.coHostIds])];
+}
+
+/**
+ * A host is the event's organizer or anyone in `coHostIds`. Not a role — it is
+ * answered per event, which is why it takes both arguments. Exported for the
+ * detail page, which shows a host the participation panel rather than the
+ * registration one.
+ */
+export function isHost(event: EventRecord, user: User): boolean {
+  return getHostIds(event).includes(user.id);
+}
+
+/**
+ * The event's attendance -- the number its capacity is measured against: every
+ * host, once, plus everyone with a `going` registration.
+ *
+ * Hosts take part by hosting and never hold a registration row, so the two
+ * halves cannot overlap. That is an invariant, not something checked here: a
+ * new event starts with no rows, and nothing in the product makes an existing
+ * registrant a host. Anything that ever does must resolve that person's
+ * registration under the event-row lock, or they are counted twice -- which
+ * errs towards "full", never past capacity.
+ *
+ * Both places that count call this: `lib/events.ts`, from the rows it has
+ * already loaded, and the seat protocol in `lib/data/seats.ts`, from
+ * `countGoing` under the event-row lock.
+ */
+export function countAttendance(
+  event: Pick<EventRecord, "organizerId" | "coHostIds">,
+  goingCount: number,
+): number {
+  return getHostIds(event).length + goingCount;
 }
 
 /**
@@ -92,17 +131,19 @@ export function canCreateEvent(user: User): boolean {
 }
 
 /**
- * Is this event full? Only `going` counts against capacity, and a `null`
- * capacity is unlimited. Private: every caller — one person's own availability,
- * a host's decision on somebody else's request, and a host restoring a removed
- * attendee — is in this file, and `TASKS.md` section 7 does not want unused
- * exports.
+ * Is this event full? Attendance -- its hosts plus everyone who is `going`,
+ * `countAttendance()` -- is what counts against capacity, and a `null`
+ * capacity is unlimited. A capacity below the number of hosts is allowed, and
+ * such an event is simply full. Private: every caller — one person's own
+ * availability, a host's decision on somebody else's request, and a host
+ * restoring a removed attendee — is in this file, and `TASKS.md` section 7 does
+ * not want unused exports.
  */
 function isEventFull(
   event: Pick<EventRecord, "capacity">,
-  goingCount: number,
+  attendanceCount: number,
 ): boolean {
-  return event.capacity !== null && goingCount >= event.capacity;
+  return event.capacity !== null && attendanceCount >= event.capacity;
 }
 
 /**
@@ -120,9 +161,9 @@ export function getRegistrationAvailability(
   event: EventRecord,
   user: User,
   {
-    goingCount,
+    attendanceCount,
     viewerRegistration,
-  }: { goingCount: number; viewerRegistration: Registration | null },
+  }: { attendanceCount: number; viewerRegistration: Registration | null },
 ): RegistrationAvailability {
   // A draft, a cancellation or a start time that has passed closes registration
   // for everybody, hosts included.
@@ -131,6 +172,12 @@ export function getRegistrationAvailability(
     return { state: "closed", reason: "cancelled" };
   }
   if (isPast(event.startsAt)) return { state: "closed", reason: "started" };
+
+  // Hosts take part without a registration -- `countAttendance()` already
+  // counts them -- so there is nothing for them to register, request or
+  // withdraw. Being a host of this event, not being an admin, is what closes
+  // it: an admin who does not host it registers like anyone else.
+  if (isHost(event, user)) return { state: "closed", reason: "host" };
 
   // Whoever is `going` or `pending` may withdraw. Nothing else may.
   const status = viewerRegistration?.status;
@@ -154,8 +201,8 @@ export function getRegistrationAvailability(
     return { state: "closed", reason: "removed" };
   }
 
-  // Invite-only admits the invite list plus whoever may manage the event — a
-  // host is not on their own invite list, and should still be able to attend.
+  // Invite-only admits the invite list plus whoever may manage the event. Hosts
+  // were answered above, so in practice that is an admin who is not on the list.
   if (
     event.access === "invite" &&
     !event.invitedUserIds.includes(user.id) &&
@@ -166,7 +213,7 @@ export function getRegistrationAvailability(
 
   // A full `approval` event still takes requests; a host just cannot approve
   // past capacity. `open` and `invite` close.
-  if (event.access !== "approval" && isEventFull(event, goingCount)) {
+  if (event.access !== "approval" && isEventFull(event, attendanceCount)) {
     return { state: "closed", reason: "full" };
   }
 
@@ -202,9 +249,9 @@ export function getRegistrationAvailability(
 export function getRequestDecisionAvailability(
   event: EventRecord,
   {
-    goingCount,
+    attendanceCount,
     registration,
-  }: { goingCount: number; registration: Registration },
+  }: { attendanceCount: number; registration: Registration },
 ): RequestDecisionAvailability {
   // The same closure that stops people registering stops a host deciding: a
   // place at an event that is over or cancelled is worth nothing to give away.
@@ -222,7 +269,7 @@ export function getRequestDecisionAvailability(
     return { state: "closed", reason: "not_decidable" };
   }
 
-  const full = isEventFull(event, goingCount);
+  const full = isEventFull(event, attendanceCount);
 
   // Already turned down: approving is the only way left, and only if there is
   // a seat. Rejecting it a second time would change nothing.
@@ -384,9 +431,9 @@ export function getAttendeeRemovalAvailability(
 export function getAttendeeRestoreAvailability(
   event: EventRecord,
   {
-    goingCount,
+    attendanceCount,
     registration,
-  }: { goingCount: number; registration: Registration },
+  }: { attendanceCount: number; registration: Registration },
 ): AttendeeRestoreAvailability {
   if (event.status === "draft") return { state: "closed", reason: "draft" };
   if (event.status === "cancelled") {
@@ -400,7 +447,7 @@ export function getAttendeeRestoreAvailability(
     return { state: "closed", reason: "not_removed" };
   }
 
-  if (isEventFull(event, goingCount)) {
+  if (isEventFull(event, attendanceCount)) {
     return { state: "closed", reason: "full" };
   }
 

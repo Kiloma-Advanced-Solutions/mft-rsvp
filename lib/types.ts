@@ -160,7 +160,12 @@ export type Registration = {
 export type EventWithContext = {
   event: EventRecord;
   hosts: User[];
-  goingCount: number;
+  /**
+   * Everyone taking part: every host, once, plus everyone with a `going`
+   * registration -- `countAttendance()` in `lib/permissions.ts`. The number the
+   * event's capacity is measured against, and the one every screen shows.
+   */
+  attendanceCount: number;
   pendingCount: number;
   /** The current viewer's registration, if they have one. */
   viewerRegistration: Registration | null;
@@ -180,6 +185,8 @@ export type RegistrationClosedReason =
   | "draft"
   | "cancelled"
   | "started"
+  /** The viewer hosts this event, and so takes part without a registration. */
+  | "host"
   | "full"
   | "rejected"
   | "removed"
@@ -428,7 +435,10 @@ export type EventRequest = {
  * `EventWithContext` would have it assembled for every card that ignores it.
  */
 export type EventDetailContext = EventWithContext & {
-  /** Confirmed (`going`) attendees, in registration order. */
+  /**
+   * Everyone taking part: the organizer, then the co-hosts, then everyone
+   * with a `going` registration, in registration order.
+   */
   attendees: User[];
   /**
    * The `pending` and `rejected` rows a host may decide, in registration order.

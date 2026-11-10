@@ -20,7 +20,7 @@ import {
   DETAIL_LABELS,
   MANAGE_ACTION_COPY,
   cancelDialogCopy,
-  deleteDialogMessage,
+  deleteDialogCopy,
 } from "@/lib/labels";
 
 import { ShareMenu } from "./ShareEventActions";
@@ -51,7 +51,7 @@ export function HostEventActions({
   eventId,
   isDraft,
   canCancel,
-  goingCount,
+  attendanceCount,
   pendingCount,
   share,
 }: {
@@ -63,10 +63,10 @@ export function HostEventActions({
   /** `getCancellationAvailability()` said yes: published and not yet started. */
   canCancel: boolean;
   /**
-   * Confirmed places: lost if this is deleted, kept on record if it is
-   * cancelled. Both dialogs say which.
+   * Everyone taking part, hosts included (`countAttendance()`): lost if this
+   * is deleted, kept as they are if it is cancelled. Both dialogs say which.
    */
-  goingCount: number;
+  attendanceCount: number;
   /** And pending requests, which go or stay the same way. */
   pendingCount: number;
 }) {
@@ -81,7 +81,8 @@ export function HostEventActions({
   const toast = useToast();
 
   const busy = publishing || cancelling || deleting || working;
-  const cancelCopy = cancelDialogCopy(goingCount, pendingCount);
+  const cancelCopy = cancelDialogCopy(attendanceCount, pendingCount);
+  const deleteCopy = deleteDialogCopy(attendanceCount, pendingCount);
 
   async function publish() {
     setPublishing(true);
@@ -205,12 +206,12 @@ export function HostEventActions({
         onConfirm={cancel}
         title={CANCEL_DIALOG.title}
         /*
-          The registrations on record come first and in bold, so a host cannot
-          miss who is affected; the rest says that cancelling keeps them all.
+          Who is taking part comes first and in bold, so a host cannot miss
+          who is affected; the rest says what cancelling does.
         */
         message={
           <>
-            <strong>{cancelCopy.registrations}</strong>
+            <strong>{cancelCopy.summary}</strong>
             <br />
             {cancelCopy.details}
           </>
@@ -226,8 +227,14 @@ export function HostEventActions({
         onCancel={() => setConfirmOpen(false)}
         onConfirm={remove}
         title={DELETE_DIALOG.title}
-        // Names the consequence: deleting an event ends its registrations.
-        message={deleteDialogMessage(goingCount, pendingCount)}
+        // Laid out as the cancel dialog is: who is affected, in bold, first.
+        message={
+          <>
+            <strong>{deleteCopy.summary}</strong>
+            <br />
+            {deleteCopy.details}
+          </>
+        }
         confirmLabel={DELETE_DIALOG.confirm}
         cancelLabel={DELETE_DIALOG.cancel}
         destructive

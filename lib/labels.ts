@@ -264,7 +264,8 @@ export const DETAIL_LABELS = {
   attendees: "מי מגיע",
   /** The title of the registration panel. */
   registration: "הרשמה",
-  noAttendees: "אף אחד עוד לא נרשם.",
+  /** The same panel's title for a host, who has nothing to register. */
+  participation: "משתתפים",
   edit: "עריכה",
   /** The header's icon buttons: their accessible names and tooltips. */
   share: "שיתוף",
@@ -296,6 +297,9 @@ const CLOSED_NOTES: Record<RegistrationClosedReason, string> = {
   draft: "האירוע עדיין טיוטה, ולכן אי אפשר להירשם אליו.",
   cancelled: "האירוע בוטל, וההרשמה סגורה.",
   started: "האירוע כבר עבר.",
+  // Only ever an API refusal: the panel says nothing to a host -- see
+  // `registrationCtaCopy()`.
+  host: "אתם מארחים את האירוע, ולכן אין לכם הרשמה לשנות.",
   full: "האירוע מלא.",
   rejected:
     "הבקשה שלכם לא אושרה. מארח עדיין יכול לאשר אתכם מתוך התור שלו.",
@@ -347,6 +351,10 @@ export function registrationCtaCopy(
           };
 
     case "closed":
+      // A host takes part without registering, and is offered nothing and told
+      // nothing. (The detail page shows a host `hostParticipationNote()`
+      // instead; this keeps the answer right for any other caller.)
+      if (availability.reason === "host") return { action: null, note: null };
       return {
         action: null,
         note:
@@ -355,6 +363,25 @@ export function registrationCtaCopy(
             : undefined) ?? CLOSED_NOTES[availability.reason],
       };
   }
+}
+
+/**
+ * What the participation panel says to one of the event's hosts: the event's
+ * own state, worded without registration, since a host has none. `null` when
+ * the event is simply open -- a host is told nothing about taking part.
+ */
+const HOST_STATE_NOTES: Partial<Record<RegistrationClosedReason, string>> = {
+  draft: "האירוע עדיין טיוטה.",
+  cancelled: "האירוע בוטל ולא יתקיים.",
+  started: "האירוע כבר עבר.",
+};
+
+export function hostParticipationNote(
+  availability: RegistrationAvailability,
+): string | null {
+  return availability.state === "closed"
+    ? (HOST_STATE_NOTES[availability.reason] ?? null)
+    : null;
 }
 
 /**
@@ -918,12 +945,6 @@ export const ATTENDEE_LABELS = {
   restore: "החזרה",
   removedTitle: "הוסרו מהאירוע",
   /**
-   * The host's empty list when everyone confirmed was removed. "Nobody has
-   * registered yet" would contradict the removed group right below it; only a
-   * host sees that group, so only a host gets this line.
-   */
-  noConfirmedAttendees: "אין כרגע משתתפים מאושרים.",
-  /**
    * Removal never touches an invitation, but an access change afterwards can
    * hide the event from somebody who was removed. Returning them gives their
    * place back and not their access -- the same caveat the queue states.
@@ -1167,52 +1188,44 @@ export const CANCEL_DIALOG = {
   cancel: "השארת האירוע",
 };
 
-const CANCEL_DIALOG_LEAD =
-  "האירוע יסומן כמבוטל ויישאר גלוי לכל מי שרואה אותו היום.";
-
-/** Cancelling is terminal, so the dialog says so -- and what to do instead. */
-const CANCEL_DIALOG_FINAL =
-  "אי אפשר להחזיר אירוע מבוטל לפעילות — אם הוא רק נדחה, עדיף לערוך את המועד שלו.";
+/**
+ * What cancelling does, and that it cannot be undone. Says nothing about
+ * registrations: hosts take part without one, and cancelling rewrites none.
+ */
+const CANCEL_DIALOG_DETAILS =
+  "לאחר הביטול, האירוע יישאר גלוי אך לא ניתן יהיה להירשם אליו או לנהל בקשות. לא ניתן להחזיר אירוע מבוטל לפעילות.";
 
 /**
- * The cancel warning, in two parts so the dialog can put the first one first.
+ * A cancel or delete confirmation, in two parts so the dialog can put the
+ * first one first.
  *
- * `registrations` states what is on record right now, counted, because that
- * is the fact a host most needs before cancelling and it was easy to miss in
- * the middle of a paragraph. `details` says what happens to it -- nothing:
- * cancelling removes no registration, the event's status is what closes every
- * action -- and what happens to everything else.
+ * `summary` states who is taking part right now -- `attendanceCount`, hosts
+ * included -- and, separately, any requests still waiting, because that is
+ * the fact a host most needs before an action that ends them. `details` says
+ * what the action does. There is no "nobody" case: the organizer always takes
+ * part.
  */
-type CancelDialogCopy = {
-  registrations: string;
+type ConfirmDialogCopy = {
+  summary: string;
   details: string;
 };
 
-export function cancelDialogCopy(
-  goingCount: number,
-  pendingCount: number,
-): CancelDialogCopy {
+/** "באירוע יש כרגע 3 משתתפים ושתי בקשות ממתינות." -- one line, both dialogs. */
+function attendanceSummary(attendanceCount: number, pendingCount: number): string {
   const parts = [
-    goingCount > 0 && confirmedAttendeeCount(goingCount),
-    pendingCount > 0 && requestCount(pendingCount),
-  ].filter((part): part is string => part !== false);
+    attendeeCount(attendanceCount),
+    ...(pendingCount > 0 ? [requestCount(pendingCount)] : []),
+  ];
+  return `באירוע יש כרגע ${joinWithAnd(parts)}.`;
+}
 
-  if (parts.length === 0) {
-    return {
-      registrations: "אין לאירוע נרשמים כרגע.",
-      details: `${CANCEL_DIALOG_LEAD} לא יהיה אפשר עוד להירשם אליו או לבקש בו מקום. ${CANCEL_DIALOG_FINAL}`,
-    };
-  }
-
-  // One registration is a feminine singular ("הרשמה"); anything more is plural.
-  const kept =
-    goingCount + pendingCount === 1
-      ? "ההרשמה לא תימחק ותישאר רשומה כפי שהיא"
-      : "ההרשמות לא יימחקו ויישארו רשומות כפי שהן";
-
+export function cancelDialogCopy(
+  attendanceCount: number,
+  pendingCount: number,
+): ConfirmDialogCopy {
   return {
-    registrations: `באירוע יש כרגע ${joinWithAnd(parts)}.`,
-    details: `${kept}, אבל לא יהיה אפשר עוד להירשם, לבקש מקום, לוותר על מקום או להחליט על בקשות. ${CANCEL_DIALOG_LEAD} ${CANCEL_DIALOG_FINAL}`,
+    summary: attendanceSummary(attendanceCount, pendingCount),
+    details: CANCEL_DIALOG_DETAILS,
   };
 }
 
@@ -1221,46 +1234,30 @@ export const DELETE_DIALOG = {
   title: "למחוק את האירוע?",
   confirm: "מחיקת האירוע",
   cancel: "ביטול",
-  /** No registrations to lose, so there is nothing extra to warn about. */
-  message: "אי אפשר לבטל את זה. האירוע יוסר עבור כולם.",
 };
 
 /**
- * The same warning, naming what is actually destroyed alongside the event.
- *
- * Deleting takes **every** registration out of reach with the event, not only
- * the confirmed ones -- the rows are kept in the database, but nobody can see
- * or act on them again -- so a pending request is lost as surely as a place
- * is. Counting only the confirmed ones understated an irreversible action --
- * a host looking at "Awaiting approval 2" in the same card was told nothing
- * about those two.
+ * What deleting does, for the people using the board: the event is gone for
+ * all of them, for good. Deliberately says nothing about rows -- deletion is
+ * soft (`DeletedAt`), so nothing is physically erased.
  */
-export function deleteDialogMessage(
-  goingCount: number,
+const DELETE_DIALOG_DETAILS =
+  "מחיקת האירוע תסיר אותו מהמערכת עבור כל המשתמשים. לא ניתן לשחזר אירוע שנמחק.";
+
+/**
+ * The delete warning, laid out as the cancel one is. Deleting takes every
+ * place and every pending request out of reach with the event, so both are
+ * counted -- a host looking at "Awaiting approval 2" in the same card must be
+ * told about those two.
+ */
+export function deleteDialogCopy(
+  attendanceCount: number,
   pendingCount: number,
-): string {
-  const parts = [
-    goingCount > 0 && placeCount(goingCount),
-    pendingCount > 0 && requestCount(pendingCount),
-  ].filter((part): part is string => part !== false);
-
-  if (parts.length === 0) return DELETE_DIALOG.message;
-
-  /*
-    Two differences from the English. The conjunction is the prefix "ו" rather
-    than a separate word, so it is joined onto the phrase that follows it; and
-    the verb agrees with the subject in both number *and* gender, so a lone
-    place ("מקום", masculine) reads "יימחק", a lone request ("בקשה", feminine)
-    reads "תימחק", and anything plural reads "יימחקו".
-  */
-  const verb =
-    goingCount + pendingCount > 1
-      ? "יימחקו"
-      : pendingCount === 1
-        ? "תימחק"
-        : "יימחק";
-
-  return `אי אפשר לבטל את זה. ${joinWithAnd(parts)} ${verb} יחד עם האירוע.`;
+): ConfirmDialogCopy {
+  return {
+    summary: attendanceSummary(attendanceCount, pendingCount),
+    details: DELETE_DIALOG_DETAILS,
+  };
 }
 
 /** "א ו-ב", or just "א" when there is only the one. */
@@ -1276,20 +1273,6 @@ function joinWithAnd(parts: string[]): string {
  */
 export function hebrewAnd(phrase: string): string {
   return /^\d/.test(phrase) ? `ו-${phrase}` : `ו${phrase}`;
-}
-
-/** "מקום מאושר אחד", "שני מקומות מאושרים", "5 מקומות מאושרים". */
-function placeCount(n: number): string {
-  if (n === 1) return "מקום מאושר אחד";
-  if (n === 2) return "שני מקומות מאושרים";
-  return `${n} מקומות מאושרים`;
-}
-
-/** "משתתף מאושר אחד", "שני משתתפים מאושרים", "5 משתתפים מאושרים". */
-function confirmedAttendeeCount(n: number): string {
-  if (n === 1) return "משתתף מאושר אחד";
-  if (n === 2) return "שני משתתפים מאושרים";
-  return `${n} משתתפים מאושרים`;
 }
 
 /** "בקשה ממתינה אחת", "שתי בקשות ממתינות", "5 בקשות ממתינות". */
@@ -1413,11 +1396,12 @@ export function noSuchPersonaLabel(userId: string): string {
 /* ------------------------------------------------------ counts on a card */
 
 /**
- * The attendance line on a card: how many are coming, and how many places are
- * left.
+ * The attendance line on a card: how many are taking part, and how many places
+ * are left.
  *
  * `capacity: null` is unlimited, so there is nothing to subtract and the line
- * is just the headcount.
+ * is just the headcount. There is no zero case: `going` is the attendance,
+ * which counts the hosts, so it is at least one.
  */
 export function attendanceLabel(
   going: number,
@@ -1425,7 +1409,6 @@ export function attendanceLabel(
   full: boolean,
 ): string {
   if (full) return CAPACITY_LABELS.full;
-  if (going === 0) return CAPACITY_LABELS.beFirst;
   if (capacity === null) return goingCountLabel(going);
   return `${goingCountLabel(going)} · ${placesLeftLabel(capacity - going)}`;
 }
@@ -1433,19 +1416,16 @@ export function attendanceLabel(
 /**
  * The attendance line of an event nobody can join any more -- cancelled, or
  * already started: a headcount and nothing that invites anyone to register --
- * no "be the first", no places left.
+ * no places left. Never zero, for the same reason as `attendanceLabel()`.
  */
 export function closedAttendanceLabel(going: number): string {
-  return going === 0 ? CAPACITY_LABELS.noRegistrations : goingCountLabel(going);
+  return goingCountLabel(going);
 }
 
 /** The same counts, for the meter on the detail page. */
 export const CAPACITY_LABELS = {
   full: "מלא",
   noLimit: "ללא הגבלה",
-  beFirst: "היו הראשונים להירשם",
-  /** A cancelled or started event nobody had registered for. */
-  noRegistrations: "אין נרשמים",
   /** The badge on a published event whose start has gone by. */
   past: "עבר",
   /** The fallback text of an online event's joining link. */
