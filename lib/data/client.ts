@@ -38,6 +38,9 @@ import "server-only";
 import sql from "mssql";
 import type { ConnectionPool, Transaction } from "mssql";
 
+import { setLogRedactor } from "../log";
+import { createRedactor } from "./redact.mts";
+
 /**
  * Anything that can hand out a request: the pool, or a transaction on it.
  *
@@ -71,6 +74,21 @@ function readConnectionString(): string {
     );
   }
   return value;
+}
+
+/**
+ * The application log masks the connection string's credentials and host in
+ * every line, the way the database CLIs mask their own output -- a driver error
+ * can quote the text it was given, and the log is where such errors end up.
+ *
+ * Installed here, when this module loads, because this is the one module that
+ * reads the connection string: the secret and the code that hides it stay in
+ * the same place, and nothing else has to read the variable to protect it. A
+ * missing value installs nothing; `getPool()` reports that on first use.
+ */
+const connectionStringForRedaction = process.env[CONNECTION_STRING_VAR];
+if (connectionStringForRedaction !== undefined && connectionStringForRedaction.trim() !== "") {
+  setLogRedactor(createRedactor(connectionStringForRedaction));
 }
 
 /**

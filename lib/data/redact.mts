@@ -6,12 +6,14 @@
  * `scripts/check-target-compatibility.mts`. It used to be copied into all
  * three, which is how all three came to have the same bug.
  *
- * Not application code, and nothing under `app/`, `components/` or `lib/*.ts`
- * imports it: the application never holds a connection string of its own --
- * `lib/data/client.ts` reads the environment variable and hands it straight to
- * the driver. This lives beside its two main callers rather than in `scripts/`
- * so that `lib/data/` does not have to import upwards out of itself. It holds
- * no SQL, so being inside a `check:tsql` scan root costs nothing.
+ * The application uses it in exactly one place: `lib/data/client.ts`, the one
+ * module that reads the connection string, builds a redactor from it and
+ * installs it in the application log (`lib/log.ts`), so a driver error that
+ * quotes the credentials is masked there as well. Nothing else under `app/`,
+ * `components/` or `lib/*.ts` imports it. This lives beside its main callers
+ * rather than in `scripts/` so that `lib/data/` does not have to import upwards
+ * out of itself. It holds no SQL, so being inside a `check:tsql` scan root costs
+ * nothing.
  *
  * WHAT IT IS FOR. A driver error can quote the text it was given, and these
  * commands print driver errors because that is where the useful detail is. So
