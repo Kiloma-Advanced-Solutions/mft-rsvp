@@ -38,7 +38,8 @@ import "server-only";
 import sql from "mssql";
 import type { ConnectionPool, Transaction } from "mssql";
 
-import { setLogRedactor } from "../log";
+import { log, setLogRedactor } from "../log";
+import { outsideRequestContext } from "../requestContext";
 import { createRedactor } from "./redact.mts";
 
 /**
@@ -141,7 +142,12 @@ export function getPool(): Promise<ConnectionPool> {
   // running until they idle out, while the next request builds a second pool
   // beside them. Closing a pool that never connected is a no-op in the driver,
   // and closing one twice is guarded there too, so this is safe on every path.
-  pool.on("error", () => {
+  //
+  // Logged here because nothing else will see it: no request is waiting on an
+  // idle connection. Outside any request context, because the socket that
+  // failed carries the context of whichever request opened it.
+  pool.on("error", (error: unknown) => {
+    outsideRequestContext(() => log.error("db.pool_error", { component: "db", err: error }));
     forget();
     void pool.close().catch(() => undefined);
   });
@@ -186,7 +192,14 @@ export async function inTransaction<T>(
     await transaction.commit();
     return result;
   } catch (error) {
-    if (!abortedByServer) await transaction.rollback().catch(() => undefined);
+    // A rollback that fails is logged and otherwise ignored: the error worth
+    // propagating is the one that made us roll back, and the caller's boundary
+    // reports that one.
+    if (!abortedByServer) {
+      await transaction.rollback().catch((rollbackError: unknown) => {
+        log.error("db.rollback_failed", { component: "db", err: rollbackError });
+      });
+    }
     throw error;
   }
 }

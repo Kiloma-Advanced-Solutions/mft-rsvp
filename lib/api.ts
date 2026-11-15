@@ -9,9 +9,16 @@
  * Keeping that consistent is what lets the client have a single `fetchJson`
  * helper instead of bespoke error handling at every call site. See
  * `app/api/session/route.ts` for a worked example of the whole pattern.
+ *
+ * Shared with Client Components, so it must stay free of server-only code.
+ * The wrapper that catches a handler's errors and logs them,
+ * `withErrorHandling`, is in `lib/apiHandler.ts` for that reason.
+ *
+ * `./labels.ts` carries its extension so that module can be loaded by the
+ * bare-Node self-check through `lib/apiHandler.ts`.
  */
 
-import { API_ERRORS, requestFailedLabel } from "./labels";
+import { API_ERRORS, requestFailedLabel } from "./labels.ts";
 
 /** Throw this anywhere inside a handler wrapped in `withErrorHandling`. */
 export class ApiError extends Error {
@@ -62,31 +69,6 @@ export function jsonError(
     { error: { message, code: options?.code, details: options?.details } },
     { status },
   );
-}
-
-/**
- * Wraps a handler so thrown `ApiError`s become clean responses and anything
- * unexpected becomes a 500 without leaking a stack trace to the client.
- *
- *   export const GET = withErrorHandling(async () => { ... })
- */
-export function withErrorHandling<Args extends unknown[]>(
-  handler: (...args: Args) => Promise<Response>,
-): (...args: Args) => Promise<Response> {
-  return async (...args: Args) => {
-    try {
-      return await handler(...args);
-    } catch (error) {
-      if (error instanceof ApiError) {
-        return jsonError(error.status, error.message, {
-          code: error.code,
-          details: error.details,
-        });
-      }
-      console.error("[api] unhandled error", error);
-      return jsonError(500, API_ERRORS.internal, { code: "internal" });
-    }
-  };
 }
 
 /** Parses a JSON body, turning malformed input into a 400 rather than a 500. */

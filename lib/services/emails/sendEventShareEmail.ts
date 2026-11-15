@@ -28,6 +28,7 @@ import { buildEventShareEmailText } from "@/lib/emails/buildEventShareEmailText"
 import { toEventShareEmailContent } from "@/lib/emails/eventShareEmailContent";
 import { isPlausibleRecipientEmail } from "@/lib/emails/recipientEmail";
 import type { SendEventShareEmailResult } from "@/lib/emails/types";
+import { log } from "@/lib/log";
 import { sendMail } from "@/lib/services/emailService";
 import type { EventRecord } from "@/lib/types";
 
@@ -69,7 +70,7 @@ export async function sendEventShareEmail({
   } catch (err) {
     // A template fault, not a delivery one: report it as such rather than as
     // `network`, so the caller does not suggest that trying again would help.
-    console.error("sendEventShareEmail: failed to render the email", err);
+    log.error("mail.render_failed", { component: "mail", err });
     return { ok: false, reason: "render_failed" };
   }
 

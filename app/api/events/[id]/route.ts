@@ -18,7 +18,8 @@
  * get the same answer.
  */
 
-import { ApiError, jsonOk, readJson, withErrorHandling } from "@/lib/api";
+import { ApiError, jsonOk, readJson } from "@/lib/api";
+import { withErrorHandling } from "@/lib/apiHandler";
 import { db } from "@/lib/db";
 import { eventExists, getEventDetailForViewer } from "@/lib/events";
 import { parseEventBody } from "@/lib/eventInput";

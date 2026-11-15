@@ -16,7 +16,8 @@
  * `lib/permissions.ts`.
  */
 
-import { ApiError, jsonOk, withErrorHandling } from "@/lib/api";
+import { ApiError, jsonOk } from "@/lib/api";
+import { withErrorHandling } from "@/lib/apiHandler";
 import { db } from "@/lib/db";
 import { getEventDetailForViewer } from "@/lib/events";
 import {

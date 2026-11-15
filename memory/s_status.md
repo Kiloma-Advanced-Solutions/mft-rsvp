@@ -56,8 +56,11 @@ shareable event links and email sharing (PR #38). The UI is also
 localized to Hebrew and RTL (PR #25), which changed presentation only; what it
 fixed in place is in [a_system.md](a_system.md).
 
-**After C6, M12 — future work.** M12 (application logging) is
-specified in [TASKS.md](../TASKS.md) §5. The
+**After C6, M12 — in progress** on `yardenah/m12-logging-observability`, as
+one PR built in slices. S1 is committed: the application log, the request
+context and request ids. S2 is implemented and awaiting commit approval:
+logging application errors and system failures. S3–S6 (audit log, docs) have
+not started. M12 is specified in [TASKS.md](../TASKS.md) §5. The
 rest of the original stretch list — the calendar view first, then the waitlist,
 search, "my events", optimistic UI and a theme toggle — is also unstarted.
 Authoritative requirements for every milestone, extension and stretch goal:
@@ -348,6 +351,13 @@ attendee changes it; only a host's invitation does, and nothing invites anyone
 on their behalf.
 
 ## Known limitations
+
+Next.js prints an error from a page render, or an uncaught exception, to stderr
+itself, unredacted, outside the application log. A database error during a
+render can show the server host, port and login name there, and PM2 collects
+it. This is accepted while the application is in development and must be
+revisited before it handles sensitive production data. See
+[dec_log.md](dec_log.md) (2026-11-12, M12 S2).
 
 The capacity invariant is held by an application protocol, not a database
 constraint, and a host may still lower capacity below current attendance —

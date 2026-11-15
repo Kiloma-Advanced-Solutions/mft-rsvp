@@ -2115,3 +2115,85 @@ new host-held rows; a `db:reset` from a version whose seed still has the
 legacy row would recreate it; and nothing in the database refuses either.
 Either would over-count attendance, which errs towards "full", and both are
 listed in [s_status.md](s_status.md) "Known limitations".
+
+## 2026-11-12 — Technical failures are logged once, where the cause is known (M12 S2)
+
+Context: M12 S1 added the application log (`lib/log.ts`: one line per event
+on stdout/stderr, a run-time field allowlist, every string through the
+connection-string redactor) and the request id (`proxy.ts`). S2 had to decide
+where failures are written, and how to keep one failure from becoming several
+lines or none.
+
+Decision: each failure is logged by the one place that knows the most about it.
+
+- **API.** `withErrorHandling` moved to `lib/apiHandler.ts`. `lib/api.ts` is
+  also imported by Client Components, and `next build` fails when it imports
+  the logger (`node:async_hooks` cannot be bundled for the browser). The
+  wrapper enters the request context with the proxy's id and writes at most
+  one line per request: `api.unhandled_error` (error) for anything that is
+  not an `ApiError`, `api.service_failure` (warn, status and code only) for an
+  `ApiError` of 500 or more, and nothing for a 4xx or a success. Responses are
+  unchanged.
+- **Route names.** A line names the route by its pattern (`/api/events/:id`).
+  Next does not give a Route Handler its own pattern, so the patterns are an
+  explicit list, `API_ROUTE_PATTERNS`. `check:logging` compares that list with
+  the `route.ts` files on disk. A path matching no pattern is logged as
+  `unmatched`, never as the path.
+- **Mail.** The mail layer logs the cause (`mail.not_configured`,
+  `mail.send_failed`, `mail.render_failed`). The API logs the resulting 5xx.
+  The two lines share the request id. Mail-service response bodies, addresses
+  and content are never logged.
+- **Database.** A pool `error` event is logged as `db.pool_error`, outside any
+  request context. Otherwise it would carry the id of whichever request opened
+  the socket. A rollback that fails is logged as `db.rollback_failed`, and the
+  original error is still the one thrown. A failed query is not logged at the
+  database layer: the boundary above it logs it. These lines, and
+  `api.unhandled_error` and `next.request_error`, carry the driver's message as
+  SQL Server wrote it. The redactor masks only the connection string's
+  credentials and host, so a message that quotes data is logged with that
+  data: an unexpected duplicate key (2627) names the duplicate value, and a
+  conversion error (245, 8114) names the value it could not convert. This is
+  accepted for now. Revisit it with the stderr item below before production
+  data, for example by logging only the error number and code for driver
+  errors.
+- **Pages.** `instrumentation.ts` logs `next.request_error` from
+  `onRequestError` with Next's route pattern and the proxy's id. It logs once
+  per error object per request: a layout and a page that await the same
+  failed promise make Next call the hook twice for one error. `register()`
+  logs `app.started`, once per server process.
+- **No actor** in application logs. Who did what belongs to the audit log
+  (later M12 slices).
+
+Rationale: one line per failure, carrying the request id, is what makes the
+log readable and lets it be joined to a user's report. A list of route
+patterns checked against the file system is deterministic. A pattern guessed
+from a path's characters could leak an id.
+
+Consequences: a new API route needs a line in `API_ROUTE_PATTERNS`, and
+`check:logging` fails until it has one. A page-render error still appears
+twice in stderr, once as Next's own print and once as our structured line.
+See the next entry.
+
+## 2026-11-12 — Next.js's own error output is not redacted; accepted for now (M12 S2)
+
+Context: Next 16.3.1 prints an error from a page render or an uncaught Route
+Handler error to stderr itself (`console.error`), unredacted, and only then
+calls `instrumentation.onRequestError` (`RouteModule.onRequestError`,
+`createReactServerErrorHandler`). It also prints uncaught exceptions and
+unhandled rejections. `next start` offers no supported way to suppress or
+alter this output. A production check showed a connection string quoted in an
+error reaching stderr that way. PM2 collects stderr.
+
+Decision: accepted as a residual risk for this development-stage
+application. Process-level masking of stdout/stderr was proposed and not
+approved. No custom server, no stream interception, no PM2 change. The
+application log stays redacted. API routes never reach Next's printer,
+because every handler is wrapped. Pages can: a database error during a render
+is printed in full, which typically shows the server host and port and the
+database login name, and can quote a data value.
+
+Consequences: revisit before this application handles sensitive production
+data. Options include process- or deployment-level controls (log-file
+permissions and retention under PM2, or masking at the process) and keeping
+driver errors out of page renders. Listed in [s_status.md](s_status.md)
+"Known limitations".

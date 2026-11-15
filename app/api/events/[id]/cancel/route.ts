@@ -19,7 +19,8 @@
  * `lib/permissions.ts` -- the same answers the detail page renders from.
  */
 
-import { ApiError, jsonOk, withErrorHandling } from "@/lib/api";
+import { ApiError, jsonOk } from "@/lib/api";
+import { withErrorHandling } from "@/lib/apiHandler";
 import { db } from "@/lib/db";
 import { eventExists, getEventDetailForViewer } from "@/lib/events";
 import { MANAGE_ACTION_COPY, cancellationClosedNote } from "@/lib/labels";

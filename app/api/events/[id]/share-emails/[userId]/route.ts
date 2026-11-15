@@ -35,7 +35,8 @@
  * status and response stay in the server log.
  */
 
-import { ApiError, jsonOk, withErrorHandling } from "@/lib/api";
+import { ApiError, jsonOk } from "@/lib/api";
+import { withErrorHandling } from "@/lib/apiHandler";
 import { db } from "@/lib/db";
 import { EMAIL_API_FETCH_TIMEOUT_MS } from "@/lib/emails/recipientEmail";
 import type { SendEventShareEmailResult } from "@/lib/emails/types";

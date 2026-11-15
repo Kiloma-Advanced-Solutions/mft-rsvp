@@ -71,6 +71,20 @@ export function currentRequestContext(): RequestContext {
 }
 
 /**
+ * Runs `work` as if no request were being handled. For code that reports on
+ * something no request owns -- a pool connection dropping while idle.
+ *
+ * Needed because `AsyncLocalStorage` follows asynchronous resources, not
+ * requests: a socket opened while one request was being handled emits its
+ * events in that request's context for as long as the socket lives, so
+ * without this a failure an hour later would be logged under the id of
+ * whichever request happened to open the connection.
+ */
+export function outsideRequestContext<T>(work: () => T): T {
+  return handlerContext.exit(work);
+}
+
+/**
  * Records who the application resolved as the actor. The first note in a
  * request wins: a page and its layout each resolve the user, from the same
  * cookie, and a later call must not replace what an earlier one recorded.

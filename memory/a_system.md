@@ -213,6 +213,23 @@ answered as "already invited". Every other driver failure — deadlock victims
 failures separately. Why a deadlock is deliberately not mapped:
 [lib/data/errors.ts](../lib/data/errors.ts).
 
+**Application log.** Technical failures, not user actions, go to the
+application log in [lib/log.ts](../lib/log.ts): one line each on stdout/stderr,
+where PM2 collects them. The log takes only allowlisted fields and passes every
+string through the connection-string redactor. [proxy.ts](../proxy.ts) gives
+every request except static files a server-chosen `X-Request-Id`.
+Each failure is logged once, where its cause is known:
+
+- `withErrorHandling` covers the API;
+- `lib/data/client.ts` covers pool and rollback failures;
+- `lib/services/` covers mail;
+- [instrumentation.ts](../instrumentation.ts) covers errors Next itself catches
+  (page renders) and process start.
+
+Next prints those page errors to stderr itself, unredacted, before the hook
+runs. That is an accepted residual risk, recorded in
+[dec_log.md](dec_log.md) (2026-11-12).
+
 ### API layer — `app/api/`
 
 Route handlers, not Server Actions, so the authorisation boundary is one obvious
@@ -223,7 +240,11 @@ unwraps the payload and throws the server's message — as a `RequestError`,
 an ordinary `Error` that also carries the HTTP status, for the caller that has
 to tell a stale page (4xx) from a failed service behind the route (5xx).
 [app/api/session/route.ts](../app/api/session/route.ts) is the worked example to
-copy for the house style; the helpers are in [lib/api.ts](../lib/api.ts).
+copy for the house style. The shared helpers are in [lib/api.ts](../lib/api.ts),
+which Client Components also import. The server-only wrapper,
+`withErrorHandling`, is in [lib/apiHandler.ts](../lib/apiHandler.ts), with the
+list of route patterns the log names routes by. A new route needs a line in that
+list, and `npm run check:logging` fails until it has one.
 
 For a handler that has to **authorise** before it writes, the example is
 [app/api/events/\[id\]/registrations/route.ts](../app/api/events/[id]/registrations/route.ts).

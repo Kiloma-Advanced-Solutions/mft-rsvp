@@ -17,7 +17,8 @@
  * `lib/events.ts`, manageability from `lib/permissions.ts`.
  */
 
-import { ApiError, jsonOk, withErrorHandling } from "@/lib/api";
+import { ApiError, jsonOk } from "@/lib/api";
+import { withErrorHandling } from "@/lib/apiHandler";
 import { isPast } from "@/lib/date";
 import { db } from "@/lib/db";
 import { eventExists, getEventDetailForViewer } from "@/lib/events";

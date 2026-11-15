@@ -15,7 +15,8 @@
  * overwrite and no ordering bug that could let one through.
  */
 
-import { ApiError, jsonOk, readJson, withErrorHandling } from "@/lib/api";
+import { ApiError, jsonOk, readJson } from "@/lib/api";
+import { withErrorHandling } from "@/lib/apiHandler";
 import { db } from "@/lib/db";
 import { parseEventBody } from "@/lib/eventInput";
 import {

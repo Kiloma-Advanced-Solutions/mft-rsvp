@@ -60,7 +60,7 @@ export type LogFields = {
   requestId?: string;
   /** The part of the system that is reporting: `api`, `db`, `mail`, ... */
   component?: string;
-  /** A route pattern such as `/api/events/[id]` -- never a raw URL. */
+  /** A route pattern such as `/api/events/:id` -- never a raw URL. */
   route?: string;
   method?: string;
   /** An audit operation name, when the event concerns one. */
@@ -179,6 +179,29 @@ export function serializeError(
     result.cause = serializeError(value.cause, redact, depth + 1);
   }
   return result;
+}
+
+const ERROR_NAME = /^[A-Za-z][A-Za-z0-9]{0,63}$/;
+const ERROR_CODE = /^[A-Z][A-Z0-9_]{0,63}$/;
+
+/**
+ * An error reduced to its kind and code -- `TypeError`, `ECONNREFUSED` --
+ * with no message, stack or cause, for an error whose text may carry a secret
+ * the redactor does not know about. `fetch`, for one, quotes the whole URL it
+ * was given, credentials included, and its cause names the host and port.
+ *
+ * The code is the error's own or its cause's, and is kept only when it looks
+ * like a code; a name that does not look like one becomes `Error`. Pass the
+ * result as `err`.
+ */
+export function errorKind(value: unknown): { name: string; code?: string } {
+  if (!isRecord(value)) return { name: "NonError" };
+  const name = typeof value.name === "string" && ERROR_NAME.test(value.name) ? value.name : "Error";
+  const cause = isRecord(value.cause) ? value.cause : undefined;
+  const code = [value.code, cause?.code].find(
+    (candidate): candidate is string => typeof candidate === "string" && ERROR_CODE.test(candidate),
+  );
+  return code === undefined ? { name } : { name, code };
 }
 
 /** Only allowlisted fields, each of the right kind, strings redacted. */
