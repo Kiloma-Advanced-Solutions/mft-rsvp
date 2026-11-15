@@ -57,10 +57,11 @@ localized to Hebrew and RTL (PR #25), which changed presentation only; what it
 fixed in place is in [a_system.md](a_system.md).
 
 **After C6, M12 — in progress** on `yardenah/m12-logging-observability`, as
-one PR built in slices. S1 is committed: the application log, the request
-context and request ids. S2 is implemented and awaiting commit approval:
-logging application errors and system failures. S3–S6 (audit log, docs) have
-not started. M12 is specified in [TASKS.md](../TASKS.md) §5. The
+one PR built in slices. S1 (`8162ba9`: the application log, the request
+context and request ids) and S2 (`8bdbb01`: logging application errors and
+system failures) are committed. S3 (the audit table and its writer) is in
+progress. S4–S6 (auditing API actions and page views, docs) have not
+started. M12 is specified in [TASKS.md](../TASKS.md) §5. The
 rest of the original stretch list — the calendar view first, then the waitlist,
 search, "my events", optimistic UI and a theme toggle — is also unstarted.
 Authoritative requirements for every milestone, extension and stretch goal:
@@ -358,6 +359,11 @@ render can show the server host, port and login name there, and PM2 collects
 it. This is accepted while the application is in development and must be
 revisited before it handles sensitive production data. See
 [dec_log.md](dec_log.md) (2026-11-12, M12 S2).
+
+The audit log (M12 S3) exists in code only. Migration 0004 has not been applied
+to the shared DEV database: that waits for the start of S4 and its own
+approval. Nothing calls the writer yet, so no audit row is written. A real
+insert is first exercised in S4.
 
 The capacity invariant is held by an application protocol, not a database
 constraint, and a host may still lower capacity below current attendance —

@@ -36,7 +36,7 @@
 const DUPLICATE_KEY = new Set([2627, 2601]);
 
 /** The SQL Server error number, wherever on the thrown object it landed. */
-function errorNumber(error: unknown): number | undefined {
+export function errorNumber(error: unknown): number | undefined {
   if (typeof error !== "object" || error === null) return undefined;
 
   const direct = (error as { number?: unknown }).number;

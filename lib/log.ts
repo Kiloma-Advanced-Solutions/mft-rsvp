@@ -69,6 +69,12 @@ export type LogFields = {
   durationMs?: number;
   /** A machine-readable code, never a sentence. */
   reason?: string;
+  /** An audit outcome (`success`, `rejected`, ...), when a line concerns an audit write. */
+  outcome?: string;
+  /** How many attempts an operation made -- the audit writer's inserts. */
+  attempts?: number;
+  /** True when an operation may or may not have taken effect: a write that timed out. */
+  ambiguous?: boolean;
   err?: unknown;
 };
 
@@ -82,8 +88,11 @@ const FIELD_KINDS = {
   status: "number",
   durationMs: "number",
   reason: "string",
+  outcome: "string",
+  attempts: "number",
+  ambiguous: "boolean",
   err: "error",
-} as const satisfies Record<keyof LogFields, "string" | "number" | "error">;
+} as const satisfies Record<keyof LogFields, "string" | "number" | "boolean" | "error">;
 
 const FIELD_NAMES = Object.keys(FIELD_KINDS) as Array<keyof LogFields>;
 
@@ -208,8 +217,8 @@ export function errorKind(value: unknown): { name: string; code?: string } {
 function sanitizeFields(
   fields: LogFields,
   redact: (text: string) => string,
-): Record<string, string | number | SerializedError> {
-  const safe: Record<string, string | number | SerializedError> = {};
+): Record<string, string | number | boolean | SerializedError> {
+  const safe: Record<string, string | number | boolean | SerializedError> = {};
   for (const name of FIELD_NAMES) {
     const value: unknown = fields[name];
     if (value === undefined) continue;
@@ -223,6 +232,9 @@ function sanitizeFields(
         if (typeof value === "number" && Number.isFinite(value)) {
           safe[name] = value;
         }
+        break;
+      case "boolean":
+        if (typeof value === "boolean") safe[name] = value;
         break;
       case "error":
         safe[name] = serializeError(value, redact);
@@ -262,7 +274,7 @@ function prettyLine(
   timestamp: string,
   level: LogLevel,
   event: string,
-  fields: Record<string, string | number | SerializedError>,
+  fields: Record<string, string | number | boolean | SerializedError>,
 ): string {
   const parts = [timestamp.slice(11, 23), level.toUpperCase().padEnd(5), oneLine(event)];
   let error: SerializedError | undefined;

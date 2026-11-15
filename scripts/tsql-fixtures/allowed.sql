@@ -108,3 +108,10 @@ INSERT INTO dbo.Events_Example
 VALUES
     (@id, @ownerId, @title, @note, @seats, @access, @startsAt, @endsAt, @createdAt, @updatedAt);
 GO
+
+-- The audit log is appended to and read, never changed.
+INSERT INTO dbo.Events_AuditLog
+    (Id, OccurredAt, RequestId, Channel, HttpMethod, Route, Operation, Outcome, HttpStatus)
+VALUES
+    (@id, @occurredAt, @requestId, @channel, @httpMethod, @route, @operation, @outcome, @httpStatus);
+GO

@@ -2197,3 +2197,73 @@ data. Options include process- or deployment-level controls (log-file
 permissions and retention under PM2, or masking at the process) and keeping
 driver errors out of page renders. Listed in [s_status.md](s_status.md)
 "Known limitations".
+
+## 2026-11-15 — The audit log: one row per request, written outside the business transaction (M12 S3)
+
+Context: M12 records who did what in SQL Server, beside the application log
+on stdout/stderr. The approved M12 plan fixed the table, the separation from
+business transactions and the write policy (D15). S3 builds the table and the
+writer; nothing calls the writer until S4 (API actions) and S5 (page views).
+
+Decision:
+
+- **Table.** `dbo.Events_AuditLog` (migration 0004).
+  - One row per audited request.
+  - `UNIQUE(RequestId)`; clustered on `OccurredAt` with a nonclustered
+    primary key.
+  - No foreign keys. `ActorName` is a snapshot of the display name.
+  - `Metadata` is at most 1,000 characters of JSON with allowlisted keys.
+  - Append-only and kept indefinitely, outside `db:reset`.
+  - `check:tsql` rule `events-audit-append-only` refuses application SQL that
+    updates, deletes or truncates it. That is a convention the application
+    keeps, not a tamper-proof store.
+- **Records.** The caller passes a complete record: request id, actor,
+  operation, outcome and times. The writer never reads the request context.
+  - Every field is checked against its column and its allowed set. An invalid
+    record is not written and is logged as `invalid_record`.
+  - Metadata keeps only the allowlisted keys and values of the right kind.
+  - If the remaining Metadata is over 1,000 characters, the row is written
+    without it and `audit.metadata_dropped` is logged.
+- **Write policy (D15).** An independent INSERT on the pool, never in a
+  business transaction. The writer never throws.
+  - Overall deadline 1,500 ms, enforced by a timer. The query's own timeout
+    does not cover the wait for a pooled connection.
+  - First attempt 1,000 ms.
+  - At most one retry, only for a dropped connection, an Azure transient error
+    or a deadlock, and only with at least 300 ms left.
+  - No retry after a timeout or a cancellation.
+  - A duplicate key (2627, 2601) means "already written".
+  - The timeout is never 0, which the driver reads as "none".
+  - At the deadline, a started query is cancelled, and an attempt still
+    waiting for a connection is told not to start. Neither proves nothing was
+    written, so such a failure is logged as `ambiguous`.
+  - The same goes for a connection lost mid-query (`ECLOSE`, `EPIPE`) and any
+    driver code not known to come before sending. Only `ELOGIN`,
+    `EINSTLOOKUP`, `ENOTOPEN`, `EARGS`, `EINJECT`, `EPARAM`, an error with a
+    SQL number, or a failure to get a connection at all counts as a definite
+    non-write. An invalid record is logged as `invalid_record:<field>`.
+- **Failure line.** A failure is logged as `audit.write_failed`. It carries:
+  - the request id, operation, outcome and HTTP status;
+  - the reason, number of attempts and elapsed time;
+  - the SQL error number and code;
+  - `ambiguous`.
+
+  It never carries the actor, the name, other ids, the Metadata or the
+  driver's message.
+- **Logger fields.** `outcome`, `attempts` and a boolean `ambiguous` were
+  added to the allowlist for that line.
+- **Actor.** `getCurrentUser()` calls `noteActor` with `fallback` true only
+  when the default persona stood in. What it returns is unchanged.
+
+Rationale: an audit failure must never change or delay a business result
+beyond the deadline. `UNIQUE(RequestId)` makes retries and late writes safe
+without coordination. Keeping the writer free of the database driver lets its
+whole policy be tested without a database.
+
+Consequences:
+
+- A row can still be lost: a crash between commit and insert, or a failed or
+  late write with no retry left. The failure line is then the only trace, and
+  it deliberately omits the actor.
+- Migration 0004 is not applied to the shared DEV database in S3. It needs a
+  separate approval at the start of S4.

@@ -182,3 +182,9 @@ DELETE FROM dbo.Payroll WHERE Id = @id;
 -- the tables a data reset clears.
 DELETE FROM dbo.Events_SchemaMigrations;
 UPDATE dbo.Events_SchemaMigrations SET AppliedAt = @appliedAt WHERE MigrationId = @id;
+
+-- events-audit-append-only: the audit log is app-owned, so the prefix rule
+-- admits it. It may only ever be appended to -- an audit row is never edited,
+-- removed or purged.
+DELETE FROM dbo.Events_AuditLog WHERE OccurredAt < @cutoff;
+UPDATE dbo.Events_AuditLog SET Outcome = N'success' WHERE Id = @id;

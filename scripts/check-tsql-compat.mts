@@ -480,6 +480,9 @@ const OWNED_PREFIX = "Events_";
 /** The runner's own history table, which records what has been applied. */
 const HISTORY_TABLE = "Events_SchemaMigrations";
 
+/** The audit log (migration 0004): appended to by the application, never changed. */
+const AUDIT_TABLE = "Events_AuditLog";
+
 /**
  * Objects this application must not touch. Not a compatibility question at all --
  * a third class so the 2008 R2 claim is never diluted by it, and so the report
@@ -522,6 +525,13 @@ const OWNERSHIP: Rule[] = [
     instead: `nothing -- dbo.${HISTORY_TABLE} is appended to and never otherwise changed. Wiping it would make the schema state unknowable, and it is deliberately not one of the tables a data reset clears`,
     violates: (match) =>
       statementTarget(match).toLowerCase() === HISTORY_TABLE.toLowerCase(),
+  },
+  {
+    id: "events-audit-append-only",
+    pattern: HISTORY_MUTATION,
+    instead: `nothing -- dbo.${AUDIT_TABLE} is append-only: the application inserts audit rows and never updates, deletes or truncates them. There is no purge, and a data reset does not clear it`,
+    violates: (match) =>
+      statementTarget(match).toLowerCase() === AUDIT_TABLE.toLowerCase(),
   },
 ];
 
@@ -919,6 +929,17 @@ const DISCRIMINATION: Array<[string, string, boolean]> = [
   // The five domain tables a reset does clear are not this rule's business.
   ["events-migration-history-immutable", "DELETE FROM dbo.Events_Registrations", false],
   ["events-migration-history-immutable", "DELETE FROM dbo.Events_Users", false],
+  // events-audit-append-only: insert and read yes, change no.
+  [
+    "events-audit-append-only",
+    "INSERT INTO dbo.Events_AuditLog (Id, RequestId) VALUES (@id, @requestId)",
+    false,
+  ],
+  ["events-audit-append-only", "SELECT Id FROM dbo.Events_AuditLog WHERE RequestId = @requestId", false],
+  ["events-audit-append-only", "DELETE FROM dbo.Events_AuditLog WHERE OccurredAt < @cutoff", true],
+  ["events-audit-append-only", "UPDATE dbo.Events_AuditLog SET Outcome = N'success' WHERE Id = @id", true],
+  ["events-audit-append-only", "TRUNCATE TABLE dbo.Events_AuditLog", true],
+  ["events-audit-append-only", "DELETE FROM dbo.Events_Registrations WHERE Id = @id", false],
 ];
 
 function selftest(): number {

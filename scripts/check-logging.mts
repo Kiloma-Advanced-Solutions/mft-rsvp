@@ -30,10 +30,22 @@
  * Node built-ins and the modules under test only, so it runs with bare `node`.
  */
 
+import mssql from "mssql";
+
 import { EventEmitter } from "node:events";
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 
 import { ApiError, jsonError, jsonOk } from "../lib/api.ts";
+import {
+  AUDIT_WRITE_POLICY,
+  serializeMetadata,
+  toAuditRow,
+  writeAudit,
+  type AuditAttempt,
+  type AuditInput,
+  type AuditInsert,
+  type AuditRow,
+} from "../lib/audit.ts";
 import {
   API_ROUTE_PATTERNS,
   apiRouteLabel,
@@ -987,6 +999,701 @@ function apiRequest(path: string, requestId?: string, method = "POST"): Request 
     if (runtime === undefined) delete process.env.NEXT_RUNTIME;
     else process.env.NEXT_RUNTIME = runtime;
   }
+}
+
+/* ---------------------------------------------- 7. logger fields (S3) */
+
+{
+  const { logger, lines } = capture();
+  logger.error("audit.write_failed", {
+    outcome: "success",
+    attempts: 2,
+    ambiguous: true,
+  });
+  logger.error("audit.write_failed", { ambiguous: "true", attempts: "2" } as unknown as LogFields);
+  const first = parse(lines[0]);
+  const second = parse(lines[1]);
+  add(
+    "fields: outcome, attempts and the boolean ambiguous are kept",
+    first?.outcome === "success" && first.attempts === 2 && first.ambiguous === true,
+    lines[0]?.text,
+  );
+  add("fields: ambiguous and attempts of the wrong kind are dropped", second !== undefined && !("ambiguous" in second) && !("attempts" in second));
+
+  const pretty = capture({ format: "pretty" });
+  pretty.logger.error("audit.write_failed", { ambiguous: false, attempts: 1 });
+  add("fields: pretty output prints a boolean", pretty.lines[0]?.text.includes("ambiguous=false") === true, pretty.lines[0]?.text);
+}
+
+/* -------------------------------------------------- 8. audit records (S3) */
+
+const AUDIT_ACTOR = { userId: "ea7cd7ca-ac2a-4dd4-9d17-f03d8994b5cd", name: "Synthetic Actor Name" };
+const AUDIT_EVENT = "2dc1388d-c0bf-4bfd-a73b-1b21228d990d";
+
+function auditInput(overrides: Partial<AuditInput> = {}): AuditInput {
+  return {
+    occurredAt: new Date("2026-11-15T10:00:00.000Z"),
+    requestId: newRequestId(),
+    actor: AUDIT_ACTOR,
+    channel: "api",
+    httpMethod: "POST",
+    route: "/api/events/:id/registrations",
+    operation: "registration.register",
+    eventId: AUDIT_EVENT,
+    subject: { type: "registration", id: "0f8e7c1a-1111-4222-8333-444455556666" },
+    outcome: "success",
+    httpStatus: 200,
+    reasonCode: null,
+    durationMs: 42,
+    metadata: { actorFallback: true },
+    ...overrides,
+  };
+}
+
+{
+  const id = "0F8E7C1A-2222-4222-8333-444455556666";
+  const result = toAuditRow(auditInput({ requestId: "AAAAAAAA-1111-4222-8333-444455556666" }), id);
+  add(
+    "audit: a valid record becomes a row, ids lower-cased, metadata serialised",
+    result.ok &&
+      result.row.id === id.toLowerCase() &&
+      result.row.requestId === "aaaaaaaa-1111-4222-8333-444455556666" &&
+      result.row.actorUserId === AUDIT_ACTOR.userId &&
+      result.row.actorName === AUDIT_ACTOR.name &&
+      result.row.subjectType === "registration" &&
+      result.row.metadata === '{"actorFallback":true}',
+    JSON.stringify(result),
+  );
+
+  const anonymous = toAuditRow(auditInput({ actor: null, eventId: null, subject: null, metadata: null }), newRequestId());
+  add(
+    "audit: no actor, event, subject or metadata gives NULLs",
+    anonymous.ok &&
+      anonymous.row.actorUserId === null &&
+      anonymous.row.actorName === null &&
+      anonymous.row.eventId === null &&
+      anonymous.row.subjectType === null &&
+      anonymous.row.subjectId === null &&
+      anonymous.row.metadata === null,
+  );
+}
+
+{
+  const bad: Array<[string, Partial<AuditInput>]> = [
+    ["occurredAt", { occurredAt: new Date("not a date") }],
+    ["requestId", { requestId: "client-chosen" }],
+    ["actor.userId", { actor: { userId: "maya", name: "x" } }],
+    ["actor.name", { actor: { userId: AUDIT_ACTOR.userId, name: "x".repeat(201) } }],
+    ["actor.name", { actor: { userId: AUDIT_ACTOR.userId, name: "" } }],
+    ["channel", { channel: "cli" as AuditInput["channel"] }],
+    ["httpMethod", { httpMethod: "post" }],
+    ["httpMethod", { httpMethod: "VERYLONGMETHOD" }],
+    ["route", { route: "/api/events/123?email=someone@example.com" }],
+    ["route", { route: "api/events" }],
+    ["route", { route: `/${"a".repeat(200)}` }],
+    ["operation", { operation: "event.hack" as AuditInput["operation"] }],
+    ["eventId", { eventId: "123" }],
+    ["subject.type", { subject: { type: "event" as "user", id: AUDIT_EVENT } }],
+    ["subject.id", { subject: { type: "user", id: "tom" } }],
+    ["outcome", { outcome: "ok" as AuditInput["outcome"] }],
+    ["httpStatus", { httpStatus: 99 }],
+    ["httpStatus", { httpStatus: 600 }],
+    ["httpStatus", { httpStatus: 200.5 }],
+    ["reasonCode", { reasonCode: "Not a code" }],
+    ["reasonCode", { reasonCode: "x".repeat(65) }],
+    ["durationMs", { durationMs: -1 }],
+    ["durationMs", { durationMs: 1.5 }],
+  ];
+  const wrong = bad.filter(([field, overrides]) => {
+    const result = toAuditRow(auditInput(overrides), newRequestId());
+    return result.ok || result.problem !== field;
+  });
+  add(
+    "audit: every out-of-range field is refused, naming the field",
+    wrong.length === 0,
+    JSON.stringify(wrong.map(([field]) => field)),
+  );
+  add("audit: a row id that is not a UUID is refused", !toAuditRow(auditInput(), "not-a-uuid").ok);
+  add(
+    "audit: allowed reason codes pass",
+    ["closed:started", "email_delivery_failed", "full", "post_commit_error"].every(
+      (reasonCode) => toAuditRow(auditInput({ reasonCode }), newRequestId()).ok,
+    ),
+  );
+}
+
+{
+  const serialized = serializeMetadata({
+    section: "upcoming",
+    filters: { category: "design", access: 7, "bad\nkey": "x" },
+    view: "host",
+    resultStatus: "pending",
+    fieldErrors: ["title", 3, "startsAt"],
+    actorFallback: "yes",
+    email: "someone@example.com",
+    body: { message: "private" },
+  });
+  add(
+    "audit: metadata keeps only allowlisted keys and values of the right kind",
+    serialized ===
+      '{"section":"upcoming","view":"host","resultStatus":"pending","filters":{"category":"design"},"fieldErrors":["title","startsAt"]}',
+    serialized ?? "null",
+  );
+  add(
+    "audit: metadata strings that are long or multi-line are dropped",
+    serializeMetadata({ section: "x".repeat(101), view: "a\nb" }) === null,
+  );
+  add("audit: metadata with nothing allowed left is NULL", serializeMetadata({ email: "a@b.c" }) === null && serializeMetadata(null) === null);
+}
+
+/* ---------------------------------------------- 9. the D15 write (S3) */
+
+const driverError = (props: Record<string, unknown>) =>
+  Object.assign(new Error("driver said: SECRET_DRIVER_TEXT about Synthetic Actor Name"), props);
+
+type InsertCall = { row: AuditRow; timeout: number; at: number };
+
+/** A fake insert that plays the given steps, one per attempt. */
+function scriptedInsert(steps: Array<(attempt: AuditAttempt) => Promise<void>>): { insert: AuditInsert; calls: InsertCall[] } {
+  const calls: InsertCall[] = [];
+  const startedAt = performance.now();
+  const insert: AuditInsert = (row, timeout, attempt) => {
+    calls.push({ row, timeout, at: performance.now() - startedAt });
+    const step = steps[calls.length - 1];
+    if (step === undefined) throw new Error("unexpected extra attempt");
+    return step(attempt);
+  };
+  return { insert, calls };
+}
+
+const succeed = async () => undefined;
+const failWith = (props: Record<string, unknown>, afterMs = 0) => async () => {
+  await tick(afterMs);
+  throw driverError(props);
+};
+
+function lineFor(lines: Captured[], event: string) {
+  return lines.find((line) => line.record?.event === event);
+}
+
+{
+  const input = auditInput();
+  const { insert, calls } = scriptedInsert([succeed]);
+  const { result, lines } = await captureOutput(() => writeAudit(input, insert));
+  add(
+    "d15: a successful write is one attempt with the 1,000 ms first timeout, and logs nothing",
+    result.status === "written" &&
+      result.attempts === 1 &&
+      calls.length === 1 &&
+      calls[0]?.timeout === AUDIT_WRITE_POLICY.firstAttemptTimeoutMs &&
+      calls[0].row.requestId === input.requestId &&
+      lines.length === 0,
+    JSON.stringify({ result, calls: calls.length, lines: lines.length }),
+  );
+}
+
+{
+  const { insert, calls } = scriptedInsert([failWith({ code: "ESOCKET" }), succeed]);
+  const { result, lines } = await captureOutput(() => writeAudit(auditInput(), insert));
+  add(
+    "d15: a dropped connection is retried once, with the time that remains, and succeeds",
+    result.status === "written" &&
+      result.attempts === 2 &&
+      (calls[1]?.timeout ?? 0) >= AUDIT_WRITE_POLICY.minRemainingForRetryMs &&
+      (calls[1]?.timeout ?? 0) <= AUDIT_WRITE_POLICY.deadlineMs &&
+      calls[0]?.row.id === calls[1]?.row.id &&
+      lines.length === 0,
+    JSON.stringify({ result, timeouts: calls.map((call) => call.timeout) }),
+  );
+}
+
+{
+  const { insert } = scriptedInsert([failWith({ code: "ECONNRESET" }), failWith({ code: "EREQUEST", number: 2627 })]);
+  const { result, lines } = await captureOutput(() => writeAudit(auditInput(), insert));
+  add(
+    "d15: a duplicate key after a retry means already written, not a failure",
+    result.status === "deduplicated" && result.attempts === 2 && !lineFor(lines, "audit.write_failed"),
+    JSON.stringify(result),
+  );
+}
+
+{
+  const input = auditInput();
+  const { insert, calls } = scriptedInsert([failWith({ code: "EREQUEST", originalError: { number: 2601 } })]);
+  const { result, lines } = await captureOutput(() => writeAudit(input, insert));
+  const warning = lineFor(lines, "audit.duplicate_request")?.record;
+  add(
+    "d15: a duplicate key (2601) on the first attempt is a caller bug: one warning, no retry",
+    result.status === "deduplicated" &&
+      calls.length === 1 &&
+      warning?.level === "warn" &&
+      warning.requestId === input.requestId &&
+      !lineFor(lines, "audit.write_failed"),
+    lines.map((line) => line.text).join(""),
+  );
+}
+
+{
+  const input = auditInput();
+  const { insert, calls } = scriptedInsert([failWith({ code: "EREQUEST", number: 208 })]);
+  const { result, lines } = await captureOutput(() => writeAudit(input, insert));
+  const failure = lineFor(lines, "audit.write_failed");
+  const err = failure?.record?.err as Record<string, unknown> | undefined;
+  add(
+    "d15: a missing table (208) is not retried and is a definite failure",
+    result.status === "failed" &&
+      calls.length === 1 &&
+      result.ambiguous === false &&
+      failure?.record?.reason === "sql_error" &&
+      failure.record.ambiguous === false &&
+      err?.number === 208,
+    failure?.text,
+  );
+  add(
+    "d15: the failure line carries the approved fields and nothing about the actor or the driver's text",
+    failure?.record?.requestId === input.requestId &&
+      failure.record.op === "registration.register" &&
+      failure.record.outcome === "success" &&
+      failure.record.status === 200 &&
+      failure.record.attempts === 1 &&
+      typeof failure.record.durationMs === "number" &&
+      !/SECRET_DRIVER_TEXT|Synthetic Actor Name|ea7cd7ca|2dc1388d|actorFallback/.test(failure.text),
+    failure?.text,
+  );
+}
+
+{
+  const { insert, calls } = scriptedInsert([failWith({ code: "EREQUEST", number: 515 })]);
+  const { result } = await captureOutput(() => writeAudit(auditInput(), insert));
+  add("d15: a permanent SQL error (515) is not retried", result.status === "failed" && calls.length === 1);
+}
+
+{
+  const { insert, calls } = scriptedInsert([failWith({ code: "EREQUEST", number: 1205 }), succeed]);
+  const { result } = await captureOutput(() => writeAudit(auditInput(), insert));
+  add("d15: a deadlock victim (1205) is retried", result.status === "written" && calls.length === 2);
+}
+
+{
+  const { insert, calls } = scriptedInsert([failWith({ code: "ETIMEOUT" })]);
+  const { result, lines } = await captureOutput(() => writeAudit(auditInput(), insert));
+  const failure = lineFor(lines, "audit.write_failed")?.record;
+  add(
+    "d15: a timeout is never retried, and its outcome is unknown",
+    result.status === "failed" && calls.length === 1 && result.ambiguous && failure?.reason === "timeout" && failure.ambiguous === true,
+    JSON.stringify(failure),
+  );
+}
+
+{
+  const { insert, calls } = scriptedInsert([failWith({ code: "ECANCEL" })]);
+  const { result } = await captureOutput(() => writeAudit(auditInput(), insert));
+  add("d15: a cancellation is never retried", result.status === "failed" && calls.length === 1 && result.ambiguous);
+}
+
+{
+  // The first attempt fails retryably, but with under 300 ms of the deadline
+  // left: no retry, and the dropped connection leaves the outcome unknown.
+  const { insert, calls } = scriptedInsert([failWith({ code: "ESOCKET" }, 1250)]);
+  const { result, lines } = await captureOutput(() => writeAudit(auditInput(), insert));
+  const failure = lineFor(lines, "audit.write_failed")?.record;
+  add(
+    "d15: no retry when less than 300 ms remain",
+    result.status === "failed" && calls.length === 1 && failure?.reason === "connection" && failure.ambiguous === true,
+    JSON.stringify({ calls: calls.length, failure }),
+  );
+}
+
+{
+  let cancelled = false;
+  let startedQueryLate = false;
+  const timersBefore = process.getActiveResourcesInfo().filter((kind) => kind === "Timeout").length;
+  const hanging = scriptedInsert([
+    (attempt) =>
+      new Promise<void>(() => {
+        attempt.cancel = () => {
+          cancelled = true;
+          throw new Error("cancel failed");
+        };
+      }),
+  ]);
+  const started = performance.now();
+  const { result, lines } = await captureOutput(() => writeAudit(auditInput(), hanging.insert));
+  const took = performance.now() - started;
+  const failure = lineFor(lines, "audit.write_failed")?.record;
+  add(
+    "d15: a hanging insert is cut off at the 1,500 ms deadline, cancelled, and reported as unknown",
+    result.status === "failed" &&
+      failure?.reason === "deadline" &&
+      failure.ambiguous === true &&
+      cancelled &&
+      took >= AUDIT_WRITE_POLICY.deadlineMs - 20 &&
+      took < AUDIT_WRITE_POLICY.deadlineMs + 300,
+    JSON.stringify({ took: Math.round(took), failure }),
+  );
+
+  // An attempt still waiting for a connection when the deadline passes is
+  // told not to start its query.
+  const waiting = scriptedInsert([
+    async (attempt) => {
+      await tick(AUDIT_WRITE_POLICY.deadlineMs + 100);
+      startedQueryLate = !attempt.abandoned;
+    },
+  ]);
+  await captureOutput(() => writeAudit(auditInput(), waiting.insert));
+  await tick(200);
+  add("d15: an attempt still waiting for a connection is abandoned at the deadline", !startedQueryLate);
+
+  const timersAfter = process.getActiveResourcesInfo().filter((kind) => kind === "Timeout").length;
+  add("d15: no deadline timer is left behind after a deadline", timersAfter <= timersBefore, `${timersBefore} -> ${timersAfter}`);
+
+  // And on the success path, where the deadline never fires and must be
+  // cleared: measured tightly around one write.
+  const countTimers = () => process.getActiveResourcesInfo().filter((kind) => kind === "Timeout").length;
+  const beforeSuccess = countTimers();
+  await captureOutput(() => writeAudit(auditInput(), scriptedInsert([succeed]).insert));
+  const afterSuccess = countTimers();
+  add("d15: no deadline timer is left behind after a success", afterSuccess === beforeSuccess, `${beforeSuccess} -> ${afterSuccess}`);
+}
+
+{
+  const { insert } = scriptedInsert([
+    () => {
+      throw new TypeError("synchronous bug");
+    },
+  ]);
+  let threw = false;
+  const { result, lines } = await captureOutput(async () => {
+    try {
+      return await writeAudit(auditInput(), insert);
+    } catch {
+      threw = true;
+      return undefined;
+    }
+  });
+  add(
+    "d15: a synchronous throw from the insert does not escape",
+    !threw && result?.status === "failed" && lineFor(lines, "audit.write_failed")?.record?.reason === "writer_bug",
+  );
+}
+
+{
+  const { insert, calls } = scriptedInsert([succeed]);
+  const { result, lines } = await captureOutput(() => writeAudit(auditInput({ requestId: "client-chosen" }), insert));
+  const failure = lineFor(lines, "audit.write_failed")?.record;
+  add(
+    "d15: an invalid record is not written and is logged as invalid_record",
+    result.status === "invalid" && calls.length === 0 && failure?.reason === "invalid_record:requestId" && !("requestId" in (failure ?? {})) && !JSON.stringify(failure).includes("client-chosen"),
+    JSON.stringify(failure),
+  );
+}
+
+{
+  const filters = Object.fromEntries(Array.from({ length: 30 }, (_, index) => [`filter${index}`, "x".repeat(40)]));
+  const input = auditInput({ metadata: { filters } });
+  const { insert, calls } = scriptedInsert([succeed]);
+  const { result, lines } = await captureOutput(() => writeAudit(input, insert));
+  const dropped = lineFor(lines, "audit.metadata_dropped");
+  add(
+    "d15: oversized metadata is dropped, the row is still written, and the value is not logged",
+    result.status === "written" &&
+      calls[0]?.row.metadata === null &&
+      dropped?.record?.level === "warn" &&
+      dropped.record.requestId === input.requestId &&
+      !dropped.text.includes("filter0") &&
+      !dropped.text.includes("xxxx"),
+    dropped?.text,
+  );
+}
+
+{
+  // Ten concurrent writes: each row is its own record, and each failure line
+  // carries its own request id.
+  const inputs = Array.from({ length: 10 }, (_, index) =>
+    auditInput({ httpStatus: 200 + index, durationMs: index }),
+  );
+  const rows: AuditRow[] = [];
+  const insert: AuditInsert = async (row) => {
+    await tick(Math.floor(Math.random() * 15));
+    if (row.httpStatus % 2 === 1) throw driverError({ code: "EREQUEST", number: 547 });
+    rows.push(row);
+  };
+  const { result, lines } = await captureOutput(() => Promise.all(inputs.map((input) => writeAudit(input, insert))));
+  const failures = lines.filter((line) => line.record?.event === "audit.write_failed");
+  add(
+    "d15: concurrent writes keep their own records and failure lines",
+    result.filter((outcome) => outcome.status === "written").length === 5 &&
+      rows.every((row) => inputs.some((input) => input.requestId === row.requestId && input.httpStatus === row.httpStatus)) &&
+      failures.length === 5 &&
+      failures.every((line) =>
+        inputs.some((input) => input.requestId === line.record?.requestId && input.httpStatus === line.record?.status),
+      ),
+    JSON.stringify({ written: rows.length, failures: failures.length }),
+  );
+}
+
+/* -------------------------- 9b. failure classification follow-up (S3) */
+
+// The driver's own error classes, wrapped the way `mssql` wraps them, so the
+// checks see exactly the shape a real failure has: `ECLOSE` arrives as a
+// RequestError whose `number` is the string "ECLOSE", not a SQL number.
+const driverWrapped = (code: string) =>
+  new mssql.RequestError(Object.assign(new Error(`tedious: SECRET_DRIVER_TEXT ${code}`), { code }), "EREQUEST");
+
+{
+  const cases: Array<[string, unknown]> = [
+    ["ECLOSE", driverWrapped("ECLOSE")],
+    ["EPIPE", driverWrapped("EPIPE")],
+    ["an unknown code", driverError({ code: "ESOMETHINGNEW" })],
+  ];
+  const wrong: string[] = [];
+  for (const [label, error] of cases) {
+    const { insert, calls } = scriptedInsert([
+      async () => {
+        throw error;
+      },
+    ]);
+    const { result, lines } = await captureOutput(() => writeAudit(auditInput(), insert));
+    const failure = lineFor(lines, "audit.write_failed");
+    if (
+      !(
+        result.status === "failed" &&
+        result.ambiguous &&
+        calls.length === 1 &&
+        failure?.record?.reason === "connection" &&
+        failure.record.ambiguous === true &&
+        !failure.text.includes("SECRET_DRIVER_TEXT")
+      )
+    ) {
+      wrong.push(`${label}: ${failure?.text ?? JSON.stringify(result)}`);
+    }
+  }
+  add(
+    "d15: a connection lost mid-query (ECLOSE, EPIPE, unknown codes) is an unknown outcome, not retried",
+    wrong.length === 0,
+    wrong.join(" | "),
+  );
+}
+
+{
+  // Raised before anything is sent: a definite non-write.
+  const { insert } = scriptedInsert([
+    async () => {
+      throw new mssql.ConnectionError(Object.assign(new Error("Login failed"), { code: "ELOGIN" }), "ELOGIN");
+    },
+  ]);
+  const { result, lines } = await captureOutput(() => writeAudit(auditInput(), insert));
+  const failure = lineFor(lines, "audit.write_failed")?.record;
+  add(
+    "d15: a login failure (ELOGIN) is a definite failure",
+    result.status === "failed" && !result.ambiguous && failure?.reason === "connection" && failure.ambiguous === false,
+    JSON.stringify(failure),
+  );
+}
+
+{
+  // Getting a connection failed with no driver code: the connection string
+  // is missing, or the pool could not hand one out. Not the writer's bug, and
+  // nothing was sent. The message (which names a variable) is not logged.
+  const cases = [
+    new Error("EVENTS_DB_CONNECTION_STRING is not set. Copy .env.example to .env.local"),
+    Object.assign(new Error("operation timed out for an unknown reason"), { name: "TimeoutError" }),
+  ];
+  const labels: string[] = [];
+  for (const error of cases) {
+    const { insert } = scriptedInsert([
+      async () => {
+        throw error;
+      },
+    ]);
+    const { result, lines } = await captureOutput(() => writeAudit(auditInput(), insert));
+    const failure = lineFor(lines, "audit.write_failed");
+    labels.push(
+      `${failure?.record?.reason}/${failure?.record?.ambiguous}/${result.ambiguous}/${failure?.text.includes("EVENTS_DB_CONNECTION_STRING")}`,
+    );
+  }
+  add(
+    "d15: a failure to get a connection is `connection`, definite, and its message is not logged",
+    labels.every((label) => label === "connection/false/false/false"),
+    labels.join(", "),
+  );
+}
+
+{
+  // The other way round: a programming error stays `writer_bug`.
+  const { insert } = scriptedInsert([
+    async () => {
+      throw new TypeError("cannot read properties of undefined");
+    },
+  ]);
+  const { lines } = await captureOutput(() => writeAudit(auditInput(), insert));
+  add("d15: a programming error from the insert is still writer_bug", lineFor(lines, "audit.write_failed")?.record?.reason === "writer_bug");
+}
+
+{
+  // A retryable failure, then a permanent one: the first attempt may have
+  // written the row, so the outcome stays unknown.
+  const { insert, calls } = scriptedInsert([failWith({ code: "ESOCKET" }), failWith({ code: "EREQUEST", number: 208 })]);
+  const { result, lines } = await captureOutput(() => writeAudit(auditInput(), insert));
+  const failure = lineFor(lines, "audit.write_failed")?.record;
+  add(
+    "d15: a retryable failure then a permanent one stays ambiguous",
+    result.status === "failed" &&
+      calls.length === 2 &&
+      result.ambiguous &&
+      failure?.reason === "sql_error" &&
+      failure.ambiguous === true &&
+      failure.attempts === 2,
+    JSON.stringify(failure),
+  );
+}
+
+{
+  // A retry that is still running when the deadline passes.
+  let secondCancelled = false;
+  const { insert, calls } = scriptedInsert([
+    failWith({ code: "ECONNRESET" }),
+    (attempt) =>
+      new Promise<void>(() => {
+        attempt.cancel = () => {
+          secondCancelled = true;
+        };
+      }),
+  ]);
+  const { result, lines } = await captureOutput(() => writeAudit(auditInput(), insert));
+  const failure = lineFor(lines, "audit.write_failed")?.record;
+  add(
+    "d15: a retry overtaken by the deadline is cancelled and reported as unknown",
+    result.status === "failed" &&
+      calls.length === 2 &&
+      secondCancelled &&
+      failure?.reason === "deadline" &&
+      failure.ambiguous === true &&
+      failure.attempts === 2,
+    JSON.stringify(failure),
+  );
+}
+
+{
+  // The 300 ms boundary, on a clock the check drives, so no real waiting is
+  // involved: with exactly 300 ms left the retry happens, with 299 it does not.
+  const boundary = async (remainingMs: number) => {
+    let clock = 0;
+    const { insert, calls } = scriptedInsert([
+      async () => {
+        clock = AUDIT_WRITE_POLICY.deadlineMs - remainingMs;
+        throw driverError({ code: "ESOCKET" });
+      },
+      succeed,
+    ]);
+    const { result } = await captureOutput(() => writeAudit(auditInput(), insert, { now: () => clock }));
+    return { attempts: calls.length, status: result.status, retryTimeout: calls[1]?.timeout };
+  };
+  const at300 = await boundary(300);
+  const at299 = await boundary(299);
+  add(
+    "d15: a retry needs at least 300 ms left -- 300 retries (with a 300 ms timeout), 299 does not",
+    at300.attempts === 2 && at300.status === "written" && at300.retryTimeout === 300 && at299.attempts === 1 && at299.status === "failed",
+    JSON.stringify({ at300, at299 }),
+  );
+}
+
+{
+  const bad: Array<[string, unknown]> = [
+    ["occurredAt", auditInput({ occurredAt: new Date(Date.UTC(10000, 0, 1)) })],
+    ["occurredAt", auditInput({ occurredAt: new Date(Date.UTC(-1, 0, 1)) })],
+    ["input", null],
+    ["input", "not a record"],
+  ];
+  const wrong = bad.filter(([field, input]) => {
+    const result = toAuditRow(input as AuditInput, newRequestId());
+    return result.ok || result.problem !== field;
+  });
+  const edges = [new Date(Date.UTC(1, 0, 1)), new Date(Date.UTC(9999, 11, 31, 23, 59, 59, 999))];
+  add(
+    "audit: dates outside datetime2 (years 1-9999) and non-object input are refused",
+    wrong.length === 0 && edges.every((occurredAt) => toAuditRow(auditInput({ occurredAt }), newRequestId()).ok),
+    JSON.stringify(wrong.map(([field]) => field)),
+  );
+
+  const { insert, calls } = scriptedInsert([succeed]);
+  let threw = false;
+  const { result, lines } = await captureOutput(async () => {
+    try {
+      return await writeAudit(null as unknown as AuditInput, insert);
+    } catch {
+      threw = true;
+      return undefined;
+    }
+  });
+  add(
+    "d15: a null record is invalid_record:input, not a writer bug, and nothing is inserted",
+    !threw && result?.status === "invalid" && calls.length === 0 && lineFor(lines, "audit.write_failed")?.record?.reason === "invalid_record:input",
+  );
+
+  const far = await captureOutput(() =>
+    writeAudit(auditInput({ occurredAt: new Date(Date.UTC(10000, 0, 1)) }), scriptedInsert([succeed]).insert),
+  );
+  add(
+    "d15: an out-of-range date is invalid_record:occurredAt, before any insert",
+    far.result.status === "invalid" && lineFor(far.lines, "audit.write_failed")?.record?.reason === "invalid_record:occurredAt",
+  );
+}
+
+/* --------------------------- 10. the insert and the schema agree (S3) */
+
+{
+  // `lib/data/audit.ts` cannot be loaded here (it imports `server-only`), so
+  // its statement is checked as text against migration 0004: the same
+  // columns, every value a typed parameter, nothing interpolated.
+  const source = readFileSync(new URL("../lib/data/audit.ts", import.meta.url), "utf8");
+  const migration = readFileSync(new URL("../migrations/0004_create_audit_log.sql", import.meta.url), "utf8");
+
+  const statement = /const INSERT_AUDIT = `([\s\S]*?)`;/.exec(source)?.[1] ?? "";
+  const columns = /\(([^)]*)\)\s*VALUES/.exec(statement)?.[1]?.split(",").map((column) => column.trim()) ?? [];
+  const params = /VALUES\s*\(([^)]*)\)/.exec(statement)?.[1]?.split(",").map((param) => param.trim()) ?? [];
+  const inputs = [...source.matchAll(/\.input\("(\w+)", sql\.(\w+)(?:\((\d+)\))?, /g)].map((match) => ({
+    name: match[1],
+    type: match[2],
+    length: match[3],
+  }));
+  const tableColumns = [
+    ...migration.matchAll(/^\s{4}(\w+)\s+(uniqueidentifier|datetime2\(3\)|nvarchar\((\d+)\)|smallint|int)(?=\s)/gm),
+  ].map((match) => ({ name: match[1] as string, type: match[2] as string, length: match[3] }));
+
+  const lowerFirst = (name: string) => name.charAt(0).toLowerCase() + name.slice(1);
+  const expectedType: Record<string, string> = {
+    uniqueidentifier: "UniqueIdentifier",
+    "datetime2(3)": "DateTime2",
+    smallint: "SmallInt",
+    int: "Int",
+  };
+  const mismatched = tableColumns.filter((column) => {
+    const input = inputs.find((candidate) => candidate.name === lowerFirst(column.name));
+    if (input === undefined) return true;
+    if (column.type.startsWith("nvarchar")) return input.type !== "NVarChar" || input.length !== column.length;
+    if (column.type === "datetime2(3)") return input.type !== "DateTime2" || input.length !== "3";
+    return input.type !== expectedType[column.type];
+  });
+
+  add(
+    "schema: the INSERT names exactly the table's 17 columns",
+    tableColumns.length === 17 &&
+      JSON.stringify(columns) === JSON.stringify(tableColumns.map((column) => column.name)),
+    JSON.stringify(columns),
+  );
+  add(
+    "schema: every value is a parameter of the column's own type and length",
+    JSON.stringify(params) === JSON.stringify(tableColumns.map((column) => `@${lowerFirst(column.name)}`)) &&
+      inputs.length === 17 &&
+      mismatched.length === 0,
+    JSON.stringify(mismatched),
+  );
+  add("schema: nothing is interpolated into the statement", statement !== "" && !statement.includes("${"));
+  add(
+    "schema: the request timeout is never 0, and the audit insert runs on the pool",
+    /Math\.max\(1,/.test(source) && /getPool\(\)/.test(source) && !/inTransaction|Transaction\(/.test(source),
+  );
 }
 
 /* ------------------------------------------------------------------ report */

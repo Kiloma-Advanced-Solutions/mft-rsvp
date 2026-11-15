@@ -213,6 +213,20 @@ answered as "already invited". Every other driver failure — deadlock victims
 failures separately. Why a deadlock is deliberately not mapped:
 [lib/data/errors.ts](../lib/data/errors.ts).
 
+**Audit log.** User actions and page views will go to `dbo.Events_AuditLog`
+(migration 0004), one row per request, joined to the application log by the
+request id.
+- [lib/audit.ts](../lib/audit.ts) defines what a row may hold and the write
+  policy. It has no database dependency, so `check:logging` tests it.
+- `insertAudit` in [lib/data/audit.ts](../lib/data/audit.ts) is the one
+  statement. It is an INSERT on the pool, never inside a business transaction.
+- `db.audit.record` joins the two.
+- `getCurrentUser()` records the actor in the request context (`noteActor`).
+
+The table is append-only by convention, enforced on application SQL by
+`check:tsql`. It has no foreign keys and is not cleared by `db:reset`.
+Why, and the write policy: [dec_log.md](dec_log.md) (2026-11-15).
+
 **Application log.** Technical failures, not user actions, go to the
 application log in [lib/log.ts](../lib/log.ts): one line each on stdout/stderr,
 where PM2 collects them. The log takes only allowlisted fields and passes every
