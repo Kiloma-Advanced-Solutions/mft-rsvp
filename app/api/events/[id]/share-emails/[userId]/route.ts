@@ -36,7 +36,7 @@
  */
 
 import { ApiError, jsonOk } from "@/lib/api";
-import { withErrorHandling } from "@/lib/apiHandler";
+import { closedReason, withErrorHandling } from "@/lib/apiHandler";
 import { db } from "@/lib/db";
 import { EMAIL_API_FETCH_TIMEOUT_MS } from "@/lib/emails/recipientEmail";
 import type { SendEventShareEmailResult } from "@/lib/emails/types";
@@ -53,6 +53,7 @@ import {
   getSharingAvailability,
 } from "@/lib/permissions";
 import { sendEventShareEmail } from "@/lib/services/emails/sendEventShareEmail";
+import { noteCommitted } from "@/lib/requestContext";
 import { getCurrentUser } from "@/lib/session";
 import { buildEventShareUrl } from "@/lib/shareLinks";
 
@@ -76,7 +77,10 @@ export const POST = withErrorHandling(
 
     const sharing = getSharingAvailability(event);
     if (sharing.state === "closed") {
-      throw ApiError.conflict(sharingClosedNote(sharing.reason));
+      throw ApiError.conflict(
+        sharingClosedNote(sharing.reason),
+        closedReason(sharing.reason),
+      );
     }
 
     // A malformed id is answered with `null` by the store, like an unknown one.
@@ -84,10 +88,13 @@ export const POST = withErrorHandling(
     if (!recipient) throw ApiError.notFound();
 
     if (recipient.id === viewer.id) {
-      throw ApiError.conflict(SHARE_EMAIL_ACTION_COPY.self);
+      throw ApiError.conflict(SHARE_EMAIL_ACTION_COPY.self, "self");
     }
     if (!canViewEvent(event, recipient)) {
-      throw ApiError.conflict(SHARE_EMAIL_ACTION_COPY.recipientCannotView);
+      throw ApiError.conflict(
+        SHARE_EMAIL_ACTION_COPY.recipientCannotView,
+        "recipient_cannot_view",
+      );
     }
 
     const eventUrl = buildEventShareUrl(event.id);
@@ -106,9 +113,14 @@ export const POST = withErrorHandling(
       timeoutMs: EMAIL_API_FETCH_TIMEOUT_MS,
     });
 
-    if (result.ok) return jsonOk({ sent: true });
+    if (result.ok) {
+      // Nothing is stored, but the email has gone and cannot be called back.
+      noteCommitted();
+      return jsonOk({ sent: true });
+    }
     throw sendFailure(result.reason);
   },
+  { audit: "share.email" },
 );
 
 /**
@@ -120,7 +132,10 @@ function sendFailure(
 ): ApiError {
   switch (reason) {
     case "invalid_target_email":
-      return ApiError.conflict(SHARE_EMAIL_ACTION_COPY.invalidRecipientEmail);
+      return ApiError.conflict(
+        SHARE_EMAIL_ACTION_COPY.invalidRecipientEmail,
+        "invalid_recipient_email",
+      );
     case "no_api_url":
     case "no_sender_config":
       return new ApiError(503, SHARE_EMAIL_ACTION_COPY.notConfigured, {

@@ -24,6 +24,7 @@ import { db } from "@/lib/db";
 import { eventExists, getEventDetailForViewer } from "@/lib/events";
 import { MANAGE_ACTION_COPY } from "@/lib/labels";
 import { canManageEvent } from "@/lib/permissions";
+import { noteCommitted } from "@/lib/requestContext";
 import { getCurrentUser } from "@/lib/session";
 
 type Context = RouteContext<"/api/events/[id]/publish">;
@@ -54,18 +55,19 @@ export const POST = withErrorHandling(
     // permission: whoever asked is allowed to publish, there is just nothing
     // here to publish.
     if (detail.event.status !== "draft") {
-      throw ApiError.conflict(
-        detail.event.status === "published"
-          ? MANAGE_ACTION_COPY.alreadyPublished
-          : MANAGE_ACTION_COPY.notADraft,
-      );
+      throw detail.event.status === "published"
+        ? ApiError.conflict(
+            MANAGE_ACTION_COPY.alreadyPublished,
+            "already_published",
+          )
+        : ApiError.conflict(MANAGE_ACTION_COPY.notADraft, "not_draft");
     }
 
     // A draft may be edited at any date, but it cannot go live already in the
     // past. A conflict, like the status check: the host may publish, this
     // draft just has to be moved first. "Past" is `isPast`, as everywhere.
     if (isPast(detail.event.startsAt)) {
-      throw ApiError.conflict(MANAGE_ACTION_COPY.pastDraft);
+      throw ApiError.conflict(MANAGE_ACTION_COPY.pastDraft, "past_start");
     }
 
     // Conditional on the row still being a draft, so two requests that both
@@ -82,10 +84,12 @@ export const POST = withErrorHandling(
       // and this write -- the same 404 as an event that never existed -- or it
       // is still there and the row moved first, which stays a conflict.
       throw (await eventExists(detail.event.id))
-        ? ApiError.conflict(MANAGE_ACTION_COPY.stale)
-        : ApiError.notFound();
+        ? ApiError.conflict(MANAGE_ACTION_COPY.stale, "stale")
+        : ApiError.notFound(undefined, "gone");
     }
+    noteCommitted();
 
     return jsonOk({ event });
   },
+  { audit: "event.publish" },
 );

@@ -2267,3 +2267,74 @@ Consequences:
   it deliberately omits the actor.
 - Migration 0004 is not applied to the shared DEV database in S3. It needs a
   separate approval at the start of S4.
+
+## 2026-11-15 — API actions are audited by the API wrapper, declared at each handler (M12 S4)
+
+Context: S3 built the audit table and its writer; S4 connects the 14 mutating
+API handlers to it. The approved plan (E7) has the handler state what happened
+after its data call and the wrapper write the row after the response is built.
+In the code, most refusals -- 404, 403, most 409s -- happen before any data
+call, the refusals carry only generic codes (`conflict`), and the database
+module cannot be loaded by the bare-Node self-check.
+
+Decision (approved as D-S4-1 to D-S4-7 and D-S4-10):
+
+- **D-S4-1.** The operation is declared where the handler is exported
+  (`{ audit: "event.update" }`), so a request refused before its data call
+  still gets a row. The session routes declare none (D13).
+- **D-S4-2.** `ApiError` carries an optional internal `reason` (`full`, `stale`,
+  `closed:draft`, ...) that `jsonError` never receives, so no response changes.
+  Without one the row falls back to `ApiError.code`.
+- **D-S4-3.** The request context holds a small audit note: the id of an event
+  just created, whether the business write has committed (a failure after it
+  is `post_commit_error`), and whether the row was handed to the writer.
+- **D-S4-4.** `EventId` is the route's `[id]` (the created id for
+  `event.create`); `SubjectType`/`SubjectId` are `registration` for
+  `[registrationId]` routes and `user` for `[userId]` routes; none for the
+  caller's own registration, which (EventId, ActorUserId) already identifies.
+  A parameter that is not a UUID is recorded as NULL.
+- **D-S4-5.** Reasons: E3's codes as listed (`full`, `not_invited`,
+  `already_invited`, `stale`, `duplicate`, `gone`, `already_registered`,
+  `nothing_to_withdraw`, `validation`, `schedule_locked`, `invalid_json`,
+  `email_*`, `deadlock`, `db_unavailable`, `internal`, `post_commit_error`),
+  `closed:<reason>` for every other closed availability, and seven new codes:
+  `already_published`, `not_draft`, `past_start`, `already_rejected`, `self`,
+  `recipient_cannot_view`, `invalid_recipient_email`. A 400's field names (never
+  messages) go to `Metadata.fieldErrors`.
+- **D-S4-6.** `DurationMs` is handler time; the audit write is not part of it.
+- **D-S4-7.** `createErrorHandling(record)` builds the wrapper; the application's
+  binds `db.audit.record` through a lazy import, the self-check its own
+  recorder.
+- **D-S4-10.** A successful write logs `audit.written` at debug level only, with
+  attempts and elapsed time (`durationMs`) -- the insert's own cost for D16.
+
+Test plans approved but **not executed** (each DEV write needs its own
+approval; migration 0004 first):
+
+- **D-S4-8** concurrency: last seat with distinct users only -- 5 open test
+  events of capacity 2, the 4 non-host users registering on all 5 at once
+  (20 concurrent requests, no `UQ(event, user)` collisions); a forced variant
+  holding the lock 250 ms through a local, never-committed edit; four approvals
+  for one seat; restores and an approval for one seat; same-user duplicates as
+  a separate test. 25 counted rounds each, against the baseline and S4.
+  Limitation: DEV has 5 users, so at most 4 distinct users contend for one
+  seat; nothing has been run on SQL Server 2008 R2.
+- **D-S4-8b** latency in that test is compared client-side, since the baseline
+  has no audit rows.
+- **D-S4-9** benchmark: register/withdraw only, A B A B, 10 warm-up + 100
+  measured at concurrency 1 and 5 per run, 880 requests and about 440
+  permanent audit rows. 100 is the smallest sample with a bounded 95% interval
+  for p95. D16's thresholds unchanged.
+- D-S4-11 (sending audit INSERTs to DEV before the table exists) was not
+  approved.
+
+Rationale: one place derives every row, so 14 handlers cannot record it
+fourteen ways; a refusal's reason travels with the throw that causes it; and
+the response is built before the write, so the write cannot change it.
+
+Consequences: a new mutating handler needs an operation, reasons on its
+refusals and a commit note, and `check:logging` checks all three for the
+existing ones. Until 0004 is applied, every audited request logs
+`audit.write_failed` (SQL error 208). Shared DEV is an Azure SQL **Basic**
+database (5 DTU, 2 GB): storage is not the constraint for these tests, load is
+-- see [u_environment.md](u_environment.md).

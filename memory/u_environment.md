@@ -87,6 +87,20 @@ locking is on there (`DATABASEPROPERTYEX(DB_NAME(), 'IsOptimizedLockingOn')`),
 which `db:check` does not report. Concurrency results from DEV are evidence about
 that engine only; nothing has been run against a real SQL Server 2008 R2.
 
+**Capacity of DEV** (read-only catalog queries, 2026-11-15, M12 S4). The
+database is Azure SQL **Basic** (service objective `Basic`, not in an elastic
+pool): a 2 GB size limit and a small, shared compute allowance (5 DTU). On that
+day the data file was 64 MB allocated with about 41 MB used, the log file 72 MB
+with about 3% used (5 GB limit, FULL recovery with Azure's own log backups),
+and accelerated database recovery was on, so row versions live in the database
+itself. The `Events_*` tables took under 1 MB. The database is shared with
+other applications' tables. Measured load was close to idle (CPU peak about
+1% over the previous hour). For anything that sends many requests -- a race
+test, a benchmark -- the compute allowance, not storage, is the limit: the
+application's pool opens at most 10 connections, and a Basic database also
+caps concurrent workers. Watch `sys.dm_db_resource_stats` while such a test
+runs.
+
 ## Sharing and email
 
 - **Configuration.** [.env.example](../.env.example) is authoritative for the

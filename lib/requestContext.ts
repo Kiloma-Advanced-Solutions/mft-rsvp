@@ -44,13 +44,35 @@ export type ActorNote = {
   fallback: boolean;
 };
 
+/**
+ * What a route handler tells the audit step in `withErrorHandling` that the
+ * wrapper cannot work out for itself. Everything else in the row -- operation,
+ * route, ids from the URL, outcome, reason -- the wrapper derives.
+ */
+export type AuditNote = {
+  /** The event a request created; every other event id comes from the URL. */
+  eventId: string | undefined;
+  /**
+   * The handler's business write has committed (or, for a share email, the
+   * email went out). A failure after this point is `post_commit_error`.
+   */
+  committed: boolean;
+  /** The audit row for this request has been handed to the writer. */
+  recorded: boolean;
+};
+
 export type RequestContext = {
   requestId: string | undefined;
   actor: ActorNote | undefined;
+  audit: AuditNote;
 };
 
 function emptyContext(requestId?: string): RequestContext {
-  return { requestId, actor: undefined };
+  return {
+    requestId,
+    actor: undefined,
+    audit: { eventId: undefined, committed: false, recorded: false },
+  };
 }
 
 const handlerContext = new AsyncLocalStorage<RequestContext>();
@@ -96,4 +118,22 @@ export function noteActor(
   const context = currentRequestContext();
   if (context.actor !== undefined) return;
   context.actor = { userId: user.id, name: user.name, fallback };
+}
+
+/**
+ * Records the id of the event this request created, for its audit row. Called
+ * by `POST /api/events` once the event exists; nothing else creates an event.
+ */
+export function noteAuditEventId(eventId: string): void {
+  currentRequestContext().audit.eventId = eventId;
+}
+
+/**
+ * Records that this request's business write has committed. Called by an
+ * audited route handler straight after its data call succeeds -- never inside
+ * an `inTransaction` callback -- so that a failure after it is audited as
+ * `post_commit_error` rather than as an ordinary error.
+ */
+export function noteCommitted(): void {
+  currentRequestContext().audit.committed = true;
 }

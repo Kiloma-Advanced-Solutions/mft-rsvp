@@ -19,7 +19,7 @@
  */
 
 import { ApiError, jsonOk } from "@/lib/api";
-import { withErrorHandling } from "@/lib/apiHandler";
+import { availabilityReason, withErrorHandling } from "@/lib/apiHandler";
 import { db } from "@/lib/db";
 import { getEventDetailForViewer } from "@/lib/events";
 import {
@@ -32,6 +32,7 @@ import {
   getRequestDecisionAvailability,
   requestCanBeApproved,
 } from "@/lib/permissions";
+import { noteCommitted } from "@/lib/requestContext";
 import { getCurrentUser } from "@/lib/session";
 
 type Context =
@@ -104,6 +105,7 @@ export const POST = withErrorHandling(
       // what proves that to the compiler rather than a case that can happen.
       throw ApiError.conflict(
         requestDecisionNote(availability) ?? REQUEST_ACTION_COPY.stale,
+        availabilityReason(availability),
       );
     }
 
@@ -120,19 +122,22 @@ export const POST = withErrorHandling(
 
     switch (decision.outcome) {
       case "approved":
+        noteCommitted();
         return jsonOk({ registration: decision.registration });
       case "refused":
         throw ApiError.conflict(
           requestDecisionNote(decision.availability) ??
             REQUEST_ACTION_COPY.stale,
+          availabilityReason(decision.availability),
         );
       case "stale":
-        throw ApiError.conflict(REQUEST_ACTION_COPY.stale);
+        throw ApiError.conflict(REQUEST_ACTION_COPY.stale, "stale");
       case "not_found":
       case "gone":
         // The row or its event went away while this request was in flight --
         // the same 404 either would have produced above.
-        throw ApiError.notFound();
+        throw ApiError.notFound(undefined, "gone");
     }
   },
+  { audit: "request.approve" },
 );

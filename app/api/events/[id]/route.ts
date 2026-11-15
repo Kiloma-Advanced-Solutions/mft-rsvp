@@ -19,7 +19,7 @@
  */
 
 import { ApiError, jsonOk, readJson } from "@/lib/api";
-import { withErrorHandling } from "@/lib/apiHandler";
+import { scheduleReason, withErrorHandling } from "@/lib/apiHandler";
 import { db } from "@/lib/db";
 import { eventExists, getEventDetailForViewer } from "@/lib/events";
 import { parseEventBody } from "@/lib/eventInput";
@@ -29,6 +29,7 @@ import {
   scheduleFieldErrors,
 } from "@/lib/labels";
 import { canManageEvent, checkEventSchedule } from "@/lib/permissions";
+import { noteCommitted } from "@/lib/requestContext";
 import { getCurrentUser } from "@/lib/session";
 import type { EventDetailContext } from "@/lib/types";
 
@@ -87,7 +88,11 @@ export const PATCH = withErrorHandling(
     const body = await readJson(request);
     const parsed = parseEventBody(body, detail.event);
     if (!parsed.ok) {
-      throw ApiError.badRequest(EVENT_FORM_ERRORS.formRejected, parsed.errors);
+      throw ApiError.badRequest(
+        EVENT_FORM_ERRORS.formRejected,
+        parsed.errors,
+        "validation",
+      );
     }
 
     // Judged against the event as stored: only a date that actually changes is
@@ -98,6 +103,7 @@ export const PATCH = withErrorHandling(
       throw ApiError.badRequest(
         EVENT_FORM_ERRORS.formRejected,
         scheduleFieldErrors(schedule.errors),
+        scheduleReason(schedule.errors),
       );
     }
 
@@ -107,12 +113,14 @@ export const PATCH = withErrorHandling(
       // and this write -- the same 404 as an event that never existed -- or it
       // is still there and the row moved first, which stays a conflict.
       throw (await eventExists(detail.event.id))
-        ? ApiError.conflict(MANAGE_ACTION_COPY.stale)
-        : ApiError.notFound();
+        ? ApiError.conflict(MANAGE_ACTION_COPY.stale, "stale")
+        : ApiError.notFound(undefined, "gone");
     }
+    noteCommitted();
 
     return jsonOk({ event });
   },
+  { audit: "event.update" },
 );
 
 /**
@@ -132,8 +140,10 @@ export const DELETE = withErrorHandling(
     const deleted = await db.events.remove(detail.event.id);
     // Only reachable if it disappeared between the load and here, which is the
     // same answer as never having existed.
-    if (!deleted) throw ApiError.notFound();
+    if (!deleted) throw ApiError.notFound(undefined, "gone");
+    noteCommitted();
 
     return jsonOk({ deleted: true });
   },
+  { audit: "event.delete" },
 );

@@ -17,7 +17,7 @@
  */
 
 import { ApiError, jsonOk } from "@/lib/api";
-import { withErrorHandling } from "@/lib/apiHandler";
+import { availabilityReason, withErrorHandling } from "@/lib/apiHandler";
 import { db } from "@/lib/db";
 import { getEventDetailForViewer } from "@/lib/events";
 import {
@@ -30,6 +30,7 @@ import {
   getRequestDecisionAvailability,
   requestCanBeRejected,
 } from "@/lib/permissions";
+import { noteCommitted } from "@/lib/requestContext";
 import { getCurrentUser } from "@/lib/session";
 
 type Context =
@@ -91,11 +92,15 @@ export const POST = withErrorHandling(
         availability.state === "approve_only" ||
         (availability.state === "closed" && availability.reason === "full");
 
-      throw ApiError.conflict(
-        alreadyRejected
-          ? REQUEST_ACTION_COPY.alreadyRejected
-          : (requestDecisionNote(availability) ?? REQUEST_ACTION_COPY.stale),
-      );
+      throw alreadyRejected
+        ? ApiError.conflict(
+            REQUEST_ACTION_COPY.alreadyRejected,
+            "already_rejected",
+          )
+        : ApiError.conflict(
+            requestDecisionNote(availability) ?? REQUEST_ACTION_COPY.stale,
+            availabilityReason(availability),
+          );
     }
 
     // Turning somebody down frees nothing and takes nothing, so it cannot
@@ -121,11 +126,13 @@ export const POST = withErrorHandling(
 
     switch (write.outcome) {
       case "updated":
+        noteCommitted();
         return jsonOk({ registration: write.registration });
       case "stale":
-        throw ApiError.conflict(REQUEST_ACTION_COPY.stale);
+        throw ApiError.conflict(REQUEST_ACTION_COPY.stale, "stale");
       case "gone":
-        throw ApiError.notFound();
+        throw ApiError.notFound(undefined, "gone");
     }
   },
+  { audit: "request.reject" },
 );

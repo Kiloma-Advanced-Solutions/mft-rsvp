@@ -15,7 +15,13 @@
  *   5. the API boundary (`withErrorHandling`) -- one correlated line per failed
  *      request and none otherwise, unchanged responses, and route labels that
  *      never carry the URL;
- *   6. the instrumentation hooks -- `app.started` and `next.request_error`.
+ *   6. the instrumentation hooks -- `app.started` and `next.request_error`;
+ *   7-10. the audit records and the D15 writer (S3);
+ *   11. the audit step of the API boundary (S4) -- the approved operation on
+ *      each of the 14 audited handlers and none on the session routes, outcome
+ *      and reason mapping, ids, actor and metadata, one row per request under
+ *      concurrency, no audit call near a transaction, and responses unchanged
+ *      however the audit write fails.
  *
  * The database and mail call sites (`lib/data/client.ts`,
  * `lib/services/*`) import `server-only` and resolve `@/` paths, which bare
@@ -32,10 +38,11 @@
 
 import mssql from "mssql";
 
+import { spawnSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { readdirSync, readFileSync } from "node:fs";
 
-import { ApiError, jsonError, jsonOk } from "../lib/api.ts";
+import { ApiError, jsonError, jsonOk, readJson } from "../lib/api.ts";
 import {
   AUDIT_WRITE_POLICY,
   serializeMetadata,
@@ -49,8 +56,16 @@ import {
 import {
   API_ROUTE_PATTERNS,
   apiRouteLabel,
+  availabilityReason,
+  closedReason,
+  createErrorHandling,
+  failureReason,
+  outcomeForStatus,
+  scheduleReason,
   UNMATCHED_ROUTE,
   withErrorHandling,
+  type ApiAuditOperation,
+  type AuditRecorder,
 } from "../lib/apiHandler.ts";
 import { createRedactor } from "../lib/data/redact.mts";
 import { API_ERRORS } from "../lib/labels.ts";
@@ -67,6 +82,8 @@ import {
 import {
   currentRequestContext,
   noteActor,
+  noteAuditEventId,
+  noteCommitted,
   outsideRequestContext,
   runWithRequestContext,
 } from "../lib/requestContext.ts";
@@ -1694,6 +1711,617 @@ const driverWrapped = (code: string) =>
     "schema: the request timeout is never 0, and the audit insert runs on the pool",
     /Math\.max\(1,/.test(source) && /getPool\(\)/.test(source) && !/inTransaction|Transaction\(/.test(source),
   );
+}
+
+/* ------------------------------------ 11. the API audit step (S4) */
+
+/** The approved matrix (M12 plan, E3): method and route pattern to operation. */
+const API_AUDIT_MATRIX: Record<string, string> = {
+  "POST /api/events": "event.create",
+  "PATCH /api/events/[id]": "event.update",
+  "DELETE /api/events/[id]": "event.delete",
+  "POST /api/events/[id]/publish": "event.publish",
+  "POST /api/events/[id]/cancel": "event.cancel",
+  "POST /api/events/[id]/registrations": "registration.register",
+  "DELETE /api/events/[id]/registrations": "registration.withdraw",
+  "POST /api/events/[id]/registrations/[registrationId]/approve": "request.approve",
+  "POST /api/events/[id]/registrations/[registrationId]/reject": "request.reject",
+  "POST /api/events/[id]/registrations/[registrationId]/remove": "attendee.remove",
+  "POST /api/events/[id]/registrations/[registrationId]/restore": "attendee.restore",
+  "POST /api/events/[id]/invitations/[userId]": "invitation.add",
+  "DELETE /api/events/[id]/invitations/[userId]": "invitation.revoke",
+  "POST /api/events/[id]/share-emails/[userId]": "share.email",
+};
+
+const routeSources = (readdirSync(new URL("../app/api", import.meta.url), { recursive: true }) as string[])
+  .filter((file) => file.endsWith("route.ts"))
+  .map((file) => {
+    const relative = file.replace(/\\/g, "/");
+    const pattern = `/api/${relative.replace(/\/?route\.ts$/, "")}`.replace(/\/$/, "");
+    return { pattern, source: readFileSync(new URL(`../app/api/${relative}`, import.meta.url), "utf8") };
+  });
+
+{
+  // Every exported handler: wrapped exactly once, and audited exactly as the
+  // matrix says -- the session routes not at all (D13).
+  const found: Record<string, string | null> = {};
+  const problems: string[] = [];
+  for (const { pattern, source } of routeSources) {
+    const exports = [...source.matchAll(/^export const (GET|POST|PATCH|PUT|DELETE) = /gm)];
+    exports.forEach((match, index) => {
+      const end = exports[index + 1]?.index ?? source.length;
+      const segment = source.slice(match.index, end);
+      const key = `${match[1]} ${pattern}`;
+      if (!segment.startsWith(`export const ${match[1]} = withErrorHandling(`)) problems.push(`${key}: not wrapped`);
+      if ((segment.match(/withErrorHandling\(/g) ?? []).length !== 1) problems.push(`${key}: wrapped more than once`);
+      const audits = [...segment.matchAll(/\{ audit: "([a-z_.]+)" \}/g)].map((m) => m[1]);
+      if (audits.length > 1) problems.push(`${key}: more than one audit option`);
+      found[key] = audits[0] ?? null;
+    });
+  }
+  const audited = Object.fromEntries(Object.entries(found).filter(([, op]) => op !== null));
+  add(
+    "s4: the 14 audited handlers declare exactly the approved operations",
+    JSON.stringify(Object.entries(audited).sort()) === JSON.stringify(Object.entries(API_AUDIT_MATRIX).sort()),
+    JSON.stringify(audited),
+  );
+  add(
+    "s4: GET and POST /api/session are wrapped and not audited",
+    "GET /api/session" in found && "POST /api/session" in found && found["GET /api/session"] === null && found["POST /api/session"] === null,
+  );
+  add("s4: every handler is wrapped exactly once", problems.length === 0, problems.join("; "));
+  add("s4: sixteen wrapped handlers in all", Object.keys(found).length === 16, String(Object.keys(found).length));
+  add(
+    "s4: no handler is exported in a form the scan above would miss",
+    routeSources.every(({ source }) => !/export\s+(async\s+)?function\s+(GET|POST|PATCH|PUT|DELETE|HEAD|OPTIONS)\b|export\s*\{|export\s+const\s+(HEAD|OPTIONS)\b/.test(source)),
+  );
+}
+
+{
+  // Every 409 an audited route throws names its reason, so no refusal falls
+  // back to the bare `conflict` code.
+  const bare: string[] = [];
+  for (const { pattern, source } of routeSources) {
+    if (pattern === "/api/session") continue;
+    for (const match of source.matchAll(/ApiError\.conflict\(/g)) {
+      let depth = 1;
+      let index = match.index + match[0].length;
+      let commas = 0;
+      while (depth > 0 && index < source.length) {
+        const char = source[index];
+        if ("([{".includes(char)) depth += 1;
+        else if (")]}".includes(char)) depth -= 1;
+        else if (char === "," && depth === 1) commas += 1;
+        index += 1;
+      }
+      const args = source.slice(match.index + match[0].length, index - 1).trim();
+      if (commas === 0 || (commas === 1 && args.endsWith(","))) bare.push(`${pattern}: ${args.slice(0, 40)}`);
+    }
+  }
+  add("s4: every 409 in an audited route carries a reason", bare.length === 0, bare.join("; "));
+  add(
+    "s4: no 409 is built by hand, where the scan above would not see it",
+    routeSources.every(({ source }) => !/new ApiError\(\s*409/.test(source)),
+  );
+  // A reason decided by `state === "closed"` misses an availability whose other
+  // states carry a reason too (`reject_only`, reason `full`); routes use
+  // `availabilityReason`, which reads the reason itself.
+  add(
+    "s4: no route picks a refusal reason by testing for the closed state",
+    routeSources.every(({ source }) => !/state === "closed"\s*\?\s*closedReason\(/.test(source)),
+  );
+}
+
+{
+  // Audit and commit notes stay out of the data layer, and no route opens a
+  // transaction: the audit write cannot land inside one.
+  const dataDir = new URL("../lib/data/", import.meta.url);
+  const dataFiles = (readdirSync(dataDir, { recursive: true }) as string[]).filter(
+    (file) => /\.m?ts$/.test(file) && !file.endsWith("audit.ts"),
+  );
+  const inData = dataFiles.filter((file) =>
+    /noteCommitted|noteAuditEventId|writeAudit|insertAudit|audit\.record|apiHandler/.test(readFileSync(new URL(file, dataDir), "utf8")),
+  );
+  const inRoutes = routeSources.filter(({ source }) => /inTransaction|sql\.Transaction|BEGIN TRAN/i.test(source));
+  add("s4: no audit call or note anywhere in lib/data (so none inside inTransaction)", inData.length === 0, inData.join(", "));
+  add("s4: no route handler opens a transaction", inRoutes.length === 0, inRoutes.map((route) => route.pattern).join(", "));
+
+  // A commit note sits on the success path, right after the write it reports:
+  // the nearest data call before it is a *write* (not a read such as
+  // `db.registrations.get`), and the very next statement returns the success
+  // response, so no refusal or failure can follow it.
+  const WRITES = new Set([
+    "db.events.create",
+    "db.events.update",
+    "db.events.remove",
+    "db.events.invite",
+    "db.events.revokeInvitation",
+    "db.registrations.claimSeat",
+    "db.registrations.update",
+    "db.registrations.approve",
+    "db.registrations.restore",
+    "sendEventShareEmail",
+  ]);
+  const misplaced: string[] = [];
+  let notes = 0;
+  for (const { pattern, source } of routeSources) {
+    if (pattern === "/api/session") continue;
+    for (const match of source.matchAll(/noteCommitted\(\);/g)) {
+      notes += 1;
+      const calls = [...source.slice(0, match.index).matchAll(/await (db\.[A-Za-z.]+|sendEventShareEmail)\(/g)];
+      const nearest = calls.at(-1)?.[1];
+      const next = source.slice(match.index + match[0].length);
+      if (nearest === undefined || !WRITES.has(nearest)) misplaced.push(`${pattern}: after ${nearest}`);
+      if (!/^\s*return jsonOk\(/.test(next)) misplaced.push(`${pattern}: not followed by the success return`);
+    }
+  }
+  add(
+    "s4: every commit note follows its write and is followed by the success return",
+    notes === 14 && misplaced.length === 0,
+    `${notes} notes; ${misplaced.join("; ")}`,
+  );
+}
+
+{
+  const reasons: Array<[string, string]> = [
+    [closedReason("full"), "full"],
+    [closedReason("not_invited"), "not_invited"],
+    [closedReason("already_invited"), "already_invited"],
+    [closedReason("draft"), "closed:draft"],
+    [closedReason("open_access"), "closed:open_access"],
+    [availabilityReason({ state: "reject_only", reason: "full" }), "full"],
+    [availabilityReason({ state: "closed", reason: "full" }), "full"],
+    [availabilityReason({ state: "closed", reason: "not_decidable" }), "closed:not_decidable"],
+    [availabilityReason({ state: "open" }), "stale"],
+    [availabilityReason({ state: "approve_only" }), "stale"],
+    [scheduleReason({ startsAt: "started" }), "schedule_locked"],
+    [scheduleReason({ endsAt: "cancelled" }), "schedule_locked"],
+    [scheduleReason({ startsAt: "start_not_future" }), "validation"],
+    [failureReason(Object.assign(new Error("x"), { number: 1205 })), "deadlock"],
+    [failureReason(Object.assign(new Error("x"), { originalError: { number: 1205 } })), "deadlock"],
+    [failureReason(Object.assign(new Error("x"), { number: 40613 })), "db_unavailable"],
+    [failureReason(Object.assign(new Error("x"), { code: "ESOCKET" })), "db_unavailable"],
+    [failureReason(Object.assign(new Error("x"), { code: "ETIMEOUT" })), "db_unavailable"],
+    [failureReason(Object.assign(new Error("x"), { number: 547 })), "internal"],
+    [failureReason(new TypeError("x")), "internal"],
+    [failureReason("not an error"), "internal"],
+  ];
+  const wrong = reasons.filter(([actual, expected]) => actual !== expected);
+  add("s4: refusal, schedule and failure reasons map to the approved codes", wrong.length === 0, JSON.stringify(wrong));
+  add(
+    "s4: every reason code fits the audit format",
+    reasons.every(([code]) => /^[a-z0-9_:.-]{1,64}$/.test(code)),
+  );
+
+  const statuses: Array<[number, string]> = [
+    [200, "success"], [201, "success"], [400, "invalid"], [403, "denied"], [404, "not_found"],
+    [409, "rejected"], [500, "error"], [502, "error"], [503, "error"],
+  ];
+  const wrongStatus = statuses.filter(([status, outcome]) => outcomeForStatus(status) !== outcome);
+  add("s4: HTTP status maps to the approved outcome", wrongStatus.length === 0, JSON.stringify(wrongStatus));
+}
+
+/** The second argument Next passes a dynamic route's handler. */
+type RouteArgs = { params: Promise<Record<string, string>> };
+
+/** A wrapper with a recorder the checks can read, as the application's would be with the database. */
+function auditedWrapper(recorder?: AuditRecorder) {
+  const records: AuditInput[] = [];
+  const record: AuditRecorder = recorder ?? (async (input) => {
+    records.push(input);
+  });
+  return { wrap: createErrorHandling(record), records };
+}
+
+const S4_EVENT = "7A1B2C3D-1111-4222-8333-444455556666";
+const S4_REGISTRATION = "8b1b2c3d-1111-4222-8333-444455556666";
+const S4_USER = "9c1b2c3d-1111-4222-8333-444455556666";
+const S4_ACTOR = { id: "ab1b2c3d-1111-4222-8333-444455556666", name: "Synthetic Audited Person" };
+
+/** Runs one audited call and returns its response, records and log lines. */
+async function auditedCall(
+  operation: ApiAuditOperation,
+  path: string,
+  params: Record<string, string>,
+  body: (request: Request) => Promise<Response>,
+  options: { method?: string; recorder?: AuditRecorder; requestId?: string; init?: RequestInit } = {},
+) {
+  const { wrap, records } = auditedWrapper(options.recorder);
+  const handler = wrap<[Request, RouteArgs]>(async (request) => body(request), { audit: operation });
+  const requestId = options.requestId ?? newRequestId();
+  const request = new Request(`http://localhost${path}`, {
+    method: options.method ?? "POST",
+    headers: { [REQUEST_ID_HEADER]: requestId },
+    ...options.init,
+  });
+  const { result, lines } = await captureOutput(() => handler(request, { params: Promise.resolve(params) }));
+  return { response: result, text: await result.text(), records, lines, requestId };
+}
+
+const s4Lines: Captured[] = [];
+
+{
+  const call = await auditedCall(
+    "request.approve",
+    `/api/events/${S4_EVENT}/registrations/${S4_REGISTRATION}/approve`,
+    { id: S4_EVENT, registrationId: S4_REGISTRATION },
+    async () => {
+      noteActor(S4_ACTOR, false);
+      noteCommitted();
+      return jsonOk({ ok: true });
+    },
+  );
+  s4Lines.push(...call.lines);
+  const row = call.records[0];
+  add("s4: a successful audited call records exactly one row", call.records.length === 1);
+  add(
+    "s4: the row carries the request, actor, route, method, ids and outcome",
+    row !== undefined &&
+      row.requestId === call.requestId &&
+      row.channel === "api" &&
+      row.httpMethod === "POST" &&
+      row.route === "/api/events/:id/registrations/:registrationId/approve" &&
+      row.operation === "request.approve" &&
+      row.actor?.userId === S4_ACTOR.id &&
+      row.actor.name === S4_ACTOR.name &&
+      row.eventId === S4_EVENT.toLowerCase() &&
+      row.subject?.type === "registration" &&
+      row.subject.id === S4_REGISTRATION &&
+      row.outcome === "success" &&
+      row.httpStatus === 200 &&
+      row.reasonCode === null &&
+      Number.isInteger(row.durationMs) &&
+      row.occurredAt instanceof Date &&
+      row.metadata !== null && Object.keys(row.metadata ?? {}).length === 0,
+    JSON.stringify(row),
+  );
+  add("s4: the record passes the writer's own checks", row !== undefined && toAuditRow(row, newRequestId()).ok);
+}
+
+{
+  const call = await auditedCall("invitation.add", `/api/events/${S4_EVENT}/invitations/${S4_USER}`, { id: S4_EVENT, userId: S4_USER }, async () =>
+    jsonOk({ invitation: true }, 201),
+  );
+  const row = call.records[0];
+  add(
+    "s4: a [userId] route records a user subject, and no actor when none was resolved",
+    row?.subject?.type === "user" && row.subject.id === S4_USER && row.actor === null && row.outcome === "success" && row.httpStatus === 201,
+    JSON.stringify(row),
+  );
+}
+
+{
+  const created = "cd1b2c3d-1111-4222-8333-444455556666";
+  const call = await auditedCall("event.create", "/api/events", {}, async () => {
+    noteAuditEventId(created);
+    noteCommitted();
+    return jsonOk({ event: { id: created } }, 201);
+  });
+  const row = call.records[0];
+  add("s4: event.create records the id of the event it created", row?.eventId === created && row.subject === null, JSON.stringify(row));
+
+  const refused = await auditedCall("event.create", "/api/events", {}, async () => {
+    throw ApiError.forbidden();
+  });
+  add(
+    "s4: event.create refused before anything exists records no event id",
+    refused.records[0]?.eventId === null && refused.records[0]?.outcome === "denied" && refused.records[0]?.reasonCode === "forbidden",
+    JSON.stringify(refused.records[0]),
+  );
+}
+
+{
+  const call = await auditedCall(
+    "attendee.remove",
+    "/api/events/not-a-uuid/registrations/<script>/remove",
+    { id: "not-a-uuid", registrationId: "<script>" },
+    async () => {
+      throw ApiError.notFound();
+    },
+  );
+  const row = call.records[0];
+  add(
+    "s4: ids that are not UUIDs become NULL, and the row is still written",
+    row?.eventId === null && row.subject === null && row.outcome === "not_found" && row.reasonCode === "not_found" && row.httpStatus === 404,
+    JSON.stringify(row),
+  );
+}
+
+{
+  // Each refusal kind: outcome, status and reason, and a response that is
+  // exactly what it was before S4.
+  const cases: Array<[string, () => never, string, number, string]> = [
+    ["409 with a reason", () => { throw ApiError.conflict("full", "full"); }, "rejected", 409, "full"],
+    ["409 closed", () => { throw ApiError.conflict("closed", closedReason("draft")); }, "rejected", 409, "closed:draft"],
+    ["409 without a reason", () => { throw ApiError.conflict("x"); }, "rejected", 409, "conflict"],
+    ["403 not invited", () => { throw ApiError.forbidden("no", "not_invited"); }, "denied", 403, "not_invited"],
+    ["404 gone", () => { throw ApiError.notFound(undefined, "gone"); }, "not_found", 404, "gone"],
+    ["503 email", () => { throw new ApiError(503, "x", { code: "email_not_configured" }); }, "error", 503, "email_not_configured"],
+    ["502 email", () => { throw new ApiError(502, "x", { code: "email_delivery_failed" }); }, "error", 502, "email_delivery_failed"],
+    ["500 render", () => { throw new ApiError(500, "x", { code: "email_render_failed" }); }, "error", 500, "email_render_failed"],
+    ["500 unhandled", () => { throw new Error("boom"); }, "error", 500, "internal"],
+    ["500 deadlock", () => { throw Object.assign(new Error("deadlock victim"), { number: 1205 }); }, "error", 500, "deadlock"],
+  ];
+  const wrong: string[] = [];
+  const responseChanged: string[] = [];
+  for (const [name, fail, outcome, status, reason] of cases) {
+    const audited = await auditedCall("event.publish", `/api/events/${S4_EVENT}/publish`, { id: S4_EVENT }, async () => fail());
+    s4Lines.push(...audited.lines);
+    const plain = withErrorHandling<[Request]>(async () => fail());
+    const { result } = await captureOutput(() => plain(apiRequest(`/api/events/${S4_EVENT}/publish`, newRequestId())));
+    const row = audited.records[0];
+    if (audited.records.length !== 1 || row?.outcome !== outcome || row.httpStatus !== status || row.reasonCode !== reason) {
+      wrong.push(`${name}: ${JSON.stringify(row)}`);
+    }
+    const headers = (response: Response) => JSON.stringify([...response.headers].sort());
+    if (
+      audited.response.status !== result.status ||
+      headers(audited.response) !== headers(result) ||
+      audited.text !== (await result.text())
+    ) {
+      responseChanged.push(name);
+    }
+  }
+  add("s4: each refusal and failure records the approved outcome, status and reason", wrong.length === 0, wrong.join(" | "));
+  add("s4: auditing changes no response, status, header or body", responseChanged.length === 0, responseChanged.join(", "));
+  add(
+    "s4: the reason never reaches the response body",
+    !(await auditedCall("event.cancel", "/api/events/x/cancel", {}, async () => {
+      throw ApiError.conflict("msg", "closed:started");
+    })).text.includes("closed:started"),
+  );
+}
+
+{
+  const call = await auditedCall("event.update", `/api/events/${S4_EVENT}`, { id: S4_EVENT }, async () => {
+    throw ApiError.badRequest("rejected", { title: "Synthetic message text", endsAt: "Another message" }, "validation");
+  }, { method: "PATCH" });
+  const row = call.records[0];
+  add(
+    "s4: a validation 400 records the field names only, never the messages",
+    row?.outcome === "invalid" &&
+      row.reasonCode === "validation" &&
+      JSON.stringify(row.metadata) === JSON.stringify({ fieldErrors: ["title", "endsAt"] }) &&
+      !JSON.stringify(row).includes("Synthetic message text"),
+    JSON.stringify(row),
+  );
+
+  const malformed = await auditedCall(
+    "event.update",
+    `/api/events/${S4_EVENT}`,
+    { id: S4_EVENT },
+    async (request) => {
+      await readJson(request);
+      return jsonOk({});
+    },
+    { method: "PATCH", init: { method: "PATCH", body: "{not json" } },
+  );
+  add(
+    "s4: a malformed body records invalid_json",
+    malformed.records[0]?.outcome === "invalid" && malformed.records[0].reasonCode === "invalid_json" && malformed.response.status === 400,
+    JSON.stringify(malformed.records[0]),
+  );
+}
+
+{
+  const fallback = await auditedCall("registration.register", `/api/events/${S4_EVENT}/registrations`, { id: S4_EVENT }, async () => {
+    noteActor(S4_ACTOR, true);
+    return jsonOk({});
+  });
+  add(
+    "s4: a fallback persona is recorded with actorFallback, and no subject for one's own registration",
+    fallback.records[0]?.actor?.userId === S4_ACTOR.id &&
+      JSON.stringify(fallback.records[0].metadata) === JSON.stringify({ actorFallback: true }) &&
+      fallback.records[0].subject === null,
+    JSON.stringify(fallback.records[0]),
+  );
+}
+
+{
+  const call = await auditedCall("registration.withdraw", `/api/events/${S4_EVENT}/registrations`, { id: S4_EVENT }, async () => {
+    noteActor(S4_ACTOR, false);
+    noteCommitted();
+    throw new Error("failed after the write");
+  }, { method: "DELETE" });
+  s4Lines.push(...call.lines);
+  add(
+    "s4: a failure after the commit note records post_commit_error",
+    call.records[0]?.outcome === "error" && call.records[0].reasonCode === "post_commit_error" && call.response.status === 500,
+    JSON.stringify(call.records[0]),
+  );
+
+  const before = await auditedCall("registration.withdraw", `/api/events/${S4_EVENT}/registrations`, { id: S4_EVENT }, async () => {
+    throw new Error("failed before any write");
+  }, { method: "DELETE" });
+  add("s4: a failure before any commit is an ordinary error, never a success", before.records[0]?.outcome === "error" && before.records[0].reasonCode === "internal");
+}
+
+{
+  // The session routes declare no operation: no row, whatever happens.
+  const { wrap, records } = auditedWrapper();
+  const ok = wrap<[Request]>(async () => jsonOk({}));
+  const fail = wrap<[Request]>(async () => {
+    throw ApiError.badRequest("x");
+  });
+  await captureOutput(() => ok(apiRequest("/api/session", newRequestId(), "GET")));
+  await captureOutput(() => fail(apiRequest("/api/session", newRequestId())));
+  add("s4: a handler without an audit option records nothing", records.length === 0);
+}
+
+{
+  // Twenty concurrent requests, each with its own actor and event: each row
+  // belongs to its own request, and there is exactly one per request.
+  const { wrap, records } = auditedWrapper();
+  const handler = wrap<[Request, RouteArgs]>(
+    async (request) => {
+      const index = Number(new URL(request.url).searchParams.get("n"));
+      await tick(Math.floor(Math.random() * 8));
+      noteActor({ id: `${String(index).padStart(8, "0")}-1111-4222-8333-444455556666`, name: `Person ${index}` }, false);
+      await tick(Math.floor(Math.random() * 8));
+      if (index % 3 === 0) throw ApiError.conflict("full", "full");
+      return jsonOk({});
+    },
+    { audit: "registration.register" },
+  );
+  const calls = Array.from({ length: 20 }, (_, index) => {
+    const requestId = newRequestId();
+    const eventId = `${String(index).padStart(8, "0")}-aaaa-4222-8333-444455556666`;
+    const request = new Request(`http://localhost/api/events/${eventId}/registrations?n=${index}`, {
+      method: "POST",
+      headers: { [REQUEST_ID_HEADER]: requestId },
+    });
+    return { index, requestId, eventId, promise: handler(request, { params: Promise.resolve({ id: eventId }) }) };
+  });
+  await captureOutput(() => Promise.all(calls.map((call) => call.promise)));
+  const crossed = calls.filter(({ index, requestId, eventId }) => {
+    const mine = records.filter((row) => row.requestId === requestId);
+    const row = mine[0];
+    return (
+      mine.length !== 1 ||
+      row.eventId !== eventId ||
+      row.actor?.name !== `Person ${index}` ||
+      row.outcome !== (index % 3 === 0 ? "rejected" : "success")
+    );
+  });
+  add(
+    "s4: twenty concurrent requests give twenty rows, each with its own id, actor, event and outcome",
+    records.length === 20 && new Set(records.map((row) => row.requestId)).size === 20 && crossed.length === 0,
+    JSON.stringify(crossed.map((call) => call.index)),
+  );
+}
+
+{
+  // A slow audit write is not part of DurationMs, and the response waits for it.
+  let handlerDone = 0;
+  let recordStarted = 0;
+  const call = await auditedCall("event.delete", `/api/events/${S4_EVENT}`, { id: S4_EVENT }, async () => {
+    handlerDone = performance.now();
+    return jsonOk({ deleted: true });
+  }, {
+    method: "DELETE",
+    recorder: async () => {
+      recordStarted = performance.now();
+      await tick(150);
+    },
+  });
+  void call;
+  let timedRow: AuditInput | undefined;
+  const started = performance.now();
+  const timed = await auditedCall("event.delete", `/api/events/${S4_EVENT}`, { id: S4_EVENT }, async () => jsonOk({ deleted: true }), {
+    method: "DELETE",
+    recorder: async (input) => {
+      await tick(400);
+      timedRow = input;
+    },
+  });
+  const elapsed = performance.now() - started;
+  add(
+    "s4: DurationMs is handler time and leaves out the audit write",
+    // Relative, not absolute: the handler is instant and the write takes
+    // 400 ms, so DurationMs must sit far below the time the call took.
+    timedRow !== undefined &&
+      timedRow.durationMs !== null &&
+      timedRow.durationMs !== undefined &&
+      timedRow.durationMs + 300 <= elapsed &&
+      elapsed >= 390 &&
+      timed.response.status === 200,
+    JSON.stringify({ durationMs: timedRow?.durationMs, elapsed }),
+  );
+  add("s4: the audit write starts only after the handler has finished", recordStarted >= handlerDone && handlerDone > 0);
+}
+
+{
+  // The recorder failing in every way leaves the response exactly as it was.
+  const expected = await jsonOk({ registration: "kept" }).text();
+  const body = async () => jsonOk({ registration: "kept" });
+  const path = `/api/events/${S4_EVENT}/registrations`;
+
+  const rejects = await auditedCall("registration.register", path, { id: S4_EVENT }, async () => {
+    noteActor(S4_ACTOR, false);
+    return body();
+  }, {
+    recorder: async () => {
+      throw new Error(`recorder broke for ${S4_ACTOR.name}`);
+    },
+  });
+  s4Lines.push(...rejects.lines);
+  const bug = rejects.lines.find((line) => line.record?.event === "audit.write_failed");
+  add("s4: a recorder that throws leaves the response unchanged", rejects.response.status === 200 && rejects.text === expected);
+  add(
+    "s4: ...and logs audit.write_failed (writer_bug) with no actor and no message",
+    bug?.record?.reason === "writer_bug" && bug.record.requestId === rejects.requestId && !bug.text.includes(S4_ACTOR.name) && !bug.text.includes("recorder broke"),
+    bug?.text,
+  );
+
+  const sqlFailure = await auditedCall("registration.register", path, { id: S4_EVENT }, body, {
+    recorder: (input) => writeAudit(input, async () => {
+      throw Object.assign(new Error("Invalid object name 'dbo.Events_AuditLog'."), { number: 208 });
+    }),
+  });
+  s4Lines.push(...sqlFailure.lines);
+  add(
+    "s4: a failing insert (missing table, 208) leaves the response unchanged and logs sql_error",
+    sqlFailure.response.status === 200 &&
+      sqlFailure.text === expected &&
+      sqlFailure.lines.some((line) => line.record?.event === "audit.write_failed" && line.record.reason === "sql_error"),
+    sqlFailure.lines.map((line) => line.text).join(""),
+  );
+
+  const started = performance.now();
+  const hung = await auditedCall("registration.register", path, { id: S4_EVENT }, body, {
+    recorder: (input) => writeAudit(input, () => new Promise<void>(() => undefined)),
+  });
+  const elapsed = performance.now() - started;
+  s4Lines.push(...hung.lines);
+  add(
+    "s4: a hung insert is cut off at the D15 deadline and the response is unchanged",
+    hung.response.status === 200 &&
+      hung.text === expected &&
+      elapsed >= AUDIT_WRITE_POLICY.deadlineMs - 5 &&
+      elapsed < AUDIT_WRITE_POLICY.deadlineMs + 1000 &&
+      hung.lines.some((line) => line.record?.event === "audit.write_failed" && line.record.reason === "deadline" && line.record.ambiguous === true),
+    JSON.stringify({ elapsed: Math.round(elapsed) }),
+  );
+}
+
+{
+  // The application log never carries the actor or the ids an audit row holds.
+  const leaked = s4Lines.filter((line) =>
+    [S4_ACTOR.name, S4_ACTOR.id, S4_REGISTRATION, S4_EVENT, S4_EVENT.toLowerCase(), S4_USER].some((value) => line.text.includes(value)),
+  );
+  add("s4: no actor, name or audited id in any application log line", s4Lines.length > 0 && leaked.length === 0, leaked.map((line) => line.text).join(""));
+}
+
+{
+  // `audit.written` at debug, in a process of its own so the level can be set.
+  const input = JSON.stringify(auditInput());
+  const script = `
+    import { writeAudit } from ${JSON.stringify(new URL("../lib/audit.ts", import.meta.url).href)};
+    const input = JSON.parse(${JSON.stringify(input)});
+    input.occurredAt = new Date(input.occurredAt);
+    await writeAudit(input, async () => undefined);
+  `;
+  const run = (level: string) =>
+    spawnSync(process.execPath, ["--disable-warning=MODULE_TYPELESS_PACKAGE_JSON", "--input-type=module", "-e", script], {
+      env: { ...process.env, LOG_LEVEL: level, LOG_FORMAT: "json" },
+      encoding: "utf8",
+    });
+  const debug = run("debug");
+  const info = run("info");
+  const line = debug.stdout.split("\n").filter(Boolean).map((text) => parse({ stream: "stdout", text }))
+    .find((record) => record?.event === "audit.written");
+  add(
+    "s4: a successful write logs audit.written at debug, with attempts and elapsed time only",
+    line?.level === "debug" &&
+      line.attempts === 1 &&
+      typeof line.durationMs === "number" &&
+      line.component === "audit" &&
+      !debug.stdout.includes(AUDIT_ACTOR.name) &&
+      !debug.stdout.includes(AUDIT_ACTOR.userId) &&
+      !debug.stdout.includes(AUDIT_EVENT),
+    debug.stdout + debug.stderr,
+  );
+  add("s4: ...and nothing at the default level", info.status === 0 && !info.stdout.includes("audit.written"), info.stdout + info.stderr);
 }
 
 /* ------------------------------------------------------------------ report */

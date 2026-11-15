@@ -26,7 +26,7 @@
  */
 
 import { ApiError, jsonOk } from "@/lib/api";
-import { withErrorHandling } from "@/lib/apiHandler";
+import { closedReason, withErrorHandling } from "@/lib/apiHandler";
 import { db } from "@/lib/db";
 import { getEventDetailForViewer } from "@/lib/events";
 import {
@@ -34,6 +34,7 @@ import {
   registrationClosedNote,
 } from "@/lib/labels";
 import { getRegistrationAvailability } from "@/lib/permissions";
+import { noteCommitted } from "@/lib/requestContext";
 import { getCurrentUser } from "@/lib/session";
 import type {
   EventDetailContext,
@@ -90,22 +91,28 @@ function availabilityFor(
  */
 function closedRefusal(reason: RegistrationClosedReason): ApiError {
   return reason === "not_invited"
-    ? ApiError.forbidden(registrationClosedNote(reason))
-    : ApiError.conflict(registrationClosedNote(reason));
+    ? ApiError.forbidden(registrationClosedNote(reason), closedReason(reason))
+    : ApiError.conflict(registrationClosedNote(reason), closedReason(reason));
 }
 
 /** Why a register attempt was refused. Called only when the state is not `open`. */
 function registerRefusal(availability: RegistrationAvailability): ApiError {
   return availability.state === "closed"
     ? closedRefusal(availability.reason)
-    : ApiError.conflict(REGISTRATION_ACTION_COPY.alreadyRegistered);
+    : ApiError.conflict(
+        REGISTRATION_ACTION_COPY.alreadyRegistered,
+        "already_registered",
+      );
 }
 
 /** Why a withdrawal was refused. Called only when the state is not `registered`. */
 function withdrawRefusal(availability: RegistrationAvailability): ApiError {
   return availability.state === "closed"
     ? closedRefusal(availability.reason)
-    : ApiError.conflict(REGISTRATION_ACTION_COPY.nothingToWithdraw);
+    : ApiError.conflict(
+        REGISTRATION_ACTION_COPY.nothingToWithdraw,
+        "nothing_to_withdraw",
+      );
 }
 
 /**
@@ -143,21 +150,26 @@ export const POST = withErrorHandling(
 
     switch (claim.outcome) {
       case "claimed":
+        noteCommitted();
         return jsonOk({ registration: claim.registration });
       case "refused":
         throw registerRefusal(claim.availability);
       case "duplicate":
         // Two of this person's own requests arrived together and the unique
         // constraint kept the second one out. They have a place either way.
-        throw ApiError.conflict(REGISTRATION_ACTION_COPY.alreadyRegistered);
+        throw ApiError.conflict(
+          REGISTRATION_ACTION_COPY.alreadyRegistered,
+          "duplicate",
+        );
       case "stale":
-        throw ApiError.conflict(REGISTRATION_ACTION_COPY.stale);
+        throw ApiError.conflict(REGISTRATION_ACTION_COPY.stale, "stale");
       case "gone":
         // Deleted while this request was in flight. The same 404 a request for
         // an event that never existed gets.
-        throw ApiError.notFound();
+        throw ApiError.notFound(undefined, "gone");
     }
   },
+  { audit: "registration.register" },
 );
 
 /**
@@ -198,11 +210,13 @@ export const DELETE = withErrorHandling(
 
     switch (write.outcome) {
       case "updated":
+        noteCommitted();
         return jsonOk({ registration: write.registration });
       case "stale":
-        throw ApiError.conflict(REGISTRATION_ACTION_COPY.stale);
+        throw ApiError.conflict(REGISTRATION_ACTION_COPY.stale, "stale");
       case "gone":
-        throw ApiError.notFound();
+        throw ApiError.notFound(undefined, "gone");
     }
   },
+  { audit: "registration.withdraw" },
 );

@@ -18,7 +18,7 @@
  */
 
 import { ApiError, jsonOk } from "@/lib/api";
-import { withErrorHandling } from "@/lib/apiHandler";
+import { closedReason, withErrorHandling } from "@/lib/apiHandler";
 import { db } from "@/lib/db";
 import { getEventDetailForViewer } from "@/lib/events";
 import {
@@ -30,6 +30,7 @@ import {
   canManageEvent,
   getAttendeeRestoreAvailability,
 } from "@/lib/permissions";
+import { noteCommitted } from "@/lib/requestContext";
 import { getCurrentUser } from "@/lib/session";
 
 type Context =
@@ -78,7 +79,10 @@ export const POST = withErrorHandling(
     });
 
     if (availability.state === "closed") {
-      throw ApiError.conflict(attendeeRestoreClosedNote(availability.reason));
+      throw ApiError.conflict(
+        attendeeRestoreClosedNote(availability.reason),
+        closedReason(availability.reason),
+      );
     }
 
     // Restoring is a seat claim: it locks the event row, re-counts under the
@@ -92,22 +96,25 @@ export const POST = withErrorHandling(
 
     switch (restore.outcome) {
       case "restored":
+        noteCommitted();
         return jsonOk({ registration: restore.registration });
       case "refused":
         // Every refused outcome carries a closed availability; the fallback is
         // what proves that to the compiler rather than a case that can happen.
-        throw ApiError.conflict(
-          restore.availability.state === "closed"
-            ? attendeeRestoreClosedNote(restore.availability.reason)
-            : ATTENDEE_ACTION_COPY.stale,
-        );
+        throw restore.availability.state === "closed"
+          ? ApiError.conflict(
+              attendeeRestoreClosedNote(restore.availability.reason),
+              closedReason(restore.availability.reason),
+            )
+          : ApiError.conflict(ATTENDEE_ACTION_COPY.stale, "stale");
       case "stale":
-        throw ApiError.conflict(ATTENDEE_ACTION_COPY.stale);
+        throw ApiError.conflict(ATTENDEE_ACTION_COPY.stale, "stale");
       case "not_found":
       case "gone":
         // The row or its event went away while this request was in flight --
         // the same 404 either would have produced above.
-        throw ApiError.notFound();
+        throw ApiError.notFound(undefined, "gone");
     }
   },
+  { audit: "attendee.restore" },
 );

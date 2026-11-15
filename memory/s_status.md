@@ -59,9 +59,11 @@ fixed in place is in [a_system.md](a_system.md).
 **After C6, M12 — in progress** on `yardenah/m12-logging-observability`, as
 one PR built in slices. S1 (`8162ba9`: the application log, the request
 context and request ids) and S2 (`8bdbb01`: logging application errors and
-system failures) are committed. S3 (the audit table and its writer) is in
-progress. S4–S6 (auditing API actions and page views, docs) have not
-started. M12 is specified in [TASKS.md](../TASKS.md) §5. The
+system failures) and S3 (`8aa437e`: the audit table and its writer) are
+committed. S4 (auditing the 14 API actions) is implemented and checked without
+a database, not yet committed; migration 0004 and every DEV test wait for
+separate approval. S5 (page views) and S6 (docs) have not started. M12 is
+specified in [TASKS.md](../TASKS.md) §5. The
 rest of the original stretch list — the calendar view first, then the waitlist,
 search, "my events", optimistic UI and a theme toggle — is also unstarted.
 Authoritative requirements for every milestone, extension and stretch goal:
@@ -360,10 +362,13 @@ it. This is accepted while the application is in development and must be
 revisited before it handles sensitive production data. See
 [dec_log.md](dec_log.md) (2026-11-12, M12 S2).
 
-The audit log (M12 S3) exists in code only. Migration 0004 has not been applied
-to the shared DEV database: that waits for the start of S4 and its own
-approval. Nothing calls the writer yet, so no audit row is written. A real
-insert is first exercised in S4.
+Migration 0004 (the audit table) has not been applied to the shared DEV
+database; that needs its own approval. Since S4 every audited API action calls
+the writer, so until the table exists each one logs `audit.write_failed`
+(`sql_error`, SQL error 208) after its response is built -- the response itself
+is unchanged. No real audit row has been written yet: the insert, its
+cancellation and the per-route outcomes have been verified against fakes and a
+deliberately unreachable database only, not against DEV.
 
 The capacity invariant is held by an application protocol, not a database
 constraint, and a host may still lower capacity below current attendance —

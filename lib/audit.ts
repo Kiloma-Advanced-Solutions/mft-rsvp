@@ -50,6 +50,10 @@
  *     already have committed -- so such a failure is logged with
  *     `ambiguous: true`, never as "not written".
  *
+ * WHEN IT SUCCEEDS, `audit.written` is logged at debug level only, with the
+ * attempts and the elapsed time in `durationMs` -- the insert's own cost, which
+ * the D16 benchmark compares with the change in response time.
+ *
  * WHEN IT FAILS, the application log gets `audit.write_failed` (error) with
  * the request id, operation, outcome, HTTP status, reason, attempts, elapsed
  * time, the SQL error number and code if any, and `ambiguous`. Never the
@@ -501,6 +505,10 @@ export async function writeAudit(
       }
 
       if (outcome.ok) {
+        // Debug only (decision D16): the insert's own cost, so a benchmark can
+        // tell it apart from the rest of a request's latency. The same fields
+        // as every audit line -- no actor, ids or metadata.
+        log.debug("audit.written", { ...context(), attempts, durationMs: elapsed() });
         return { status: "written", attempts, ambiguous: false };
       }
 

@@ -213,8 +213,8 @@ answered as "already invited". Every other driver failure — deadlock victims
 failures separately. Why a deadlock is deliberately not mapped:
 [lib/data/errors.ts](../lib/data/errors.ts).
 
-**Audit log.** User actions and page views will go to `dbo.Events_AuditLog`
-(migration 0004), one row per request, joined to the application log by the
+**Audit log.** User actions go to `dbo.Events_AuditLog` (migration 0004), and
+page views will (S5): one row per request, joined to the application log by the
 request id.
 - [lib/audit.ts](../lib/audit.ts) defines what a row may hold and the write
   policy. It has no database dependency, so `check:logging` tests it.
@@ -222,6 +222,17 @@ request id.
   statement. It is an INSERT on the pool, never inside a business transaction.
 - `db.audit.record` joins the two.
 - `getCurrentUser()` records the actor in the request context (`noteActor`).
+- **API actions (S4).** The 14 mutating handlers declare their operation where
+  they are exported -- `withErrorHandling(handler, { audit: "event.publish" })`
+  -- and `withErrorHandling` does the rest after the handler settles: it builds
+  the response exactly as before, derives the row (outcome from the status,
+  event and subject ids from the route parameters, actor from the request
+  context, reason from the thrown `ApiError`'s internal `reason` or its `code`),
+  awaits `db.audit.record`, and only then returns the response. A handler adds
+  only two notes: `noteCommitted()` straight after its data call succeeds (a
+  failure after that is `post_commit_error`), and `noteAuditEventId()` in
+  `POST /api/events`. The session routes declare nothing and write no row.
+  `ApiError.reason` never reaches a response.
 
 The table is append-only by convention, enforced on application SQL by
 `check:tsql`. It has no foreign keys and is not cleared by `db:reset`.
@@ -258,7 +269,10 @@ copy for the house style. The shared helpers are in [lib/api.ts](../lib/api.ts),
 which Client Components also import. The server-only wrapper,
 `withErrorHandling`, is in [lib/apiHandler.ts](../lib/apiHandler.ts), with the
 list of route patterns the log names routes by. A new route needs a line in that
-list, and `npm run check:logging` fails until it has one.
+list, and `npm run check:logging` fails until it has one. A new *mutating*
+handler also needs an audit operation (`{ audit: ... }`, added to the union in
+`lib/audit.ts`), a reason on each refusal it throws, and `noteCommitted()` after
+its write; `check:logging` holds the 14 existing ones to the approved list.
 
 For a handler that has to **authorise** before it writes, the example is
 [app/api/events/\[id\]/registrations/route.ts](../app/api/events/[id]/registrations/route.ts).
