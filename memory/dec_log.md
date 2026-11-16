@@ -2662,3 +2662,66 @@ Consequences:
   reduced A B A design approved as the initial test) each need their own
   approval and notice to the other developers.
 - S5 does not change S4's open D16 failure or its merge blocker.
+
+## 2026-11-16 — S5 page-view rows verified on DEV, functional checks and shutdown (M12 S5, session 1)
+
+Context: S5 (`0a82b83`) was checked locally only. Session 1 was approved to
+show, on a real Next render against DEV, that `after()` runs, that each render
+writes one correct row, that prefetches write none, and what a graceful stop
+does to pending writes. The other developers were notified first. The
+injected page-error test in the plan was dropped, because it needed a
+temporary code change that was not approved; the `error` outcome is
+therefore covered by `check:logging` only.
+
+Decision -- what was run, from a production build of `0a82b83` (`next start`,
+port 3100, `LOG_LEVEL=debug`) against DEV, 2026-11-16 13:54:59-13:56:31 UTC:
+16 page requests (one in the browser pane, the rest with curl and a persona
+cookie, one at a time), plus 12 prefetches the browser made itself.
+
+- **Functional, all passed.** Board with section and filters (metadata
+  `section` and the parsed `filters` only); an organizer's own event, read
+  view and a reload (two rows, `view: host`) and `?edit=1` (`view: edit`);
+  the create form (success); a member on an open event (success, no `view`);
+  a member on an invite-only event they are not invited to (`not_found`, 404,
+  event id kept); `/events/not-a-uuid` (`invalid`, `invalid_id`, 404, no event
+  id); a member on the create form (`denied`, 404); no cookie (actor the
+  default persona, `actorFallback: true`). Every row: channel `page`, `GET`,
+  the fixed route pattern, `HttpStatus` equal to the actual response, the
+  actor matching the cookie sent, and a `RequestId` equal to the response's
+  `x-request-id` and its `audit.written` line (written about 20-55 ms after
+  the response).
+- **Prefetches.** Hovering a card made the browser send 12 real RSC
+  prefetches (event pages and board variants); none wrote a row. A crafted
+  request with the prefetch headers but no `_rsc` parameter got Next's 307
+  cache-busting redirect and never reached the page, so it wrote nothing but
+  does not test the helper's own header check -- inconclusive, not repeated.
+- **Graceful shutdown.** Five concurrent board loads, then SIGTERM as soon as
+  the last response arrived: all five rows were written (13:56:20.766-.788)
+  and the server exited 0.27 s after the signal with code 143, Next's
+  graceful path; no `audit.write_failed`. The signal time was recorded only
+  to the second, so this does not show that any write was still pending when
+  the signal arrived -- no rows were lost and the stop was clean, but the
+  flush of in-flight writes is not proven. Not repeated.
+
+Deviations: the browser-pane request ran as a member (Tom), not the planned
+organizer, because the pane already held an HttpOnly `eb_persona` cookie for
+`localhost` (cookies are shared across ports) that a script cannot replace;
+its row is correct for that actor. A first attempt at the curl requests sent
+nothing (a shell variable named `path` overwrote `PATH`) and was corrected.
+
+Verified with read-only SQL and the application log: 15 rows in the window,
+15 distinct request ids, all `page`; no warning or error line, no Next error
+output, and no actor, name, id or credential in the log. DEV CPU peaked at
+4.4% (workers 10%). Event, registration, invite and co-host counts and their
+latest update times were unchanged.
+
+Consequences:
+
+- Left on DEV, by design (D-S5-4): 15 page audit rows in the window above
+  (table 688 → 703). No business data changed.
+- Still open for S5: the D16 page-path benchmark (session 2, D-S5-5, needs its
+  own approval and notice); the `error` outcome on a real render; proof that
+  a SIGTERM flushes writes still in flight (would need a deliberately slowed
+  write, which needs approval); PM2's `kill_timeout` on the server.
+- S4's open D16 failure, the incomplete 20-concurrent verification and the
+  merge blocker are unchanged; neither S4 nor M12 is accepted.

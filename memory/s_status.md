@@ -66,7 +66,8 @@ correctness, but **not accepted**: the D16 benchmark fails its p50 criterion
 at concurrency 5, which under D16 blocks merging S4 and S5, and the
 20-concurrent requirement is unverified -- see "Blockers". Further
 performance work is deferred. S5 (auditing the three page views) is
-implemented, checked locally and committed, not yet verified on DEV;
+committed (`0a82b83`) and verified on DEV for its functional behaviour
+(session 1, 2026-11-16); its D16 page-path benchmark has not run;
 S6 (docs) has not started. M12 is
 specified in [TASKS.md](../TASKS.md) §5. The
 rest of the original stretch list — the calendar view first, then the waitlist,
@@ -397,10 +398,14 @@ Page-view audit rows (S5) are written after the response. A child component
 that fails after the page has recorded `success` leaves the row saying
 `success` although the reader got an error page; the application log's
 `next.request_error` with the same request id records the failure. A process
-killed outright before the write loses the row. S5 is checked by
-`check:logging` only: it has not run against DEV, and the shutdown test and
-the D16 page-path benchmark are still to do. See [dec_log.md](dec_log.md)
-(2026-11-16, M12 S5).
+killed outright before the write loses the row. On DEV (session 1) every
+page outcome except `error` was verified on a real render, and real browser
+prefetches wrote no row; the `error` outcome is checked by `check:logging`
+only. A graceful stop lost no rows and exited cleanly, but that test did not
+show a write still in flight at the signal, so flushing in-flight writes is
+unproven, as is PM2's `kill_timeout` on the server. The D16 page-path
+benchmark is still to do. See [dec_log.md](dec_log.md) (2026-11-16, M12 S5
+and S5 session 1).
 
 The capacity invariant is held by an application protocol, not a database
 constraint, and a host may still lower capacity below current attendance —
