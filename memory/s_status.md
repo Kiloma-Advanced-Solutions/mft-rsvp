@@ -65,8 +65,9 @@ committed, and so is S4 (`1b297e2`: auditing the 14 API actions). Migration
 correctness, but **not accepted**: the D16 benchmark fails its p50 criterion
 at concurrency 5, which under D16 blocks merging S4 and S5, and the
 20-concurrent requirement is unverified -- see "Blockers". Further
-performance work is deferred; S5 planning is the next intended activity. S5
-(page views) and S6 (docs) have not started. M12 is
+performance work is deferred. S5 (auditing the three page views) is
+implemented, checked locally and committed, not yet verified on DEV;
+S6 (docs) has not started. M12 is
 specified in [TASKS.md](../TASKS.md) §5. The
 rest of the original stretch list — the calendar view first, then the waitlist,
 search, "my events", optimistic UI and a theme toggle — is also unstarted.
@@ -369,8 +370,9 @@ revisited before it handles sensitive production data. See
 Migration 0004 (the audit table) is applied to the shared DEV database
 (2026-11-15, see [u_environment.md](u_environment.md)). From then on, a server
 running this branch against DEV writes a permanent audit row for every
-audited API request; branches without S4 do not know the table and are
-unaffected. A database without 0004 still serves every request, but each
+audited API request and, with S5, for every render of the board, an event's
+detail page and the create form; branches without S4 do not know the table
+and are unaffected. A database without 0004 still serves every request, but each
 audited one logs `audit.write_failed` (`sql_error`, SQL error 208). S4's
 per-route outcomes and fault handling have been verified on DEV: the
 E11 matrix's refusals and success paths for all 14 operations, and fault
@@ -390,6 +392,15 @@ and 2026-11-16). S4's verification status on DEV, all 2026-11-16:
 - **Unverified:** S4 at the original 20 concurrent requests (DEV's Basic tier
   saturates), latency under that contention (D-S4-8b has low-load evidence
   only), production performance, and SQL Server 2008 R2.
+
+Page-view audit rows (S5) are written after the response. A child component
+that fails after the page has recorded `success` leaves the row saying
+`success` although the reader got an error page; the application log's
+`next.request_error` with the same request id records the failure. A process
+killed outright before the write loses the row. S5 is checked by
+`check:logging` only: it has not run against DEV, and the shutdown test and
+the D16 page-path benchmark are still to do. See [dec_log.md](dec_log.md)
+(2026-11-16, M12 S5).
 
 The capacity invariant is held by an application protocol, not a database
 constraint, and a host may still lower capacity below current attendance —

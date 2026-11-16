@@ -2580,3 +2580,85 @@ low load only (Δp95 within baseline noise at concurrency 1); its
 high-contention requirement, and S4 at 20 concurrent requests, remain
 unverified, as do production performance and SQL Server 2008 R2. Left on DEV:
 440 audit rows and 5 soft-deleted test events.
+
+## 2026-11-16 — Page views are audited with `after()`, one row per render (M12 S5)
+
+Context: S3 built the audit writer and S4 connected the API actions. S5
+connects the three audited pages (decisions D1 and D4 of the M12 plan): the
+board, an event's detail page and the create form. A page has no wrapper
+around it, its request APIs are unavailable inside an `after()` callback, and
+the render's React `cache()` store -- where `getCurrentUser()` notes the
+actor -- is gone by the time the callback runs.
+
+Decision (approved as D-S5-1 to D-S5-4):
+
+- **D-S5-1.** The helper is `lib/pageAudit.ts`, beside `lib/apiHandler.ts`,
+  not `lib/audit/page.ts` next to the existing `lib/audit.ts`.
+- **How a page uses it.** `const audit = await beginPageAudit(op)` is the
+  page's first statement. It reads the request id and the prefetch headers,
+  keeps a reference to the render's request-context object, and registers an
+  `after()` callback whose outcome starts as `error` -- so a render that throws
+  before deciding anything is recorded as one. The page then calls
+  `audit.success(...)`, `audit.notFound()` or `audit.denied()` before it
+  renders or calls `notFound()`. The callback reads the actor from the kept
+  context object and writes through `db.audit.record` (D15, unchanged).
+- **The rows.** `board.view` records the section and the parsed filters (each
+  from a fixed set, never the query string). `event.view` is `not_found` for a
+  missing, hidden or deleted event alike, and `invalid` with reason
+  `invalid_id` for an `[id]` that is not a UUID; the response is the same 404
+  either way. `event.create_form.view` is `denied` for a member. Route
+  patterns are fixed (`/events`, `/events/:id`, `/events/new`). The status is
+  the one the outcome produces (200; 404 for `not_found`, `invalid` and
+  `denied`; 500 for `error`), because the callback cannot see the response.
+  `DurationMs` runs from the start of the page to the callback.
+- **D-S5-2.** `Metadata.view` is `host` when the management lists render (a
+  manager in the read view -- an admin who manages without hosting included),
+  `edit` in edit mode, and absent for everyone else.
+- **Prefetches.** In this application a router prefetch does not run a page:
+  there is no `loading.tsx` and no partial prerendering, so Next answers it
+  with the route tree only. The helper also writes nothing for a request
+  carrying `next-router-prefetch` or `next-router-segment-prefetch`, so a
+  prefetch that did reach a page would still write no row. Refreshes and
+  client-side navigations are renders and get a row each, including the
+  `router.refresh()` that follows every action in the UI.
+- **One row per render.** The helper marks the render's audit note, so a
+  second call in the same render writes nothing; `UNIQUE(RequestId)` holds it
+  in the database too.
+- **An audit problem never fails the page.** If the row cannot even be
+  registered, the page renders unaudited and `audit.write_failed`
+  (`writer_bug`) is logged; Next's own control-flow errors are passed on
+  untouched -- anything carrying a `digest`, and anything Next's
+  `unstable_rethrow` recognises (a React postpone, a signal wrapped as another
+  error's `cause`).
+- **Next and the database are loaded on first use**, as `withErrorHandling`
+  loads `db`, so the bare-Node `check:logging` can load the helper.
+
+Known limitations, accepted:
+
+- **D-S5-3.** The outcome is set before the page's child components render.
+  If one of them then throws, the row keeps `success` although the reader got
+  an error page. The application log's `next.request_error` for that request,
+  with the same request id, records the failure. No correlation between the
+  two was added.
+- **Lost rows.** A page view's row is written after the response. A process
+  killed outright (SIGKILL) before the write loses it; a graceful stop should
+  run pending `after()` work, which is still to be verified on DEV (the
+  shutdown test). Whether PM2's `kill_timeout` leaves the 1,500 ms write
+  deadline enough time on the server is an assumption.
+
+Rationale: reading everything during the render is the only way the callback
+can have it, and starting at `error` means a failure needs no code path of
+its own. The 404's indistinguishability is kept in the response while the
+audit row still separates a malformed id from a missing event.
+
+Consequences:
+
+- **D-S5-4.** From S5 on, every render of the three pages by a server running
+  this branch against DEV writes a permanent audit row. Rows from approved
+  DEV verification stay in the append-only table; each session's time window
+  and row count are recorded here.
+- S5 adds no schema, migration or SQL. It has not yet run against DEV: the
+  functional and shutdown checks and the D16 page-path benchmark (D-S5-5, a
+  reduced A B A design approved as the initial test) each need their own
+  approval and notice to the other developers.
+- S5 does not change S4's open D16 failure or its merge blocker.

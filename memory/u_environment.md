@@ -91,7 +91,10 @@ developers were notified, by running `node --env-file=<main checkout>/.env.local
 lib/data/migrate.mts` once (exit 0, 5 batches, about one second): four
 migrations applied, none pending, the new table empty and the existing
 `Events_*` tables unchanged. The before-and-after checks and the first real
-audit write are in [dec_log.md](dec_log.md) (2026-11-15, D11). The audit
+audit write are in [dec_log.md](dec_log.md) (2026-11-15, D11). From S5 on, a server
+running this branch against DEV also writes a row for every render of the
+board, an event's detail page and the create form -- browsing it locally
+writes to DEV. The audit
 table now holds test rows from M12's DEV sessions, and DEV keeps 19
 soft-deleted `[M12 test]` events with their registrations; the time windows
 are in [dec_log.md](dec_log.md) (2026-11-16). The same database holds another

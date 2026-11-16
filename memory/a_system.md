@@ -213,8 +213,8 @@ answered as "already invited". Every other driver failure — deadlock victims
 failures separately. Why a deadlock is deliberately not mapped:
 [lib/data/errors.ts](../lib/data/errors.ts).
 
-**Audit log.** User actions go to `dbo.Events_AuditLog` (migration 0004), and
-page views will (S5): one row per request, joined to the application log by the
+**Audit log.** User actions and page views go to `dbo.Events_AuditLog`
+(migration 0004): one row per request, joined to the application log by the
 request id.
 - [lib/audit.ts](../lib/audit.ts) defines what a row may hold and the write
   policy. It has no database dependency, so `check:logging` tests it.
@@ -233,6 +233,15 @@ request id.
   failure after that is `post_commit_error`), and `noteAuditEventId()` in
   `POST /api/events`. The session routes declare nothing and write no row.
   `ApiError.reason` never reaches a response.
+- **Page views (S5).** The board, an event's detail page and the create form
+  start with `const audit = await beginPageAudit(op)` from
+  [lib/pageAudit.ts](../lib/pageAudit.ts). It reads the request id and the
+  prefetch headers during the render, keeps the render's request-context
+  object for the actor, and registers an `after()` callback whose outcome
+  starts as `error`; the page states `success`, `notFound()` or `denied()`
+  before it renders or 404s. The row is written after the response, one per
+  render, none for a prefetch. Nothing else -- `AppShell`, the `/` redirect,
+  the not-found page -- writes a row.
 
 The table is append-only by convention, enforced on application SQL by
 `check:tsql`. It has no foreign keys and is not cleared by `db:reset`.

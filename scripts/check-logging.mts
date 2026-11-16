@@ -21,15 +21,22 @@
  *      each of the 14 audited handlers and none on the session routes, outcome
  *      and reason mapping, ids, actor and metadata, one row per request under
  *      concurrency, no audit call near a transaction, and responses unchanged
- *      however the audit write fails.
+ *      however the audit write fails;
+ *   12. the page-view audit (S5) -- operation, outcome, status, route and
+ *      metadata for each page, the host/edit/member views, the default
+ *      `error`, the actor and request id captured during the render, no row
+ *      for a prefetch, one registration per render, the page untouched by a
+ *      failing or hanging write, and a source scan of the three pages.
  *
  * The database and mail call sites (`lib/data/client.ts`,
  * `lib/services/*`) import `server-only` and resolve `@/` paths, which bare
  * Node cannot do, so their log lines are verified on a running server.
  *
  * What it cannot check is the page-render half of the request context, which
- * depends on React scoping `cache()` to a server render. That only exists
- * inside a running Next server, so it is verified there.
+ * depends on React scoping `cache()` to a server render, or Next actually
+ * running an `after()` callback. Those only exist inside a running Next
+ * server, so they are verified there; section 12 checks the page helper with
+ * both injected.
  *
  * **Every value here is synthetic.** No real credential, host or person.
  *
@@ -68,6 +75,14 @@ import {
   type AuditRecorder,
 } from "../lib/apiHandler.ts";
 import { createRedactor } from "../lib/data/redact.mts";
+import {
+  createPageAudit,
+  PAGE_AUDIT_ROUTES,
+  PAGE_STATUS,
+  PREFETCH_HEADERS,
+  type PageAuditDeps,
+  type PageAuditOperation,
+} from "../lib/pageAudit.ts";
 import { API_ERRORS } from "../lib/labels.ts";
 import {
   createLogger,
@@ -2322,6 +2337,510 @@ const s4Lines: Captured[] = [];
     debug.stdout + debug.stderr,
   );
   add("s4: ...and nothing at the default level", info.status === 0 && !info.stdout.includes("audit.written"), info.stdout + info.stderr);
+}
+
+/* ------------------------------------------- 12. the page-view audit (S5) */
+
+/** A page render with Next and the database replaced: what it registered and what it wrote. */
+function pageHarness(
+  headers: Record<string, string> = {},
+  record: PageAuditDeps["record"] = async () => undefined,
+) {
+  const callbacks: Array<() => Promise<void>> = [];
+  const written: AuditInput[] = [];
+  let headerReads = 0;
+  const beginPageAudit = createPageAudit({
+    after: (callback) => {
+      callbacks.push(callback);
+    },
+    readHeaders: async () => {
+      headerReads += 1;
+      return new Headers(headers);
+    },
+    record: async (input) => {
+      written.push(input);
+      return record(input);
+    },
+  });
+  return {
+    beginPageAudit,
+    callbacks,
+    written,
+    headerReads: () => headerReads,
+    /** Runs what Next would run once the response has been sent. */
+    flush: async () => {
+      for (const callback of callbacks) await callback();
+    },
+  };
+}
+
+const PAGE_REQUEST_ID = "5e1f0c2b-7a3d-4c6e-9f80-1a2b3c4d5e6f";
+const PAGE_HEADERS = { [REQUEST_ID_HEADER]: PAGE_REQUEST_ID };
+
+/** One page render inside a request context of its own, flushed; returns the single row. */
+async function renderPage(
+  operation: PageAuditOperation,
+  page: (audit: Awaited<ReturnType<ReturnType<typeof createPageAudit>>>) => void,
+  options: { headers?: Record<string, string>; actor?: { fallback: boolean } | null } = {},
+) {
+  const harness = pageHarness(options.headers ?? PAGE_HEADERS);
+  await runWithRequestContext(newRequestId(), async () => {
+    const audit = await harness.beginPageAudit(operation);
+    // The actor is noted after the helper started, as `AppShell` or the page
+    // resolving the user would.
+    if (options.actor !== null) noteActor({ id: AUDIT_ACTOR.userId, name: AUDIT_ACTOR.name }, options.actor?.fallback ?? false);
+    page(audit);
+  });
+  await harness.flush();
+  return { harness, row: harness.written[0] };
+}
+
+const validRow = (input: AuditInput | undefined) => input !== undefined && toAuditRow(input, newRequestId()).ok;
+
+{
+  // The default: nothing decided -- a render that threw -- is `error`.
+  const { harness, row } = await renderPage("event.view", (audit) => audit.forEvent(AUDIT_EVENT));
+  add(
+    "s5: a render that sets no outcome is recorded as error, 500, no reason",
+    harness.written.length === 1 &&
+      row?.outcome === "error" &&
+      row.httpStatus === 500 &&
+      (row.reasonCode ?? null) === null &&
+      row.eventId === AUDIT_EVENT &&
+      validRow(row),
+    JSON.stringify(row),
+  );
+  add(
+    "s5: the row is a page row: GET, fixed route pattern, page channel, the proxy's request id",
+    row?.channel === "page" &&
+      row.httpMethod === "GET" &&
+      row.route === "/events/:id" &&
+      row.operation === "event.view" &&
+      row.requestId === PAGE_REQUEST_ID &&
+      row.subject === null &&
+      Number.isInteger(row.durationMs) &&
+      (row.durationMs ?? -1) >= 0 &&
+      row.occurredAt instanceof Date,
+    JSON.stringify(row),
+  );
+  add(
+    "s5: the actor noted during the render reaches the row, read from the captured context",
+    row?.actor?.userId === AUDIT_ACTOR.userId && row.actor.name === AUDIT_ACTOR.name && row.metadata?.actorFallback === undefined,
+    JSON.stringify(row?.actor),
+  );
+  add("s5: the headers are read once, during the render, never in the callback", harness.headerReads() === 1, String(harness.headerReads()));
+}
+
+{
+  const routes = Object.entries(PAGE_AUDIT_ROUTES);
+  add(
+    "s5: exactly the three approved page operations, each with its fixed pattern",
+    JSON.stringify(routes) ===
+      JSON.stringify([
+        ["board.view", "/events"],
+        ["event.view", "/events/:id"],
+        ["event.create_form.view", "/events/new"],
+      ]),
+    JSON.stringify(routes),
+  );
+  add(
+    "s5: statuses: success 200; not_found, invalid and denied 404 (the page's 404); error 500",
+    JSON.stringify(PAGE_STATUS) === JSON.stringify({ success: 200, not_found: 404, invalid: 404, denied: 404, error: 500 }),
+    JSON.stringify(PAGE_STATUS),
+  );
+}
+
+{
+  // The board: section and parsed filters; empty filters are left out.
+  const filtered = await renderPage("board.view", (audit) =>
+    audit.success({ section: "past", filters: { category: "social", access: "invite" } }),
+  );
+  const plain = await renderPage("board.view", (audit) => audit.success({ section: "upcoming", filters: {} }));
+  add(
+    "s5: board.view success records the section and the filters",
+    filtered.row?.outcome === "success" &&
+      filtered.row.httpStatus === 200 &&
+      filtered.row.route === "/events" &&
+      filtered.row.eventId === null &&
+      JSON.stringify(filtered.row.metadata) === JSON.stringify({ section: "past", filters: { category: "social", access: "invite" } }) &&
+      validRow(filtered.row),
+    JSON.stringify(filtered.row),
+  );
+  add(
+    "s5: board.view with no filters records the section only",
+    JSON.stringify(plain.row?.metadata) === JSON.stringify({ section: "upcoming" }),
+    JSON.stringify(plain.row?.metadata),
+  );
+}
+
+{
+  // The detail page: host, edit and member views.
+  const id = AUDIT_EVENT.toUpperCase();
+  const host = await renderPage("event.view", (audit) => {
+    audit.forEvent(id);
+    audit.success({ view: "host" });
+  });
+  const edit = await renderPage("event.view", (audit) => {
+    audit.forEvent(id);
+    audit.success({ view: "edit" });
+  });
+  const member = await renderPage("event.view", (audit) => {
+    audit.forEvent(id);
+    audit.success({ view: undefined });
+  });
+  add(
+    "s5: event.view as a manager records view host, with the event id lower-cased",
+    host.row?.outcome === "success" && host.row.metadata?.view === "host" && host.row.eventId === AUDIT_EVENT && validRow(host.row),
+    JSON.stringify(host.row),
+  );
+  add("s5: event.view in edit mode records view edit", edit.row?.metadata?.view === "edit" && validRow(edit.row), JSON.stringify(edit.row));
+  add(
+    "s5: event.view as a member records no view",
+    member.row?.outcome === "success" && member.row.metadata?.view === undefined && member.row.eventId === AUDIT_EVENT,
+    JSON.stringify(member.row),
+  );
+}
+
+{
+  // Not found, and an id that is not an id.
+  const missing = await renderPage("event.view", (audit) => {
+    audit.forEvent(AUDIT_EVENT);
+    audit.notFound();
+  });
+  const invalid = await renderPage("event.view", (audit) => {
+    audit.forEvent("not-an-id<script>");
+    audit.notFound();
+  });
+  add(
+    "s5: a missing, hidden or deleted event is not_found, 404, with the requested id",
+    missing.row?.outcome === "not_found" &&
+      missing.row.httpStatus === 404 &&
+      (missing.row.reasonCode ?? null) === null &&
+      missing.row.eventId === AUDIT_EVENT &&
+      validRow(missing.row),
+    JSON.stringify(missing.row),
+  );
+  add(
+    "s5: an id that is not a UUID is invalid with reason invalid_id, 404, and no event id",
+    invalid.row?.outcome === "invalid" &&
+      invalid.row.httpStatus === 404 &&
+      invalid.row.reasonCode === "invalid_id" &&
+      invalid.row.eventId === null &&
+      !JSON.stringify(invalid.row).includes("script") &&
+      validRow(invalid.row),
+    JSON.stringify(invalid.row),
+  );
+}
+
+{
+  // The create form.
+  const denied = await renderPage("event.create_form.view", (audit) => audit.denied());
+  const allowed = await renderPage("event.create_form.view", (audit) => audit.success());
+  add(
+    "s5: event.create_form.view refused is denied, 404",
+    denied.row?.outcome === "denied" && denied.row.httpStatus === 404 && denied.row.route === "/events/new" && validRow(denied.row),
+    JSON.stringify(denied.row),
+  );
+  add(
+    "s5: event.create_form.view allowed is success, 200, no metadata beyond none",
+    allowed.row?.outcome === "success" && allowed.row.httpStatus === 200 && JSON.stringify(allowed.row.metadata) === "{}",
+    JSON.stringify(allowed.row),
+  );
+}
+
+{
+  // The last call wins; a later refusal drops the earlier success's metadata.
+  const { row } = await renderPage("event.view", (audit) => {
+    audit.forEvent(AUDIT_EVENT);
+    audit.success({ view: "host" });
+    audit.notFound();
+  });
+  add("s5: the last outcome call wins and carries only its own metadata", row?.outcome === "not_found" && row.metadata?.view === undefined, JSON.stringify(row));
+}
+
+{
+  // The actor: the default-persona fallback, and no actor at all.
+  const fallback = await renderPage("board.view", (audit) => audit.success({ section: "upcoming" }), { actor: { fallback: true } });
+  const none = await renderPage("board.view", () => undefined, { actor: null });
+  add("s5: a default-persona render records actorFallback", fallback.row?.metadata?.actorFallback === true, JSON.stringify(fallback.row?.metadata));
+  add("s5: a render that resolved no user records no actor", none.row?.actor === null && validRow(none.row), JSON.stringify(none.row));
+}
+
+{
+  // Request ids: the proxy's, or a fresh one -- never a client's arbitrary value.
+  const missing = await renderPage("board.view", () => undefined, { headers: {} });
+  const forged = await renderPage("board.view", () => undefined, { headers: { [REQUEST_ID_HEADER]: "client-chosen" } });
+  const upper = await renderPage("board.view", () => undefined, { headers: { [REQUEST_ID_HEADER]: PAGE_REQUEST_ID.toUpperCase() } });
+  add(
+    "s5: a missing or malformed request id is replaced by a fresh one",
+    isRequestId(missing.row?.requestId) && isRequestId(forged.row?.requestId) && forged.row?.requestId !== "client-chosen",
+    `${missing.row?.requestId} ${forged.row?.requestId}`,
+  );
+  add("s5: the proxy's request id is kept, lower-cased", upper.row?.requestId === PAGE_REQUEST_ID, upper.row?.requestId);
+}
+
+{
+  // Prefetches write nothing; genuine navigations still do.
+  const skipped: string[] = [];
+  for (const name of PREFETCH_HEADERS) {
+    const harness = pageHarness({ ...PAGE_HEADERS, [name]: "1" });
+    await runWithRequestContext(newRequestId(), async () => {
+      const audit = await harness.beginPageAudit("board.view");
+      audit.success({ section: "upcoming" });
+    });
+    await harness.flush();
+    if (harness.callbacks.length === 0 && harness.written.length === 0) skipped.push(name);
+  }
+  add("s5: a request with either prefetch header registers nothing and writes nothing", skipped.length === PREFETCH_HEADERS.length, skipped.join(","));
+
+  const navigation = await renderPage("board.view", (audit) => audit.success({ section: "upcoming" }), {
+    headers: { ...PAGE_HEADERS, rsc: "1", "next-router-state-tree": "%5B%5D" },
+  });
+  add("s5: a client-side navigation (an RSC request, not a prefetch) is still recorded", navigation.harness.written.length === 1, JSON.stringify(navigation.row));
+}
+
+{
+  // One row per render: a second call in the same render registers nothing.
+  const harness = pageHarness(PAGE_HEADERS);
+  await runWithRequestContext(newRequestId(), async () => {
+    const first = await harness.beginPageAudit("event.view");
+    const second = await harness.beginPageAudit("event.view");
+    first.success({ view: "host" });
+    second.denied();
+  });
+  await harness.flush();
+  add(
+    "s5: one after() registration and one row per render, from the first call",
+    harness.callbacks.length === 1 && harness.written.length === 1 && harness.written[0]?.outcome === "success",
+    JSON.stringify(harness.written),
+  );
+
+  // Two renders at once each get their own row, actor and request id.
+  const both = pageHarness(PAGE_HEADERS);
+  const other = { id: "0b6f7c8d-9e0a-4b1c-8d2e-3f4a5b6c7d8e", name: "Second Synthetic Name" };
+  await Promise.all([
+    runWithRequestContext(newRequestId(), async () => {
+      const audit = await both.beginPageAudit("board.view");
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      noteActor({ id: AUDIT_ACTOR.userId, name: AUDIT_ACTOR.name }, false);
+      audit.success({ section: "upcoming" });
+    }),
+    runWithRequestContext(newRequestId(), async () => {
+      const audit = await both.beginPageAudit("board.view");
+      noteActor(other, false);
+      audit.success({ section: "past" });
+    }),
+  ]);
+  await both.flush();
+  const pairs = both.written.map((row) => `${row.actor?.name}:${row.metadata?.section}`).sort();
+  add(
+    "s5: concurrent renders never share an actor or an outcome",
+    JSON.stringify(pairs) === JSON.stringify([`${AUDIT_ACTOR.name}:upcoming`, `${other.name}:past`].sort()),
+    JSON.stringify(pairs),
+  );
+}
+
+{
+  // The registration is awaited, so it happens while the page renders.
+  let registered = false;
+  const beginPageAudit = createPageAudit({
+    after: async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      registered = true;
+    },
+    readHeaders: async () => new Headers(PAGE_HEADERS),
+    record: async () => undefined,
+  });
+  await runWithRequestContext(newRequestId(), () => beginPageAudit("board.view"));
+  add("s5: beginPageAudit resolves only once after() has been registered", registered);
+}
+
+{
+  // A registration that fails -- Next's `after` or `headers()` throwing --
+  // leaves the page rendering, unaudited, and is logged.
+  const failing = (part: "after" | "headers") =>
+    createPageAudit({
+      after: () => {
+        if (part === "after") throw new Error("synthetic after failure");
+      },
+      readHeaders: async () => {
+        if (part === "headers") throw new Error("synthetic headers failure");
+        return new Headers(PAGE_HEADERS);
+      },
+      record: async () => undefined,
+    });
+  const results: string[] = [];
+  for (const part of ["after", "headers"] as const) {
+    const { result, lines } = await captureOutput(() =>
+      runWithRequestContext(newRequestId(), async () => {
+        const audit = await failing(part)("board.view");
+        audit.success({ section: "upcoming" });
+        return "rendered";
+      }),
+    );
+    const line = lines.find((entry) => entry.record?.event === "audit.write_failed")?.record;
+    if (result === "rendered" && line?.reason === "writer_bug" && line.op === "board.view") results.push(part);
+  }
+  add("s5: a failed registration (after or headers) never fails the page, and is logged", results.length === 2, results.join(","));
+
+  // ...but Next's own signals pass through, so rendering decisions are Next's.
+  const signal = Object.assign(new Error("Dynamic server usage"), { digest: "DYNAMIC_SERVER_USAGE" });
+  const passing = createPageAudit({
+    after: () => undefined,
+    readHeaders: async () => {
+      throw signal;
+    },
+    record: async () => undefined,
+  });
+  let rethrown: unknown;
+  await runWithRequestContext(newRequestId(), async () => {
+    try {
+      await passing("board.view");
+    } catch (error) {
+      rethrown = error;
+    }
+  });
+  add("s5: a Next control-flow error (with a digest) is rethrown, not swallowed", rethrown === signal);
+
+  // A signal without a digest -- a React postpone -- is left to Next's own
+  // `unstable_rethrow`, here the real one; an ordinary error that it does
+  // not recognise is still swallowed and logged.
+  const { unstable_rethrow } = await import("next/navigation.js");
+  const postpone = { $$typeof: Symbol.for("react.postpone") };
+  const viaRethrow = (thrown: unknown) =>
+    createPageAudit({
+      after: () => undefined,
+      readHeaders: async () => {
+        throw thrown;
+      },
+      record: async () => undefined,
+      rethrowNextSignal: unstable_rethrow,
+    });
+  let postponed: unknown;
+  await runWithRequestContext(newRequestId(), async () => {
+    try {
+      await viaRethrow(postpone)("board.view");
+    } catch (error) {
+      postponed = error;
+    }
+  });
+  add("s5: a Next signal without a digest (a postpone) is rethrown via unstable_rethrow", postponed === postpone);
+  const ordinary = await captureOutput(() =>
+    runWithRequestContext(newRequestId(), async () => {
+      const audit = await viaRethrow(new Error("synthetic headers failure"))("board.view");
+      audit.success({ section: "upcoming" });
+      return "rendered";
+    }),
+  );
+  add(
+    "s5: ...while an ordinary registration error still renders the page and is logged",
+    ordinary.result === "rendered" &&
+      ordinary.lines.some((line) => line.record?.event === "audit.write_failed" && line.record.reason === "writer_bug"),
+    JSON.stringify(ordinary.result),
+  );
+  const helperSource = readFileSync(new URL("../lib/pageAudit.ts", import.meta.url), "utf8");
+  add(
+    "s5: the real helper hands unrecognised errors to Next's unstable_rethrow, loaded lazily",
+    /await import\("next\/navigation"\)/.test(helperSource) &&
+      /unstable_rethrow/.test(helperSource) &&
+      !/^import[^;]*from "next\//m.test(helperSource),
+  );
+}
+
+{
+  // A failing or hanging write never reaches the page.
+  const throwing = pageHarness(PAGE_HEADERS, async () => {
+    throw new Error("synthetic writer failure");
+  });
+  let pageReturned = false;
+  await runWithRequestContext(newRequestId(), async () => {
+    const audit = await throwing.beginPageAudit("board.view");
+    noteActor({ id: AUDIT_ACTOR.userId, name: AUDIT_ACTOR.name }, false);
+    audit.success({ section: "upcoming" });
+    pageReturned = true;
+  });
+  const { lines } = await captureOutput(() => throwing.flush());
+  const failure = lines.find((line) => line.record?.event === "audit.write_failed")?.record;
+  add("s5: a writer that throws: the page has already returned and the callback does not throw", pageReturned);
+  add(
+    "s5: ...and it is logged as audit.write_failed (writer_bug) with the request id and no actor",
+    failure?.reason === "writer_bug" &&
+      failure.requestId === PAGE_REQUEST_ID &&
+      failure.op === "board.view" &&
+      !lines.some((line) => line.text.includes(AUDIT_ACTOR.name) || line.text.includes(AUDIT_ACTOR.userId)),
+    JSON.stringify(lines.map((line) => line.record)),
+  );
+
+  const hanging = pageHarness(PAGE_HEADERS, () => new Promise(() => undefined));
+  const started = performance.now();
+  let outcomeSet = false;
+  await runWithRequestContext(newRequestId(), async () => {
+    const audit = await hanging.beginPageAudit("board.view");
+    audit.success({ section: "upcoming" });
+    outcomeSet = true;
+  });
+  // Next would now run the callback after the response; it never settles, and
+  // nothing above waited for it.
+  void hanging.flush();
+  add(
+    "s5: a writer that hangs: the render completes without waiting for it",
+    outcomeSet && hanging.callbacks.length === 1 && performance.now() - started < 200,
+    String(performance.now() - started),
+  );
+}
+
+{
+  // The three pages, as written.
+  const PAGE_FILES: Record<string, PageAuditOperation> = {
+    "app/events/page.tsx": "board.view",
+    "app/events/[id]/page.tsx": "event.view",
+    "app/events/new/page.tsx": "event.create_form.view",
+  };
+  const callers = [
+    ...(readdirSync(new URL("../app", import.meta.url), { recursive: true }) as string[]).map((file) => `app/${file}`),
+    ...(readdirSync(new URL("../components", import.meta.url), { recursive: true }) as string[]).map((file) => `components/${file}`),
+  ]
+    .map((file) => file.replace(/\\/g, "/"))
+    .filter((file) => /\.(ts|tsx)$/.test(file))
+    .filter((file) => readFileSync(new URL(`../${file}`, import.meta.url), "utf8").includes("beginPageAudit"))
+    .sort();
+  add("s5: only the three approved pages call beginPageAudit", JSON.stringify(callers) === JSON.stringify(Object.keys(PAGE_FILES).sort()), JSON.stringify(callers));
+
+  const problems: string[] = [];
+  for (const [file, operation] of Object.entries(PAGE_FILES)) {
+    const source = readFileSync(new URL(`../${file}`, import.meta.url), "utf8");
+    const body = source.slice(source.indexOf("export default async function"));
+    const firstStatement = body
+      .slice(body.search(/\)(: [^{]+)? \{\n/) + 1)
+      .replace(/^[^{]*\{\n/, "")
+      .split("\n")
+      .map((line) => line.trim())
+      .find((line) => line !== "" && !line.startsWith("//"));
+    if (firstStatement !== `const audit = await beginPageAudit("${operation}");`) problems.push(`${file}: first statement is ${firstStatement}`);
+    if ((source.match(/beginPageAudit\(/g) ?? []).length !== 1) problems.push(`${file}: not exactly one beginPageAudit`);
+    if (!/audit\.success\(/.test(source)) problems.push(`${file}: no audit.success`);
+    for (const match of source.matchAll(/^\s*notFound\(\);/gm)) {
+      const before = source.slice(0, match.index).trimEnd().split("\n").pop()?.trim();
+      if (before !== "audit.notFound();" && before !== "audit.denied();") problems.push(`${file}: notFound() without an outcome (${before})`);
+    }
+    if (/after\(|headers\(\)|cookies\(\)/.test(source)) problems.push(`${file}: calls after/headers/cookies itself`);
+  }
+  add("s5: each page starts with its audit, and states an outcome before every notFound()", problems.length === 0, problems.join("; "));
+
+  const detail = readFileSync(new URL("../app/events/[id]/page.tsx", import.meta.url), "utf8");
+  add(
+    "s5: the detail page's view follows its own render conditions (edit when editing, host when the manager lists render)",
+    detail.includes('view: editing ? "edit" : viewerCanManage ? "host" : undefined') &&
+      detail.includes("const editing = viewerCanManage && isEditing(query.edit);") &&
+      /\{editing \? \(/.test(detail) &&
+      /\{viewerCanManage && \(\s*<ApprovalQueue/.test(detail),
+  );
+
+  const helper = readFileSync(new URL("../lib/pageAudit.ts", import.meta.url), "utf8");
+  add(
+    "s5: the helper loads Next and the database only on first use",
+    !/^import .*from "(next\/|\.\/db)/m.test(helper) && helper.includes('import("next/server")') && helper.includes('import("next/headers")'),
+  );
 }
 
 /* ------------------------------------------------------------------ report */
