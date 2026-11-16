@@ -372,10 +372,11 @@ unaffected. A database without 0004 still serves every request, but each
 audited one logs `audit.write_failed` (`sql_error`, SQL error 208). S4's
 per-route outcomes, the writer's cancellation and its behaviour under load
 have been verified against fakes and a deliberately unreachable database. On
-DEV, only one real audit write has been verified so far -- a refused publish
-(409, `already_published`), one correct row matched to its request id, see
-[dec_log.md](dec_log.md) (2026-11-15, D11). The E11 matrix, fault injection,
-the race tests and the D16 benchmark are still to run.
+DEV, the E11 matrix's refusals and success paths have passed for all 14
+operations: one correct audit row per request, matched to its request id and
+log line (see [dec_log.md](dec_log.md), 2026-11-15 D11 and 2026-11-16).
+Still to run, each with its own approval: fault injection (including
+`post_commit_error`), the race tests and the D16 benchmark.
 
 The capacity invariant is held by an application protocol, not a database
 constraint, and a host may still lower capacity below current attendance —

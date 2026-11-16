@@ -2378,3 +2378,54 @@ row on DEV; it is **not** the S4 integration test. The E11 matrix (success
 paths, commit notes, `event.create`, registration and user subjects), fault
 injection, the race tests (D-S4-8) and the benchmark (D-S4-9) were not part of
 D11 and still need their own approvals.
+
+## 2026-11-16 — S4 audit rows verified on DEV for refusals and success paths (M12, E11 phases A and B)
+
+Context: after D11, the E11 matrix was split into phases, each approved
+separately: A (requests refused before any business write), B (success paths
+on one dedicated test event), C (fault injection), then the race tests
+(D-S4-8) and the benchmark (D-S4-9). D10 asks for each DEV session's time
+window to be recorded, because test rows stay in the audit table.
+
+Decision -- what was run, from a production build of `adc0190` against DEV,
+one sequential request at a time, as the seeded personas:
+
+- **Phase A**, 2026-11-16 07:22:51-07:22:53 UTC: 18 requests, one or more per
+  audited operation, each refused before any write -- 403s by members, 400s
+  for a malformed and an empty `POST /api/events` body, 404s for a non-UUID
+  event id and unknown registration ids, and 409s on seeded events. Every
+  seeded event is dated in the past, so four refusals planned for other
+  reasons were recorded as `closed:started`; those reasons moved to phase B.
+  No business data changed.
+- **Phase B**, 2026-11-16 07:27:42-07:27:48 UTC: 19 requests on one new
+  event, `[M12 test] audit verification` (approval access, dated 2026-12-20):
+  create, edit, publish; the four reasons carried over from A (`closed:host`,
+  `nothing_to_withdraw`, `share_unavailable` 503, `self`); register, approve,
+  register and reject, remove, restore, withdraw; switch to invite-only,
+  invite, revoke; cancel, delete.
+
+Verified with read-only SQL and the application log: exactly one audit row
+per request (37 rows, 38 in the table with D11's first write, all request ids
+distinct); every row's operation, method, route label, actor, outcome, HTTP
+status and reason as expected; `HttpStatus` equal to the actual response;
+EventId the route's event, and for `event.create` the id of the event it
+created; SubjectType `registration` on the decision and attendee routes and
+`user` on the invitation and share routes, none on one's own registration;
+NULL for a non-UUID id; `fieldErrors` holding field names only;
+`actorFallback` only on the request sent without a cookie. Every response
+body kept its existing message and code. Each request had one `audit.written`
+line under its request id (one attempt, inserts 17-48 ms); no
+`audit.write_failed`, no `mail.*` line, and no actor, name, id or credential in
+the log. Mail is not configured in the shared `.env.local`, so no email could
+be sent.
+
+Consequences:
+
+- Left on DEV, by design: 37 audit rows in the two windows above, and the
+  test event -- cancelled, invite-only, soft-deleted -- with two
+  registrations (one withdrawn, one rejected) and no invitations. No other
+  event or registration changed.
+- Still not verified on DEV: `post_commit_error` and failure after a commit
+  note (phase C, fault injection), the reasons that need concurrent requests
+  (`full`, `stale`, `duplicate` -- the race tests), the benchmark, and a
+  successful `share.email`, which is not tested because no email may be sent.
