@@ -2520,3 +2520,63 @@ concurrent requests for 25 rounds on S4 -- DEV's Basic tier cannot sustain it
 (D-S4-8b) and the D16 benchmark (D-S4-9), whose approved volume probably needs
 re-planning for the same reason. Left on DEV: 205 audit rows from the two
 runs, and 12 soft-deleted test events (8 + 4) with their registrations.
+
+## 2026-11-16 — D16 benchmark: passes at concurrency 1, fails p50 at concurrency 5; investigation deferred (M12 S4, D-S4-9)
+
+Context: D16 (approved with the M12 plan; the full plan is not yet in the
+repository) sets the performance criteria for writes. Δ is S4 minus the
+baseline (`c108499`); RTT is the median of a `SELECT 1` sent through the pool.
+Pass: Δp50 ≤ RTT + 10 ms and Δp95 ≤ 2×RTT + 25 ms. Warning: Δp95 up to
+2×RTT + 75 ms. Fail: Δp95 above that, or a new 5xx, a changed business
+result or a duplicate audit row. Inconclusive: baseline-vs-baseline p95 noise
+above the pass limit. **On a failure, S4 and S5 are not merged until the cause
+is found;** changing how audit writes are timed needs fresh approval. For this
+benchmark it was additionally decided that Δp50 above its limit is a failure
+even when Δp95 passes.
+
+Decision -- what was measured, 2026-11-16 09:42-09:53 UTC: register and
+withdraw alternating on dedicated events, baseline and S4 interleaved
+(A B A B), 100 measured requests per run, at concurrency 1 and then 5 (five
+workers, each on its own event). RTT 15.4 ms, so the limits were Δp50 25.4 ms
+and Δp95 55.9 ms.
+
+| | Δp50 | Δp95 | Baseline noise (p95) | Result |
+|---|---|---|---|---|
+| Concurrency 1 | 16.3 ms | 12.9 ms | 22.9 ms | pass |
+| Concurrency 5 | 28.4 ms | 16.1 ms | 45.9 ms | **p50 fails**, p95 passes |
+
+Both phases completed without a safety stop, CPU at most 45% per 15-second
+sample. All 440 S4 audit rows were correct and every request succeeded; no
+5xx, deadlock or `audit.write_failed`. The 5 test events were cancelled and
+soft-deleted; nothing else changed.
+
+Read-only investigation afterwards:
+
+- **Measured:** Query Store records the audit `INSERT` at about 0.13 ms of
+  server time on average (0.53 ms at most), with no lock or log waits. The
+  `mssql` driver's default connection check runs `SELECT 1` whenever a
+  connection is taken from the pool, so an audit write is two round trips.
+  The audit write's own elapsed time had a median of 20 ms at concurrency 1
+  and 31 ms at concurrency 5, close to Δp50 in each phase.
+- **Inferred:** most of the added latency is round trips (the connection
+  check and the `INSERT`), not the statement's execution.
+- **Uncertain:** the exceedance is about 3 ms. The two pairs of runs gave
+  Δp50 of 24.6 ms and 42.1 ms, and a bootstrap 95% interval for the pooled
+  value is about 12-41 ms. Why round trips slow down at concurrency 5 is not
+  established; the short runs may have met CPU bursts that the 15-second
+  samples do not show.
+
+Decision: further investigation and reruns are **deferred**, to avoid
+disproportionate testing on the shared DEV Basic database. This is a
+prioritisation, not a waiver: the D16 thresholds are unchanged, the
+concurrency-5 p50 failure stays open, and no change is made to connection
+validation, the pool, audit write timing, the audit schema or the
+architecture.
+
+Consequences: under D16's own rule, the open failure blocks merging S4 and S5
+(see [s_status.md](s_status.md) "Blockers") until its cause is found or a
+separate decision accepts or changes the criterion. D-S4-8b has evidence at
+low load only (Δp95 within baseline noise at concurrency 1); its
+high-contention requirement, and S4 at 20 concurrent requests, remain
+unverified, as do production performance and SQL Server 2008 R2. Left on DEV:
+440 audit rows and 5 soft-deleted test events.

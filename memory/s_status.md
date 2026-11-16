@@ -60,11 +60,13 @@ fixed in place is in [a_system.md](a_system.md).
 one PR built in slices. S1 (`8162ba9`: the application log, the request
 context and request ids) and S2 (`8bdbb01`: logging application errors and
 system failures) and S3 (`8aa437e`: the audit table and its writer) are
-committed, and so is S4 (`1b297e2`: auditing the 14 API actions), checked
-without a database. Migration 0004 was applied to the shared DEV database on
-2026-11-15; S4's tests against DEV (the E11 matrix, fault injection, the race
-tests and the D16 benchmark) have not been run and each waits for its own
-approval. S5 (page views) and S6 (docs) have not started. M12 is
+committed, and so is S4 (`1b297e2`: auditing the 14 API actions). Migration
+0004 is applied to the shared DEV database. S4 is verified on DEV for
+correctness, but **not accepted**: the D16 benchmark fails its p50 criterion
+at concurrency 5, which under D16 blocks merging S4 and S5, and the
+20-concurrent requirement is unverified -- see "Blockers". Further
+performance work is deferred; S5 planning is the next intended activity. S5
+(page views) and S6 (docs) have not started. M12 is
 specified in [TASKS.md](../TASKS.md) §5. The
 rest of the original stretch list — the calendar view first, then the waitlist,
 search, "my events", optimistic UI and a theme toggle — is also unstarted.
@@ -377,10 +379,17 @@ commit (`post_commit_error`), a missing audit table and a timed-out audit
 write, whose cancellation left nothing running on the server. One correct
 audit row per request where one is due, none where the write failed, and the
 API response unchanged throughout (see [dec_log.md](dec_log.md), 2026-11-15 D11
-and 2026-11-16). A reduced race test then passed: capacity, one winner per
-race, duplicate protection and the audit rows all held under concurrent
-requests. Still open: S4 at the original 20 concurrent requests (DEV's Basic
-tier saturated), the latency comparison and the D16 benchmark.
+and 2026-11-16). S4's verification status on DEV, all 2026-11-16:
+
+- **Passed** for the scenarios tested: refusals and success paths for all 14
+  operations, fault injection, and a reduced race test (capacity, one winner
+  per race, duplicate protection, audit rows).
+- **D16 benchmark (D-S4-9):** passes at concurrency 1; **fails the p50
+  criterion at concurrency 5** (Δp50 28.4 ms against a 25.4 ms limit; Δp95
+  passes). The cause is not established; further investigation is deferred.
+- **Unverified:** S4 at the original 20 concurrent requests (DEV's Basic tier
+  saturates), latency under that contention (D-S4-8b has low-load evidence
+  only), production performance, and SQL Server 2008 R2.
 
 The capacity invariant is held by an application protocol, not a database
 constraint, and a host may still lower capacity below current attendance —
@@ -506,7 +515,13 @@ names, or as the default persona if it names none — see
 
 ## Blockers
 
-None.
+- **M12 is not mergeable as it stands.** The approved D16 rule says that on a
+  failure S4 and S5 are not merged until the cause is found, and the D16
+  benchmark fails its p50 criterion at concurrency 5 (2026-11-16, see
+  [dec_log.md](dec_log.md)). Further investigation is deferred by decision,
+  not waived: resolving it, or an explicit decision to accept or change the
+  criterion, is needed before the M12 PR is merged. The unverified
+  20-concurrent requirement is also outstanding.
 
 ## Branches and worktrees
 
