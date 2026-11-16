@@ -2429,3 +2429,55 @@ Consequences:
   note (phase C, fault injection), the reasons that need concurrent requests
   (`full`, `stale`, `duplicate` -- the race tests), the benchmark, and a
   successful `share.email`, which is not tested because no email may be sent.
+
+## 2026-11-16 — S4 failure handling verified on DEV by fault injection (M12, E11 phase C)
+
+Context: E11 requires injected faults -- a handler failure, a rollback inside
+a transaction, an audit write to a missing table and a slow audit write -- and
+E7 requires a failure after a committed write to be audited as
+`post_commit_error`. D10 allows faults only through local code changes that
+are never committed.
+
+Decision -- how it was run, 2026-11-16 08:29:54-08:30:14 UTC, from `723ccc9`:
+
+- **Faults.** One temporary patch, each fault behind its own environment
+  variable so a single build carried all five and each server run armed one:
+  a throw at the start of `PATCH /api/events/[id]` (C1); a throw inside
+  `updateEvent`'s transaction after its `UPDATE` (C2); a throw straight after
+  `noteCommitted()` in the same route (C3); the audit `INSERT` aimed at a table
+  that does not exist (C4); `WAITFOR DELAY '00:00:02'` in front of the audit
+  `INSERT` (C5).
+- **Patch safety.** Applied only to a clean tree at `723ccc9`, after checking
+  that it reversed and reapplied cleanly; the whole run sat inside a script
+  whose exit trap stopped the server, reversed the patch with `git apply -R`
+  and deleted the build. Afterwards the tree was clean, each touched file was
+  byte-identical to HEAD, and no fault code or build remained.
+- **Data.** Seven requests as a seeded organizer on one new **draft** event,
+  `[M12 test] fault injection` (invisible to members): create; C1 to C5, each a
+  title edit; delete.
+
+Verified with read-only SQL and the application log:
+
+| Step | Response | Audit row | Event |
+|---|---|---|---|
+| C1 | 500 `internal` | `error`, `internal` | unchanged |
+| C2 | 500 `internal` | `error`, `internal` -- not `success` | rolled back: title and `UpdatedAt` as before |
+| C3 | 500 `internal` | `error`, `post_commit_error` | edit committed |
+| C4 | 200, unchanged | none; `audit.write_failed` `sql_error` 208, not ambiguous | edit committed |
+| C5 | 200, unchanged, about 1 s later | none; `audit.write_failed` `timeout`, ambiguous, one attempt, about 1,000 ms | edit committed |
+
+The create and the delete each wrote their row. For C5, read-only DMV checks
+0.2 s, 3 s and 10 s after the response found no request still running the
+`WAITFOR` or the `INSERT`, the application's pooled connections idle with no
+open transaction, no locks on the audit table, and no row: the driver's
+timeout cancelled the batch on the server before the `INSERT` ran -- the first
+check of real cancellation, which the writer still correctly logged as
+ambiguous. No actor, name, id, credential or `mail.*` line in the log; no
+other event or registration changed; DB load near zero.
+
+Consequences: left on DEV, by design, 5 audit rows in that window and the
+second test event, soft-deleted. With phases A and B, S4's audit integration
+is verified on DEV for refusals, success paths and failures. Still not
+verified: the race tests (D-S4-8: `full`, `stale`, `duplicate` and capacity
+under concurrent requests), the benchmark (D-S4-9), and a successful
+`share.email`, which is not tested because no email may be sent.

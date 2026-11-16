@@ -370,13 +370,15 @@ running this branch against DEV writes a permanent audit row for every
 audited API request; branches without S4 do not know the table and are
 unaffected. A database without 0004 still serves every request, but each
 audited one logs `audit.write_failed` (`sql_error`, SQL error 208). S4's
-per-route outcomes, the writer's cancellation and its behaviour under load
-have been verified against fakes and a deliberately unreachable database. On
-DEV, the E11 matrix's refusals and success paths have passed for all 14
-operations: one correct audit row per request, matched to its request id and
-log line (see [dec_log.md](dec_log.md), 2026-11-15 D11 and 2026-11-16).
-Still to run, each with its own approval: fault injection (including
-`post_commit_error`), the race tests and the D16 benchmark.
+per-route outcomes and fault handling have been verified on DEV: the
+E11 matrix's refusals and success paths for all 14 operations, and fault
+injection -- a handler failure, a rolled-back transaction, a failure after the
+commit (`post_commit_error`), a missing audit table and a timed-out audit
+write, whose cancellation left nothing running on the server. One correct
+audit row per request where one is due, none where the write failed, and the
+API response unchanged throughout (see [dec_log.md](dec_log.md), 2026-11-15 D11
+and 2026-11-16). Still to run, each with its own approval: the race tests and
+the D16 benchmark.
 
 The capacity invariant is held by an application protocol, not a database
 constraint, and a host may still lower capacity below current attendance —

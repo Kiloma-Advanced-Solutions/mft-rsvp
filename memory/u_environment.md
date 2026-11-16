@@ -92,10 +92,10 @@ lib/data/migrate.mts` once (exit 0, 5 batches, about one second): four
 migrations applied, none pending, the new table empty and the existing
 `Events_*` tables unchanged. The before-and-after checks and the first real
 audit write are in [dec_log.md](dec_log.md) (2026-11-15, D11). The audit
-table now holds test rows from M12's DEV sessions, and DEV keeps one
-soft-deleted `[M12 test]` event with two registrations; the time windows are in
-[dec_log.md](dec_log.md) (2026-11-16). The same database holds another application's `dbo.AuditLogs` (plural), which
-is unrelated. Run the runner with `node` directly: `npm run db:migrate
+table now holds test rows from M12's DEV sessions, and DEV keeps two
+soft-deleted `[M12 test]` events, one of them with two registrations; the time
+windows are in [dec_log.md](dec_log.md) (2026-11-16). The same database holds
+another application's `dbo.AuditLogs` (plural), which is unrelated. Run the runner with `node` directly: `npm run db:migrate
 --status` without the `--` lets npm swallow the flag and **applies**
 migrations instead.
 
