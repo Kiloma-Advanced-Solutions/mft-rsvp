@@ -81,6 +81,22 @@ after a `sys.tables` snapshot before and after showed that only
 code from before C5 still sees soft-deleted events as live — see
 [s_status.md](s_status.md) "Known limitations".
 
+**Migration `0004` (M12)** creates `dbo.Events_AuditLog`: 17 columns, a
+nonclustered primary key on `Id`, `UNIQUE(RequestId)`, three CHECK constraints
+(`Channel`, `SubjectType`, `Outcome`), a clustered index on `OccurredAt` and
+three nonclustered indexes -- no defaults, foreign keys or triggers. It was
+applied to the shared Azure SQL DEV database on 2026-11-15 at 14:36:18 UTC,
+from the M12 branch at `1b297e2`, with explicit approval and after the other
+developers were notified, by running `node --env-file=<main checkout>/.env.local
+lib/data/migrate.mts` once (exit 0, 5 batches, about one second): four
+migrations applied, none pending, the new table empty and the existing
+`Events_*` tables unchanged. The before-and-after checks and the first real
+audit write are in [dec_log.md](dec_log.md) (2026-11-15, D11). The same
+database holds another application's `dbo.AuditLogs` (plural), which
+is unrelated. Run the runner with `node` directly: `npm run db:migrate
+--status` without the `--` lets npm swallow the flag and **applies**
+migrations instead.
+
 `npm run db:check` reports the target's isolation flavour. On Azure SQL DEV it
 reports `READ_COMMITTED_SNAPSHOT` on; C5 additionally observed that optimized
 locking is on there (`DATABASEPROPERTYEX(DB_NAME(), 'IsOptimizedLockingOn')`),

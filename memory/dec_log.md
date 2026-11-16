@@ -2334,7 +2334,47 @@ the response is built before the write, so the write cannot change it.
 
 Consequences: a new mutating handler needs an operation, reasons on its
 refusals and a commit note, and `check:logging` checks all three for the
-existing ones. Until 0004 is applied, every audited request logs
+existing ones. On a database without 0004, every audited request logs
 `audit.write_failed` (SQL error 208). Shared DEV is an Azure SQL **Basic**
 database (5 DTU, 2 GB): storage is not the constraint for these tests, load is
 -- see [u_environment.md](u_environment.md).
+
+## 2026-11-15 — Migration 0004 applied to shared DEV (M12, D11)
+
+Context: S3 prepared `migrations/0004_create_audit_log.sql`; D11 required a
+separate, explicit approval before applying it to the shared DEV database,
+after a read-only preflight and with the other developers notified.
+
+Decision: applied once, on 2026-11-15 at 14:36:18 UTC (history `AppliedAt`
+14:36:18.011Z), from `yardenah/m12-logging-observability` at `1b297e2`, with
+the migration file unchanged since S3 (blob `a6f84a8`). Immediately before:
+0004 the only pending migration, none of its ten object names present, no
+locks or open write transactions on the history table, load well under the
+50% stop threshold. The runner exited 0 after 5 batches.
+
+Verified afterwards with read-only catalog queries: `dbo.Events_AuditLog` with
+the approved 17 columns, `PK_Events_AuditLog` (nonclustered, `Id`),
+`UQ_Events_AuditLog_RequestId`, the three CHECK constraints, the clustered
+`IX_Events_AuditLog_OccurredAt` and the `Actor`, `Event` and `Operation`
+indexes; no defaults, foreign keys or triggers; zero rows. Four migrations
+applied, none pending, 0004 recorded once. The six existing `Events_*` tables
+kept their schema, indexes and constraints, and nothing else in the database
+changed (tables 94 → 95, indexes 110 → 116, constraints 190 → 195).
+
+First real audit write, the same day and separately approved: one request,
+`POST /api/events/[id]/publish` by a seeded organizer persona on a seeded event
+that was already published. It was refused before any write -- HTTP 409, the
+existing response body unchanged -- so no business data changed and no email
+was sent. Exactly one audit row was written: `event.publish`, outcome
+`rejected`, status 409, reason `already_published`, the actor and event id
+correct, no subject, no Metadata. Its `RequestId` matched the response's
+`X-Request-Id` and the application log's `audit.written` line, which carried
+no actor, name or ids. Nothing sensitive was written or logged.
+
+Consequences: the table is permanent and append-only (D5); applied migrations
+are never edited. A server running the M12 branch against DEV now writes real
+audit rows, which stay. The single write above proves the path from route to
+row on DEV; it is **not** the S4 integration test. The E11 matrix (success
+paths, commit notes, `event.create`, registration and user subjects), fault
+injection, the race tests (D-S4-8) and the benchmark (D-S4-9) were not part of
+D11 and still need their own approvals.

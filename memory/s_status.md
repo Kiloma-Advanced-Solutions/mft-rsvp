@@ -60,9 +60,11 @@ fixed in place is in [a_system.md](a_system.md).
 one PR built in slices. S1 (`8162ba9`: the application log, the request
 context and request ids) and S2 (`8bdbb01`: logging application errors and
 system failures) and S3 (`8aa437e`: the audit table and its writer) are
-committed. S4 (auditing the 14 API actions) is implemented and checked without
-a database, not yet committed; migration 0004 and every DEV test wait for
-separate approval. S5 (page views) and S6 (docs) have not started. M12 is
+committed, and so is S4 (`1b297e2`: auditing the 14 API actions), checked
+without a database. Migration 0004 was applied to the shared DEV database on
+2026-11-15; S4's tests against DEV (the E11 matrix, fault injection, the race
+tests and the D16 benchmark) have not been run and each waits for its own
+approval. S5 (page views) and S6 (docs) have not started. M12 is
 specified in [TASKS.md](../TASKS.md) §5. The
 rest of the original stretch list — the calendar view first, then the waitlist,
 search, "my events", optimistic UI and a theme toggle — is also unstarted.
@@ -362,13 +364,18 @@ it. This is accepted while the application is in development and must be
 revisited before it handles sensitive production data. See
 [dec_log.md](dec_log.md) (2026-11-12, M12 S2).
 
-Migration 0004 (the audit table) has not been applied to the shared DEV
-database; that needs its own approval. Since S4 every audited API action calls
-the writer, so until the table exists each one logs `audit.write_failed`
-(`sql_error`, SQL error 208) after its response is built -- the response itself
-is unchanged. No real audit row has been written yet: the insert, its
-cancellation and the per-route outcomes have been verified against fakes and a
-deliberately unreachable database only, not against DEV.
+Migration 0004 (the audit table) is applied to the shared DEV database
+(2026-11-15, see [u_environment.md](u_environment.md)). From then on, a server
+running this branch against DEV writes a permanent audit row for every
+audited API request; branches without S4 do not know the table and are
+unaffected. A database without 0004 still serves every request, but each
+audited one logs `audit.write_failed` (`sql_error`, SQL error 208). S4's
+per-route outcomes, the writer's cancellation and its behaviour under load
+have been verified against fakes and a deliberately unreachable database. On
+DEV, only one real audit write has been verified so far -- a refused publish
+(409, `already_published`), one correct row matched to its request id, see
+[dec_log.md](dec_log.md) (2026-11-15, D11). The E11 matrix, fault injection,
+the race tests and the D16 benchmark are still to run.
 
 The capacity invariant is held by an application protocol, not a database
 constraint, and a host may still lower capacity below current attendance —
