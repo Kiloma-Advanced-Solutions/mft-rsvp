@@ -92,12 +92,12 @@ lib/data/migrate.mts` once (exit 0, 5 batches, about one second): four
 migrations applied, none pending, the new table empty and the existing
 `Events_*` tables unchanged. The before-and-after checks and the first real
 audit write are in [dec_log.md](dec_log.md) (2026-11-15, D11). The audit
-table now holds test rows from M12's DEV sessions, and DEV keeps two
-soft-deleted `[M12 test]` events, one of them with two registrations; the time
-windows are in [dec_log.md](dec_log.md) (2026-11-16). The same database holds
-another application's `dbo.AuditLogs` (plural), which is unrelated. Run the runner with `node` directly: `npm run db:migrate
---status` without the `--` lets npm swallow the flag and **applies**
-migrations instead.
+table now holds test rows from M12's DEV sessions, and DEV keeps 14
+soft-deleted `[M12 test]` events with their registrations; the time windows
+are in [dec_log.md](dec_log.md) (2026-11-16). The same database holds another
+application's `dbo.AuditLogs` (plural), which is unrelated. Run the runner with
+`node` directly: `npm run db:migrate --status` without the `--` lets npm
+swallow the flag and **applies** migrations instead.
 
 `npm run db:check` reports the target's isolation flavour. On Azure SQL DEV it
 reports `READ_COMMITTED_SNAPSHOT` on; C5 additionally observed that optimized
@@ -117,7 +117,9 @@ other applications' tables. Measured load was close to idle (CPU peak about
 test, a benchmark -- the compute allowance, not storage, is the limit: the
 application's pool opens at most 10 connections, and a Basic database also
 caps concurrent workers. Watch `sys.dm_db_resource_stats` while such a test
-runs.
+runs. Measured on 2026-11-16: 20 concurrent seat claims sent back to back drove
+CPU to 99.7% within the first minute, while 3-5 concurrent requests with a 3-second
+pause between rounds peaked at 21%.
 
 ## Sharing and email
 

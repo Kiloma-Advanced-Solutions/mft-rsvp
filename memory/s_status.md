@@ -377,8 +377,10 @@ commit (`post_commit_error`), a missing audit table and a timed-out audit
 write, whose cancellation left nothing running on the server. One correct
 audit row per request where one is due, none where the write failed, and the
 API response unchanged throughout (see [dec_log.md](dec_log.md), 2026-11-15 D11
-and 2026-11-16). Still to run, each with its own approval: the race tests and
-the D16 benchmark.
+and 2026-11-16). A reduced race test then passed: capacity, one winner per
+race, duplicate protection and the audit rows all held under concurrent
+requests. Still open: S4 at the original 20 concurrent requests (DEV's Basic
+tier saturated), the latency comparison and the D16 benchmark.
 
 The capacity invariant is held by an application protocol, not a database
 constraint, and a host may still lower capacity below current attendance —

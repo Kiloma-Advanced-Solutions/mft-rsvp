@@ -2481,3 +2481,42 @@ is verified on DEV for refusals, success paths and failures. Still not
 verified: the race tests (D-S4-8: `full`, `stale`, `duplicate` and capacity
 under concurrent requests), the benchmark (D-S4-9), and a successful
 `share.email`, which is not tested because no email may be sent.
+
+## 2026-11-16 — S4 race tests (D-S4-8): reduced after DEV saturated; correctness held
+
+Context: D-S4-8 approved races between distinct users only -- last seat at 20
+concurrent requests, concurrent approvals, restores against an approval,
+same-user duplicates and a forced-contention variant -- each for 25 counted
+rounds against the baseline (`c108499`) and S4 (`ced7247`), with load stop
+conditions. The baseline and the forced variant were built from scratch
+exports, so no test code entered the repository.
+
+Decision and results:
+
+- **First run** (08:53:35-08:54:24 UTC) **stopped on the load safeguard**: 20
+  concurrent seat claims drove DEV's Basic database to 99.7% CPU in two
+  consecutive samples, already while the baseline was running. Before the
+  stop, the last-seat race completed all 25 counted rounds on the baseline and
+  4 on S4, each with exactly one winner per seat and capacity held; S4's 100
+  audit rows all matched their requests. The automatic teardown cancelled and
+  soft-deleted the 8 test events.
+- **Reduced run, approved separately** (09:11:29-09:13:39 UTC): at most 5
+  concurrent requests, 5 counted rounds per scenario and a 3-second pause, with
+  stricter load gates. Plain last-seat racing was not repeated. Concurrent
+  approvals (4), restores against an approval (3) and same-user duplicates (5)
+  ran on the baseline and S4; the forced variant held the event-row lock for
+  250 ms on S4 only, and every loser waited at least that long, showing the
+  requests serialised on the lock. All passed: one winner per race, capacity
+  never exceeded, one registration row per person, no 5xx or deadlocks,
+  identical behaviour and messages on both builds, and all 105 audit rows
+  matching their requests (`full` and `already_registered` where expected).
+  Peak CPU 21%. The 4 test events were cancelled and soft-deleted; no other
+  data changed and no email was sent.
+
+Consequences: S4's audit integration is correct under concurrent requests at
+the reduced level. **Not satisfied:** the original requirement of 20
+concurrent requests for 25 rounds on S4 -- DEV's Basic tier cannot sustain it
+-- so this remains an open gap, not a pass. Also open: the latency comparison
+(D-S4-8b) and the D16 benchmark (D-S4-9), whose approved volume probably needs
+re-planning for the same reason. Left on DEV: 205 audit rows from the two
+runs, and 12 soft-deleted test events (8 + 4) with their registrations.
