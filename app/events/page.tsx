@@ -30,6 +30,7 @@ import {
   eventCountLabel,
   sectionJumpLabel,
 } from "@/lib/labels";
+import { beginPageAudit } from "@/lib/pageAudit";
 import { canCreateEvent } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
 import type { EventWithContext } from "@/lib/types";
@@ -66,6 +67,8 @@ const SECTION_HEADING_ID = "board-section-heading";
  * removes the link that had it -- see `BoardSectionNav`.
  */
 export default async function BoardPage({ searchParams }: PageProps<"/events">) {
+  // First, so a render that fails before deciding anything is audited as one.
+  const audit = await beginPageAudit("board.view");
   const [viewer, query] = await Promise.all([getCurrentUser(), searchParams]);
   const visible = await getVisibleEventsWithContext(viewer);
 
@@ -107,6 +110,13 @@ export default async function BoardPage({ searchParams }: PageProps<"/events">) 
     past: sections.past.length,
   };
   const items = sections[section];
+
+  // The parsed state only, never the query string: each value is one of a
+  // fixed set, or absent.
+  const filters: Record<string, string> = {};
+  if (category !== null) filters.category = category;
+  if (access !== null) filters.access = access;
+  audit.success({ section, filters });
 
   return (
     <div>

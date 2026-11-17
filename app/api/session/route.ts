@@ -9,7 +9,8 @@
  *   POST /api/session   -> { currentUser }        body: { userId: string }
  */
 
-import { ApiError, jsonOk, readJson, withErrorHandling } from "@/lib/api";
+import { ApiError, jsonOk, readJson } from "@/lib/api";
+import { withErrorHandling } from "@/lib/apiHandler";
 import { db } from "@/lib/db";
 import { API_ERRORS, noSuchPersonaLabel } from "@/lib/labels";
 import { getCurrentUser, setCurrentUser } from "@/lib/session";

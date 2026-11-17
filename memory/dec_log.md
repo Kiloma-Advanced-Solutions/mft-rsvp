@@ -2115,3 +2115,924 @@ new host-held rows; a `db:reset` from a version whose seed still has the
 legacy row would recreate it; and nothing in the database refuses either.
 Either would over-count attendance, which errs towards "full", and both are
 listed in [s_status.md](s_status.md) "Known limitations".
+
+## 2026-11-12 — Technical failures are logged once, where the cause is known (M12 S2)
+
+Context: M12 S1 added the application log (`lib/log.ts`: one line per event
+on stdout/stderr, a run-time field allowlist, every string through the
+connection-string redactor) and the request id (`proxy.ts`). S2 had to decide
+where failures are written, and how to keep one failure from becoming several
+lines or none.
+
+Decision: each failure is logged by the one place that knows the most about it.
+
+- **API.** `withErrorHandling` moved to `lib/apiHandler.ts`. `lib/api.ts` is
+  also imported by Client Components, and `next build` fails when it imports
+  the logger (`node:async_hooks` cannot be bundled for the browser). The
+  wrapper enters the request context with the proxy's id and writes at most
+  one line per request: `api.unhandled_error` (error) for anything that is
+  not an `ApiError`, `api.service_failure` (warn, status and code only) for an
+  `ApiError` of 500 or more, and nothing for a 4xx or a success. Responses are
+  unchanged.
+- **Route names.** A line names the route by its pattern (`/api/events/:id`).
+  Next does not give a Route Handler its own pattern, so the patterns are an
+  explicit list, `API_ROUTE_PATTERNS`. `check:logging` compares that list with
+  the `route.ts` files on disk. A path matching no pattern is logged as
+  `unmatched`, never as the path.
+- **Mail.** The mail layer logs the cause (`mail.not_configured`,
+  `mail.send_failed`, `mail.render_failed`). The API logs the resulting 5xx.
+  The two lines share the request id. Mail-service response bodies, addresses
+  and content are never logged.
+- **Database.** A pool `error` event is logged as `db.pool_error`, outside any
+  request context. Otherwise it would carry the id of whichever request opened
+  the socket. A rollback that fails is logged as `db.rollback_failed`, and the
+  original error is still the one thrown. A failed query is not logged at the
+  database layer: the boundary above it logs it. These lines, and
+  `api.unhandled_error` and `next.request_error`, carry the driver's message as
+  SQL Server wrote it. The redactor masks only the connection string's
+  credentials and host, so a message that quotes data is logged with that
+  data: an unexpected duplicate key (2627) names the duplicate value, and a
+  conversion error (245, 8114) names the value it could not convert. This is
+  accepted for now. Revisit it with the stderr item below before production
+  data, for example by logging only the error number and code for driver
+  errors.
+- **Pages.** `instrumentation.ts` logs `next.request_error` from
+  `onRequestError` with Next's route pattern and the proxy's id. It logs once
+  per error object per request: a layout and a page that await the same
+  failed promise make Next call the hook twice for one error. `register()`
+  logs `app.started`, once per server process.
+- **No actor** in application logs. Who did what belongs to the audit log
+  (later M12 slices).
+
+Rationale: one line per failure, carrying the request id, is what makes the
+log readable and lets it be joined to a user's report. A list of route
+patterns checked against the file system is deterministic. A pattern guessed
+from a path's characters could leak an id.
+
+Consequences: a new API route needs a line in `API_ROUTE_PATTERNS`, and
+`check:logging` fails until it has one. A page-render error still appears
+twice in stderr, once as Next's own print and once as our structured line.
+See the next entry.
+
+## 2026-11-12 — Next.js's own error output is not redacted; accepted for now (M12 S2)
+
+Context: Next 16.3.1 prints an error from a page render or an uncaught Route
+Handler error to stderr itself (`console.error`), unredacted, and only then
+calls `instrumentation.onRequestError` (`RouteModule.onRequestError`,
+`createReactServerErrorHandler`). It also prints uncaught exceptions and
+unhandled rejections. `next start` offers no supported way to suppress or
+alter this output. A production check showed a connection string quoted in an
+error reaching stderr that way. PM2 collects stderr.
+
+Decision: accepted as a residual risk for this development-stage
+application. Process-level masking of stdout/stderr was proposed and not
+approved. No custom server, no stream interception, no PM2 change. The
+application log stays redacted. API routes never reach Next's printer,
+because every handler is wrapped. Pages can: a database error during a render
+is printed in full, which typically shows the server host and port and the
+database login name, and can quote a data value.
+
+Consequences: revisit before this application handles sensitive production
+data. Options include process- or deployment-level controls (log-file
+permissions and retention under PM2, or masking at the process) and keeping
+driver errors out of page renders. Listed in [s_status.md](s_status.md)
+"Known limitations".
+
+## 2026-11-15 — The audit log: one row per request, written outside the business transaction (M12 S3)
+
+Context: M12 records who did what in SQL Server, beside the application log
+on stdout/stderr. The approved M12 plan fixed the table, the separation from
+business transactions and the write policy (D15). S3 builds the table and the
+writer; nothing calls the writer until S4 (API actions) and S5 (page views).
+
+Decision:
+
+- **Table.** `dbo.Events_AuditLog` (migration 0004).
+  - One row per audited request.
+  - `UNIQUE(RequestId)`; clustered on `OccurredAt` with a nonclustered
+    primary key.
+  - No foreign keys. `ActorName` is a snapshot of the display name.
+  - `Metadata` is at most 1,000 characters of JSON with allowlisted keys.
+  - Append-only and kept indefinitely, outside `db:reset`.
+  - `check:tsql` rule `events-audit-append-only` refuses application SQL that
+    updates, deletes or truncates it. That is a convention the application
+    keeps, not a tamper-proof store.
+- **Records.** The caller passes a complete record: request id, actor,
+  operation, outcome and times. The writer never reads the request context.
+  - Every field is checked against its column and its allowed set. An invalid
+    record is not written and is logged as `invalid_record`.
+  - Metadata keeps only the allowlisted keys and values of the right kind.
+  - If the remaining Metadata is over 1,000 characters, the row is written
+    without it and `audit.metadata_dropped` is logged.
+- **Write policy (D15).** An independent INSERT on the pool, never in a
+  business transaction. The writer never throws.
+  - Overall deadline 1,500 ms, enforced by a timer. The query's own timeout
+    does not cover the wait for a pooled connection.
+  - First attempt 1,000 ms.
+  - At most one retry, only for a dropped connection, an Azure transient error
+    or a deadlock, and only with at least 300 ms left.
+  - No retry after a timeout or a cancellation.
+  - A duplicate key (2627, 2601) means "already written".
+  - The timeout is never 0, which the driver reads as "none".
+  - At the deadline, a started query is cancelled, and an attempt still
+    waiting for a connection is told not to start. Neither proves nothing was
+    written, so such a failure is logged as `ambiguous`.
+  - The same goes for a connection lost mid-query (`ECLOSE`, `EPIPE`) and any
+    driver code not known to come before sending. Only `ELOGIN`,
+    `EINSTLOOKUP`, `ENOTOPEN`, `EARGS`, `EINJECT`, `EPARAM`, an error with a
+    SQL number, or a failure to get a connection at all counts as a definite
+    non-write. An invalid record is logged as `invalid_record:<field>`.
+- **Failure line.** A failure is logged as `audit.write_failed`. It carries:
+  - the request id, operation, outcome and HTTP status;
+  - the reason, number of attempts and elapsed time;
+  - the SQL error number and code;
+  - `ambiguous`.
+
+  It never carries the actor, the name, other ids, the Metadata or the
+  driver's message.
+- **Logger fields.** `outcome`, `attempts` and a boolean `ambiguous` were
+  added to the allowlist for that line.
+- **Actor.** `getCurrentUser()` calls `noteActor` with `fallback` true only
+  when the default persona stood in. What it returns is unchanged.
+
+Rationale: an audit failure must never change or delay a business result
+beyond the deadline. `UNIQUE(RequestId)` makes retries and late writes safe
+without coordination. Keeping the writer free of the database driver lets its
+whole policy be tested without a database.
+
+Consequences:
+
+- A row can still be lost: a crash between commit and insert, or a failed or
+  late write with no retry left. The failure line is then the only trace, and
+  it deliberately omits the actor.
+- Migration 0004 is not applied to the shared DEV database in S3. It needs a
+  separate approval at the start of S4.
+
+## 2026-11-15 — API actions are audited by the API wrapper, declared at each handler (M12 S4)
+
+Context: S3 built the audit table and its writer; S4 connects the 14 mutating
+API handlers to it. The approved plan (E7) has the handler state what happened
+after its data call and the wrapper write the row after the response is built.
+In the code, most refusals -- 404, 403, most 409s -- happen before any data
+call, the refusals carry only generic codes (`conflict`), and the database
+module cannot be loaded by the bare-Node self-check.
+
+Decision (approved as D-S4-1 to D-S4-7 and D-S4-10):
+
+- **D-S4-1.** The operation is declared where the handler is exported
+  (`{ audit: "event.update" }`), so a request refused before its data call
+  still gets a row. The session routes declare none (D13).
+- **D-S4-2.** `ApiError` carries an optional internal `reason` (`full`, `stale`,
+  `closed:draft`, ...) that `jsonError` never receives, so no response changes.
+  Without one the row falls back to `ApiError.code`.
+- **D-S4-3.** The request context holds a small audit note: the id of an event
+  just created, whether the business write has committed (a failure after it
+  is `post_commit_error`), and whether the row was handed to the writer.
+- **D-S4-4.** `EventId` is the route's `[id]` (the created id for
+  `event.create`); `SubjectType`/`SubjectId` are `registration` for
+  `[registrationId]` routes and `user` for `[userId]` routes; none for the
+  caller's own registration, which (EventId, ActorUserId) already identifies.
+  A parameter that is not a UUID is recorded as NULL.
+- **D-S4-5.** Reasons: E3's codes as listed (`full`, `not_invited`,
+  `already_invited`, `stale`, `duplicate`, `gone`, `already_registered`,
+  `nothing_to_withdraw`, `validation`, `schedule_locked`, `invalid_json`,
+  `email_*`, `deadlock`, `db_unavailable`, `internal`, `post_commit_error`),
+  `closed:<reason>` for every other closed availability, and seven new codes:
+  `already_published`, `not_draft`, `past_start`, `already_rejected`, `self`,
+  `recipient_cannot_view`, `invalid_recipient_email`. A 400's field names (never
+  messages) go to `Metadata.fieldErrors`.
+- **D-S4-6.** `DurationMs` is handler time; the audit write is not part of it.
+- **D-S4-7.** `createErrorHandling(record)` builds the wrapper; the application's
+  binds `db.audit.record` through a lazy import, the self-check its own
+  recorder.
+- **D-S4-10.** A successful write logs `audit.written` at debug level only, with
+  attempts and elapsed time (`durationMs`) -- the insert's own cost for D16.
+
+Test plans approved but **not executed** (each DEV write needs its own
+approval; migration 0004 first):
+
+- **D-S4-8** concurrency: last seat with distinct users only -- 5 open test
+  events of capacity 2, the 4 non-host users registering on all 5 at once
+  (20 concurrent requests, no `UQ(event, user)` collisions); a forced variant
+  holding the lock 250 ms through a local, never-committed edit; four approvals
+  for one seat; restores and an approval for one seat; same-user duplicates as
+  a separate test. 25 counted rounds each, against the baseline and S4.
+  Limitation: DEV has 5 users, so at most 4 distinct users contend for one
+  seat; nothing has been run on SQL Server 2008 R2.
+- **D-S4-8b** latency in that test is compared client-side, since the baseline
+  has no audit rows.
+- **D-S4-9** benchmark: register/withdraw only, A B A B, 10 warm-up + 100
+  measured at concurrency 1 and 5 per run, 880 requests and about 440
+  permanent audit rows. 100 is the smallest sample with a bounded 95% interval
+  for p95. D16's thresholds unchanged.
+- D-S4-11 (sending audit INSERTs to DEV before the table exists) was not
+  approved.
+
+Rationale: one place derives every row, so 14 handlers cannot record it
+fourteen ways; a refusal's reason travels with the throw that causes it; and
+the response is built before the write, so the write cannot change it.
+
+Consequences: a new mutating handler needs an operation, reasons on its
+refusals and a commit note, and `check:logging` checks all three for the
+existing ones. On a database without 0004, every audited request logs
+`audit.write_failed` (SQL error 208). Shared DEV is an Azure SQL **Basic**
+database (5 DTU, 2 GB): storage is not the constraint for these tests, load is
+-- see [u_environment.md](u_environment.md).
+
+## 2026-11-15 — Migration 0004 applied to shared DEV (M12, D11)
+
+Context: S3 prepared `migrations/0004_create_audit_log.sql`; D11 required a
+separate, explicit approval before applying it to the shared DEV database,
+after a read-only preflight and with the other developers notified.
+
+Decision: applied once, on 2026-11-15 at 14:36:18 UTC (history `AppliedAt`
+14:36:18.011Z), from `yardenah/m12-logging-observability` at `1b297e2`, with
+the migration file unchanged since S3 (blob `a6f84a8`). Immediately before:
+0004 the only pending migration, none of its ten object names present, no
+locks or open write transactions on the history table, load well under the
+50% stop threshold. The runner exited 0 after 5 batches.
+
+Verified afterwards with read-only catalog queries: `dbo.Events_AuditLog` with
+the approved 17 columns, `PK_Events_AuditLog` (nonclustered, `Id`),
+`UQ_Events_AuditLog_RequestId`, the three CHECK constraints, the clustered
+`IX_Events_AuditLog_OccurredAt` and the `Actor`, `Event` and `Operation`
+indexes; no defaults, foreign keys or triggers; zero rows. Four migrations
+applied, none pending, 0004 recorded once. The six existing `Events_*` tables
+kept their schema, indexes and constraints, and nothing else in the database
+changed (tables 94 → 95, indexes 110 → 116, constraints 190 → 195).
+
+First real audit write, the same day and separately approved: one request,
+`POST /api/events/[id]/publish` by a seeded organizer persona on a seeded event
+that was already published. It was refused before any write -- HTTP 409, the
+existing response body unchanged -- so no business data changed and no email
+was sent. Exactly one audit row was written: `event.publish`, outcome
+`rejected`, status 409, reason `already_published`, the actor and event id
+correct, no subject, no Metadata. Its `RequestId` matched the response's
+`X-Request-Id` and the application log's `audit.written` line, which carried
+no actor, name or ids. Nothing sensitive was written or logged.
+
+Consequences: the table is permanent and append-only (D5); applied migrations
+are never edited. A server running the M12 branch against DEV now writes real
+audit rows, which stay. The single write above proves the path from route to
+row on DEV; it is **not** the S4 integration test. The E11 matrix (success
+paths, commit notes, `event.create`, registration and user subjects), fault
+injection, the race tests (D-S4-8) and the benchmark (D-S4-9) were not part of
+D11 and still need their own approvals.
+
+## 2026-11-16 — S4 audit rows verified on DEV for refusals and success paths (M12, E11 phases A and B)
+
+Context: after D11, the E11 matrix was split into phases, each approved
+separately: A (requests refused before any business write), B (success paths
+on one dedicated test event), C (fault injection), then the race tests
+(D-S4-8) and the benchmark (D-S4-9). D10 asks for each DEV session's time
+window to be recorded, because test rows stay in the audit table.
+
+Decision -- what was run, from a production build of `adc0190` against DEV,
+one sequential request at a time, as the seeded personas:
+
+- **Phase A**, 2026-11-16 07:22:51-07:22:53 UTC: 18 requests, one or more per
+  audited operation, each refused before any write -- 403s by members, 400s
+  for a malformed and an empty `POST /api/events` body, 404s for a non-UUID
+  event id and unknown registration ids, and 409s on seeded events. Every
+  seeded event is dated in the past, so four refusals planned for other
+  reasons were recorded as `closed:started`; those reasons moved to phase B.
+  No business data changed.
+- **Phase B**, 2026-11-16 07:27:42-07:27:48 UTC: 19 requests on one new
+  event, `[M12 test] audit verification` (approval access, dated 2026-12-20):
+  create, edit, publish; the four reasons carried over from A (`closed:host`,
+  `nothing_to_withdraw`, `share_unavailable` 503, `self`); register, approve,
+  register and reject, remove, restore, withdraw; switch to invite-only,
+  invite, revoke; cancel, delete.
+
+Verified with read-only SQL and the application log: exactly one audit row
+per request (37 rows, 38 in the table with D11's first write, all request ids
+distinct); every row's operation, method, route label, actor, outcome, HTTP
+status and reason as expected; `HttpStatus` equal to the actual response;
+EventId the route's event, and for `event.create` the id of the event it
+created; SubjectType `registration` on the decision and attendee routes and
+`user` on the invitation and share routes, none on one's own registration;
+NULL for a non-UUID id; `fieldErrors` holding field names only;
+`actorFallback` only on the request sent without a cookie. Every response
+body kept its existing message and code. Each request had one `audit.written`
+line under its request id (one attempt, inserts 17-48 ms); no
+`audit.write_failed`, no `mail.*` line, and no actor, name, id or credential in
+the log. Mail is not configured in the shared `.env.local`, so no email could
+be sent.
+
+Consequences:
+
+- Left on DEV, by design: 37 audit rows in the two windows above, and the
+  test event -- cancelled, invite-only, soft-deleted -- with two
+  registrations (one withdrawn, one rejected) and no invitations. No other
+  event or registration changed.
+- Still not verified on DEV: `post_commit_error` and failure after a commit
+  note (phase C, fault injection), the reasons that need concurrent requests
+  (`full`, `stale`, `duplicate` -- the race tests), the benchmark, and a
+  successful `share.email`, which is not tested because no email may be sent.
+
+## 2026-11-16 — S4 failure handling verified on DEV by fault injection (M12, E11 phase C)
+
+Context: E11 requires injected faults -- a handler failure, a rollback inside
+a transaction, an audit write to a missing table and a slow audit write -- and
+E7 requires a failure after a committed write to be audited as
+`post_commit_error`. D10 allows faults only through local code changes that
+are never committed.
+
+Decision -- how it was run, 2026-11-16 08:29:54-08:30:14 UTC, from `723ccc9`:
+
+- **Faults.** One temporary patch, each fault behind its own environment
+  variable so a single build carried all five and each server run armed one:
+  a throw at the start of `PATCH /api/events/[id]` (C1); a throw inside
+  `updateEvent`'s transaction after its `UPDATE` (C2); a throw straight after
+  `noteCommitted()` in the same route (C3); the audit `INSERT` aimed at a table
+  that does not exist (C4); `WAITFOR DELAY '00:00:02'` in front of the audit
+  `INSERT` (C5).
+- **Patch safety.** Applied only to a clean tree at `723ccc9`, after checking
+  that it reversed and reapplied cleanly; the whole run sat inside a script
+  whose exit trap stopped the server, reversed the patch with `git apply -R`
+  and deleted the build. Afterwards the tree was clean, each touched file was
+  byte-identical to HEAD, and no fault code or build remained.
+- **Data.** Seven requests as a seeded organizer on one new **draft** event,
+  `[M12 test] fault injection` (invisible to members): create; C1 to C5, each a
+  title edit; delete.
+
+Verified with read-only SQL and the application log:
+
+| Step | Response | Audit row | Event |
+|---|---|---|---|
+| C1 | 500 `internal` | `error`, `internal` | unchanged |
+| C2 | 500 `internal` | `error`, `internal` -- not `success` | rolled back: title and `UpdatedAt` as before |
+| C3 | 500 `internal` | `error`, `post_commit_error` | edit committed |
+| C4 | 200, unchanged | none; `audit.write_failed` `sql_error` 208, not ambiguous | edit committed |
+| C5 | 200, unchanged, about 1 s later | none; `audit.write_failed` `timeout`, ambiguous, one attempt, about 1,000 ms | edit committed |
+
+The create and the delete each wrote their row. For C5, read-only DMV checks
+0.2 s, 3 s and 10 s after the response found no request still running the
+`WAITFOR` or the `INSERT`, the application's pooled connections idle with no
+open transaction, no locks on the audit table, and no row: the driver's
+timeout cancelled the batch on the server before the `INSERT` ran -- the first
+check of real cancellation, which the writer still correctly logged as
+ambiguous. No actor, name, id, credential or `mail.*` line in the log; no
+other event or registration changed; DB load near zero.
+
+Consequences: left on DEV, by design, 5 audit rows in that window and the
+second test event, soft-deleted. With phases A and B, S4's audit integration
+is verified on DEV for refusals, success paths and failures. Still not
+verified: the race tests (D-S4-8: `full`, `stale`, `duplicate` and capacity
+under concurrent requests), the benchmark (D-S4-9), and a successful
+`share.email`, which is not tested because no email may be sent.
+
+## 2026-11-16 — S4 race tests (D-S4-8): reduced after DEV saturated; correctness held
+
+Context: D-S4-8 approved races between distinct users only -- last seat at 20
+concurrent requests, concurrent approvals, restores against an approval,
+same-user duplicates and a forced-contention variant -- each for 25 counted
+rounds against the baseline (`c108499`) and S4 (`ced7247`), with load stop
+conditions. The baseline and the forced variant were built from scratch
+exports, so no test code entered the repository.
+
+Decision and results:
+
+- **First run** (08:53:35-08:54:24 UTC) **stopped on the load safeguard**: 20
+  concurrent seat claims drove DEV's Basic database to 99.7% CPU in two
+  consecutive samples, already while the baseline was running. Before the
+  stop, the last-seat race completed all 25 counted rounds on the baseline and
+  4 on S4, each with exactly one winner per seat and capacity held; S4's 100
+  audit rows all matched their requests. The automatic teardown cancelled and
+  soft-deleted the 8 test events.
+- **Reduced run, approved separately** (09:11:29-09:13:39 UTC): at most 5
+  concurrent requests, 5 counted rounds per scenario and a 3-second pause, with
+  stricter load gates. Plain last-seat racing was not repeated. Concurrent
+  approvals (4), restores against an approval (3) and same-user duplicates (5)
+  ran on the baseline and S4; the forced variant held the event-row lock for
+  250 ms on S4 only, and every loser waited at least that long, showing the
+  requests serialised on the lock. All passed: one winner per race, capacity
+  never exceeded, one registration row per person, no 5xx or deadlocks,
+  identical behaviour and messages on both builds, and all 105 audit rows
+  matching their requests (`full` and `already_registered` where expected).
+  Peak CPU 21%. The 4 test events were cancelled and soft-deleted; no other
+  data changed and no email was sent.
+
+Consequences: S4's audit integration is correct under concurrent requests at
+the reduced level. **Not satisfied:** the original requirement of 20
+concurrent requests for 25 rounds on S4 -- DEV's Basic tier cannot sustain it
+-- so this remains an open gap, not a pass. Also open: the latency comparison
+(D-S4-8b) and the D16 benchmark (D-S4-9), whose approved volume probably needs
+re-planning for the same reason. Left on DEV: 205 audit rows from the two
+runs, and 12 soft-deleted test events (8 + 4) with their registrations.
+
+## 2026-11-16 — D16 benchmark: passes at concurrency 1, fails p50 at concurrency 5; investigation deferred (M12 S4, D-S4-9)
+
+Context: D16 (approved with the M12 plan; the full plan is not yet in the
+repository) sets the performance criteria for writes. Δ is S4 minus the
+baseline (`c108499`); RTT is the median of a `SELECT 1` sent through the pool.
+Pass: Δp50 ≤ RTT + 10 ms and Δp95 ≤ 2×RTT + 25 ms. Warning: Δp95 up to
+2×RTT + 75 ms. Fail: Δp95 above that, or a new 5xx, a changed business
+result or a duplicate audit row. Inconclusive: baseline-vs-baseline p95 noise
+above the pass limit. **On a failure, S4 and S5 are not merged until the cause
+is found;** changing how audit writes are timed needs fresh approval. For this
+benchmark it was additionally decided that Δp50 above its limit is a failure
+even when Δp95 passes.
+
+Decision -- what was measured, 2026-11-16 09:42-09:53 UTC: register and
+withdraw alternating on dedicated events, baseline and S4 interleaved
+(A B A B), 100 measured requests per run, at concurrency 1 and then 5 (five
+workers, each on its own event). RTT 15.4 ms, so the limits were Δp50 25.4 ms
+and Δp95 55.9 ms.
+
+| | Δp50 | Δp95 | Baseline noise (p95) | Result |
+|---|---|---|---|---|
+| Concurrency 1 | 16.3 ms | 12.9 ms | 22.9 ms | pass |
+| Concurrency 5 | 28.4 ms | 16.1 ms | 45.9 ms | **p50 fails**, p95 passes |
+
+Both phases completed without a safety stop, CPU at most 45% per 15-second
+sample. All 440 S4 audit rows were correct and every request succeeded; no
+5xx, deadlock or `audit.write_failed`. The 5 test events were cancelled and
+soft-deleted; nothing else changed.
+
+Read-only investigation afterwards:
+
+- **Measured:** Query Store records the audit `INSERT` at about 0.13 ms of
+  server time on average (0.53 ms at most), with no lock or log waits. The
+  `mssql` driver's default connection check runs `SELECT 1` whenever a
+  connection is taken from the pool, so an audit write is two round trips.
+  The audit write's own elapsed time had a median of 20 ms at concurrency 1
+  and 31 ms at concurrency 5, close to Δp50 in each phase.
+- **Inferred:** most of the added latency is round trips (the connection
+  check and the `INSERT`), not the statement's execution.
+- **Uncertain:** the exceedance is about 3 ms. The two pairs of runs gave
+  Δp50 of 24.6 ms and 42.1 ms, and a bootstrap 95% interval for the pooled
+  value is about 12-41 ms. Why round trips slow down at concurrency 5 is not
+  established; the short runs may have met CPU bursts that the 15-second
+  samples do not show.
+
+Decision: further investigation and reruns are **deferred**, to avoid
+disproportionate testing on the shared DEV Basic database. This is a
+prioritisation, not a waiver: the D16 thresholds are unchanged, the
+concurrency-5 p50 failure stays open, and no change is made to connection
+validation, the pool, audit write timing, the audit schema or the
+architecture.
+
+Consequences: under D16's own rule, the open failure blocks merging S4 and S5
+(see [s_status.md](s_status.md) "Blockers") until its cause is found or a
+separate decision accepts or changes the criterion. D-S4-8b has evidence at
+low load only (Δp95 within baseline noise at concurrency 1); its
+high-contention requirement, and S4 at 20 concurrent requests, remain
+unverified, as do production performance and SQL Server 2008 R2. Left on DEV:
+440 audit rows and 5 soft-deleted test events.
+
+## 2026-11-16 — Page views are audited with `after()`, one row per render (M12 S5)
+
+Context: S3 built the audit writer and S4 connected the API actions. S5
+connects the three audited pages (decisions D1 and D4 of the M12 plan): the
+board, an event's detail page and the create form. A page has no wrapper
+around it, its request APIs are unavailable inside an `after()` callback, and
+the render's React `cache()` store -- where `getCurrentUser()` notes the
+actor -- is gone by the time the callback runs.
+
+Decision (approved as D-S5-1 to D-S5-4):
+
+- **D-S5-1.** The helper is `lib/pageAudit.ts`, beside `lib/apiHandler.ts`,
+  not `lib/audit/page.ts` next to the existing `lib/audit.ts`.
+- **How a page uses it.** `const audit = await beginPageAudit(op)` is the
+  page's first statement. It reads the request id and the prefetch headers,
+  keeps a reference to the render's request-context object, and registers an
+  `after()` callback whose outcome starts as `error` -- so a render that throws
+  before deciding anything is recorded as one. The page then calls
+  `audit.success(...)`, `audit.notFound()` or `audit.denied()` before it
+  renders or calls `notFound()`. The callback reads the actor from the kept
+  context object and writes through `db.audit.record` (D15, unchanged).
+- **The rows.** `board.view` records the section and the parsed filters (each
+  from a fixed set, never the query string). `event.view` is `not_found` for a
+  missing, hidden or deleted event alike, and `invalid` with reason
+  `invalid_id` for an `[id]` that is not a UUID; the response is the same 404
+  either way. `event.create_form.view` is `denied` for a member. Route
+  patterns are fixed (`/events`, `/events/:id`, `/events/new`). The status is
+  the one the outcome produces (200; 404 for `not_found`, `invalid` and
+  `denied`; 500 for `error`), because the callback cannot see the response.
+  `DurationMs` runs from the start of the page to the callback.
+- **D-S5-2.** `Metadata.view` is `host` when the management lists render (a
+  manager in the read view -- an admin who manages without hosting included),
+  `edit` in edit mode, and absent for everyone else.
+- **Prefetches.** In this application a router prefetch does not run a page:
+  there is no `loading.tsx` and no partial prerendering, so Next answers it
+  with the route tree only. The helper also writes nothing for a request
+  carrying `next-router-prefetch` or `next-router-segment-prefetch`, so a
+  prefetch that did reach a page would still write no row. Refreshes and
+  client-side navigations are renders and get a row each, including the
+  `router.refresh()` that follows every action in the UI.
+- **One row per render.** The helper marks the render's audit note, so a
+  second call in the same render writes nothing; `UNIQUE(RequestId)` holds it
+  in the database too.
+- **An audit problem never fails the page.** If the row cannot even be
+  registered, the page renders unaudited and `audit.write_failed`
+  (`writer_bug`) is logged; Next's own control-flow errors are passed on
+  untouched -- anything carrying a `digest`, and anything Next's
+  `unstable_rethrow` recognises (a React postpone, a signal wrapped as another
+  error's `cause`).
+- **Next and the database are loaded on first use**, as `withErrorHandling`
+  loads `db`, so the bare-Node `check:logging` can load the helper.
+
+Known limitations, accepted:
+
+- **D-S5-3.** The outcome is set before the page's child components render.
+  If one of them then throws, the row keeps `success` although the reader got
+  an error page. The application log's `next.request_error` for that request,
+  with the same request id, records the failure. No correlation between the
+  two was added.
+- **Lost rows.** A page view's row is written after the response. A process
+  killed outright (SIGKILL) before the write loses it; a graceful stop should
+  run pending `after()` work, which is still to be verified on DEV (the
+  shutdown test). Whether PM2's `kill_timeout` leaves the 1,500 ms write
+  deadline enough time on the server is an assumption.
+
+Rationale: reading everything during the render is the only way the callback
+can have it, and starting at `error` means a failure needs no code path of
+its own. The 404's indistinguishability is kept in the response while the
+audit row still separates a malformed id from a missing event.
+
+Consequences:
+
+- **D-S5-4.** From S5 on, every render of the three pages by a server running
+  this branch against DEV writes a permanent audit row. Rows from approved
+  DEV verification stay in the append-only table; each session's time window
+  and row count are recorded here.
+- S5 adds no schema, migration or SQL. It has not yet run against DEV: the
+  functional and shutdown checks and the D16 page-path benchmark (D-S5-5, a
+  reduced A B A design approved as the initial test) each need their own
+  approval and notice to the other developers.
+- S5 does not change S4's open D16 failure or its merge blocker.
+
+## 2026-11-16 — S5 page-view rows verified on DEV, functional checks and shutdown (M12 S5, session 1)
+
+Context: S5 (`0a82b83`) was checked locally only. Session 1 was approved to
+show, on a real Next render against DEV, that `after()` runs, that each render
+writes one correct row, that prefetches write none, and what a graceful stop
+does to pending writes. The other developers were notified first. The
+injected page-error test in the plan was dropped, because it needed a
+temporary code change that was not approved; the `error` outcome is
+therefore covered by `check:logging` only.
+
+Decision -- what was run, from a production build of `0a82b83` (`next start`,
+port 3100, `LOG_LEVEL=debug`) against DEV, 2026-11-16 13:54:59-13:56:31 UTC:
+16 page requests (one in the browser pane, the rest with curl and a persona
+cookie, one at a time), plus 12 prefetches the browser made itself.
+
+- **Functional, all passed.** Board with section and filters (metadata
+  `section` and the parsed `filters` only); an organizer's own event, read
+  view and a reload (two rows, `view: host`) and `?edit=1` (`view: edit`);
+  the create form (success); a member on an open event (success, no `view`);
+  a member on an invite-only event they are not invited to (`not_found`, 404,
+  event id kept); `/events/not-a-uuid` (`invalid`, `invalid_id`, 404, no event
+  id); a member on the create form (`denied`, 404); no cookie (actor the
+  default persona, `actorFallback: true`). Every row: channel `page`, `GET`,
+  the fixed route pattern, `HttpStatus` equal to the actual response, the
+  actor matching the cookie sent, and a `RequestId` equal to the response's
+  `x-request-id` and its `audit.written` line (written about 20-55 ms after
+  the response).
+- **Prefetches.** Hovering a card made the browser send 12 real RSC
+  prefetches (event pages and board variants); none wrote a row. A crafted
+  request with the prefetch headers but no `_rsc` parameter got Next's 307
+  cache-busting redirect and never reached the page, so it wrote nothing but
+  does not test the helper's own header check -- inconclusive, not repeated.
+- **Graceful shutdown.** Five concurrent board loads, then SIGTERM as soon as
+  the last response arrived: all five rows were written (13:56:20.766-.788)
+  and the server exited 0.27 s after the signal with code 143, Next's
+  graceful path; no `audit.write_failed`. The signal time was recorded only
+  to the second, so this does not show that any write was still pending when
+  the signal arrived -- no rows were lost and the stop was clean, but the
+  flush of in-flight writes is not proven. Not repeated.
+
+Deviations: the browser-pane request ran as a member (Tom), not the planned
+organizer, because the pane already held an HttpOnly `eb_persona` cookie for
+`localhost` (cookies are shared across ports) that a script cannot replace;
+its row is correct for that actor. A first attempt at the curl requests sent
+nothing (a shell variable named `path` overwrote `PATH`) and was corrected.
+
+Verified with read-only SQL and the application log: 15 rows in the window,
+15 distinct request ids, all `page`; no warning or error line, no Next error
+output, and no actor, name, id or credential in the log. DEV CPU peaked at
+4.4% (workers 10%). Event, registration, invite and co-host counts and their
+latest update times were unchanged.
+
+Consequences:
+
+- Left on DEV, by design (D-S5-4): 15 page audit rows in the window above
+  (table 688 → 703). No business data changed.
+- Still open for S5: the D16 page-path benchmark (session 2, D-S5-5, needs its
+  own approval and notice); the `error` outcome on a real render; proof that
+  a SIGTERM flushes writes still in flight (would need a deliberately slowed
+  write, which needs approval); PM2's `kill_timeout` on the server.
+- S4's open D16 failure, the incomplete 20-concurrent verification and the
+  merge blocker are unchanged; neither S4 nor M12 is accepted.
+
+## 2026-11-16 — S5 page benchmark, Stage 1 (exploratory): detail page within limits, board p95 warning; further testing deferred (M12 S5, session 2)
+
+Context: D16 sets the performance criteria. Its page-read criteria were not
+yet recorded in the repository; they are recorded here exactly as in the M12
+plan, whose p50/p95 metrics and latency thresholds were approved on
+2026-11-12 ("keep the proposed p50/p95 performance metrics and latency
+thresholds"; start with a smaller benchmark on shared DEV and expand only if
+results are inconclusive or indicate a regression). Δ is candidate minus
+baseline (`c108499`):
+
+| Page reads | Pass | Warning | Fail |
+|---|---|---|---|
+| Δp50, Δp95 | Δp50 ≤ 10 ms and Δp95 ≤ 25 ms | Δp95 between 25 and 50 ms | Δp95 above 50 ms |
+
+Any path also fails on a 5xx the baseline does not show, a changed business
+result or a duplicate audit row. Inconclusive: baseline-vs-baseline (A/A)
+p95 noise above the pass limit. On a warning, D16 reruns once; if it repeats,
+it is investigated and may be accepted with the reason recorded here. For
+this benchmark it was additionally decided, as for S4, that Δp50 above 10 ms
+is a failure even when Δp95 passes. The plan's original method was A B A B
+A B with 20 warm-up and 150 measured requests per run.
+
+Decision -- Stage 1 was approved as a reduced, **exploratory** test, not
+formal D16 acceptance: A (`c108499`) → B (`0a82b83`) → A, concurrency 1,
+`GET /events` and `GET /events/[id]` (Engineering All-Hands,
+`803b769a-…`, tied with a C3 test event for the most registrations among
+Maya-hosted events, 4; the seeded one was chosen), both as
+Maya, 10 warm-up and 50 measured requests per page per run, no think time,
+60 s pauses. Each version was built from a `git archive` export outside the
+repository and run with `next start` and the same environment against DEV.
+A driver outside the repository polled `sys.dm_db_resource_stats` every 5 s
+throughout, with stops at one sample above 50% CPU, data I/O or log writes,
+workers above 30%, any non-200, any request over 5 s, `audit.write_failed`,
+a missing or duplicate B row, or changed business data; a run started only
+below 20% CPU. Percentiles are nearest-rank; Δ is B against A1 and A2
+pooled, as for S4.
+
+Run 2026-11-16 14:26:37-14:29:38 UTC (A1 14:26:39-14:26:49, B
+14:27:52-14:28:04, A2 14:29:07-14:29:17). No stop condition triggered.
+
+| Page | A1 p50 / p95 | B p50 / p95 | A2 p50 / p95 | Δp50 | Δp95 | A/A p95 noise | Exploratory result |
+|---|---|---|---|---|---|---|---|
+| `GET /events` | 72.1 / 123.0 | 80.6 / 158.1 | 73.6 / 111.1 | +7.6 | **+42.7** | 11.9 | **warning** |
+| `GET /events/[id]` | 83.2 / 99.7 | 87.4 / 109.4 | 85.7 / 98.1 | +2.8 | +10.1 | 1.6 | within limits |
+
+(ms.) Against each baseline separately, the board's Δp50 was +8.5 and +7.0
+and its Δp95 +35.1 and +47.0. A resampling 95% interval for Δp50 is
++1.9 to +19.0 ms for the board and -0.7 to +4.6 ms for the detail page.
+
+Verified, from the saved results, server logs and read-only SQL: 360
+requests, all 200, no timeouts or retries; 120 audit rows, all from B, each
+matching exactly one request (`success`, 200, actor Maya, the expected
+operation, route and event id), none missing or duplicated, and no other rows
+in the window; the audit table went from 703 to 823; event, registration,
+invite and co-host counts and latest update times unchanged; no
+`audit.write_failed` or error line; every server stopped with code 143. The
+audit write itself (`audit.written`, after the response): median 20 ms, p95
+40 ms. RTT 13.4 ms before, 13.5 ms after. DEV peaks per 15-second sample:
+CPU 31.1% (A1), 37.2% (B), 35.0% (A2); workers 16.7% and log writes 3.8%,
+both during B; data I/O 0%. CPU was back under 1% within about 30 s of each
+run.
+
+Limitations:
+
+- 50 measured requests per run: p95 is the 48th of 50 and has no bounded
+  95% interval. The board's Δp95 rests on a few slow B requests (128-335 ms,
+  against a baseline maximum of 166 ms).
+- The board's Δp50 interval crosses its 10 ms limit, so its p50 is not
+  conclusively within the limit.
+- Concurrency 5 was not tested.
+- Each run lasted about 10 s, shorter than Azure's 15-second resource
+  samples, which also arrive a few seconds late; a load stop could act only
+  near the end of a run (the first sample after each run was also checked).
+- Laptop to Azure SQL DEV only; nothing about production or SQL Server 2008
+  R2.
+- Why the board's slowest requests were slower under S5 is not established.
+  A plausible cause -- each render's audit write overlapping the next render,
+  which opens up to five pool connections -- is an inference only.
+
+Decision (2026-11-17): no further S5 performance testing for now. The board
+warning is not rerun, there is no concurrency-5 probe and no formal A B A B
+page benchmark, and the warning is not investigated or optimised. Rationale:
+the application is not currently expected to have high traffic, and Stage 1
+showed no severe regression, so the remaining milestone work takes priority
+over more benchmarking. This is a deferral, not a waiver: no D16 waiver or
+performance exception was approved, and the thresholds are unchanged.
+
+Consequences:
+
+- **Open:** the board's p95 warning; the board's p50 is not conclusively
+  within its limit. D16's warning rerun is **deferred, not passed**.
+- S5's functional DEV verification is complete (session 1). Its **formal
+  performance acceptance remains outstanding**; Stage 1 does not establish
+  it. S5 is not accepted.
+- Left on DEV, by design (D-S5-4): 120 page audit rows in the window above.
+  No business data changed. The builds, driver and logs stayed outside the
+  repository.
+- S4's D16 concurrency-5 p50 failure, the incomplete 20-concurrent
+  verification and the D16 merge gate are unchanged; M12 is not eligible for
+  merge under the approved acceptance requirements.
+
+## 2026-11-17 — The documented D16 performance findings are accepted as known risks and do not block the M12 merge (M12)
+
+Context: D16's rule is that on a failure S4 and S5 are not merged until the
+cause is found (2026-11-16, D-S4-9). Several D16 items are open: one failed,
+one warning, one inconclusive and several never completed. Further
+performance work was already deferred (2026-11-16, S4 and S5 session 2).
+
+Decision: an explicit **risk acceptance and waiver of the D16 merge gate**,
+for these findings only:
+
+- S4: Δp50 28.4 ms at concurrency 5 against a 25.4 ms limit -- **failed**
+  (2026-11-16, D-S4-9).
+- S4: the 20-concurrent verification -- **not completed** (2026-11-16,
+  D-S4-8).
+- S5 board: Δp95 +42.7 ms -- **warning** (2026-11-16, S5 session 2).
+- S5 board: Δp50 +7.6 ms, 95% interval up to +19.0 ms -- **not conclusively
+  within** its 10 ms limit (same entry).
+- S5: formal performance acceptance -- **not completed**; Stage 1 was
+  exploratory (same entry).
+- S5: the warning rerun and any further page or mutation benchmark --
+  **deferred**, not run.
+
+These findings stay recorded as they are, as known performance risks. None
+of them passed. The D16 thresholds, the measurements and the earlier entries
+are unchanged; only D16's merge consequence is set aside, and only for the
+list above. A new D16 failure, or any finding not listed, would block again.
+
+The waiver does not cover functional correctness, security, redaction, audit
+integrity, SQL compatibility, or any other requirement. M12's status is
+therefore three separate things:
+
+1. **Functional verification** -- done on DEV for S4 (refusals, success paths,
+   fault injection, a reduced race test) and S5 (session 1).
+2. **Formal performance acceptance** -- not achieved for S4 or S5.
+3. **Merge** -- the open performance findings no longer block it; every
+   non-performance requirement still has to be verified before the PR is
+   merged.
+
+Rationale: the application is not expected to have high traffic, no severe
+regression was shown, and further benchmarking on the shared DEV Basic
+database costs other developers capacity. The risks are accepted knowingly,
+not resolved.
+
+Consequences: [s_status.md](s_status.md) no longer lists the D16 findings as
+a merge blocker; it keeps them as known risks. Revisit them before a
+production load that the low-traffic assumption does not cover.
+
+## 2026-11-17 — M12 decision register, and the final pre-merge decisions (M12 S6)
+
+Context: the M12 plan's decision register (D1-D17, Q1) was agreed in the
+planning session; the plan itself is not in the repository. Each decision
+was recorded in the entry for the slice that implemented it, mostly without
+its id. This register maps each id to its final status and its record, and
+states the few that had no record.
+
+| Id | Decision | Status | Recorded in |
+|---|---|---|---|
+| — | Two logs: the audit log in SQL Server, the application log on stdout/stderr (collected by PM2), joined by the request id | Approved, implemented | 2026-11-12 (S2), 2026-11-15 (S3); [a_system.md](a_system.md) "Audit log", "Application log" |
+| — | A small built-in logger with an allowlist of fields, no logging dependency | Approved, implemented (S1) | here; 2026-11-12 (S2) context |
+| D1 | Audit scope: the board, an event's detail page (with a host flag) and the create form; refreshes yes, prefetches no; plus the 14 API actions | Approved, implemented | 2026-11-15 (S4), 2026-11-16 (S5) |
+| D2 | Table shape: no foreign keys, a `Metadata` column, clustered on `OccurredAt`, `UNIQUE(RequestId)` | Approved, implemented | 2026-11-15 (S3) |
+| D3 | API actions: an independent audit write after the business transaction, awaited before the response; never inside the transaction; an audit failure never changes the business result | Approved, implemented | 2026-11-15 (S3, S4) |
+| D4 | Page views written with `after()` | Approved, implemented | 2026-11-16 (S5) |
+| D5, D6 | Rows kept indefinitely, append-only, no purge, not cleared by `db:reset` | Approved, implemented | 2026-11-15 (S3); `events-audit-append-only` in [docs/sql-server-2008r2-compatibility.md](../docs/sql-server-2008r2-compatibility.md) |
+| D7 | `X-Request-Id` on every request except static files, set by `proxy.ts` | Approved, implemented (S1) | 2026-11-12 (S2) context; [a_system.md](a_system.md) "Application log" |
+| D8 | `Metadata.actorFallback` when the default persona stands in | Approved, implemented | 2026-11-15 (S3) "Actor" |
+| D9 | The connection-string redactor (`createRedactor`) reaches the application through `lib/data/client.ts` | Approved, implemented (S1) | here |
+| D10 | Testing on shared DEV: dedicated test events, bounded concurrency, no tests that change permissions or rename tables, no `db:reset` | Approved, followed | the 2026-11-16 DEV entries |
+| D11 | Migration 0004 applied to DEV only with separate approval | Approved, done 2026-11-15 | 2026-11-15 (D11) |
+| D12 | The audit log is read through SQL access only; there is no product UI for it | Approved | here |
+| D13 | `session.read` and `session.switch` are not audited | Approved, implemented | 2026-11-15 (S4) |
+| D14 | An `ActorSource` column and constraint | **Withdrawn** (column removed; D8 instead) | — |
+| D15 | Audit write timeout and retry: 1,500 ms overall, 1,000 ms first attempt, one retry for quick transient errors | Approved, implemented | 2026-11-15 (S3) "Write policy" |
+| D16 | Performance thresholds, mutations and pages | Approved 2026-11-12, thresholds unchanged; **not met** -- see the findings and their waiver | 2026-11-16 (D-S4-9; S5 session 2), 2026-11-17 (waiver) |
+| D17 | M12 comes before authentication: `Events_Users.Id` stays the identifier, `getCurrentUser()` the entry point, no authentication work in M12 | Approved | here |
+| Q1 | `ActorUserId` is `Events_Users.Id`, `ActorName` a snapshot of the display name, no login column | Approved, implemented | 2026-11-15 (S3) |
+
+The slice-level decisions (D-S4-*, D-S5-*) are in their slices' entries. M12
+is delivered as one PR into `yardenah/events-board`, built in slices, not one
+PR per slice as the plan first proposed.
+
+Final pre-merge decisions:
+
+- **Shutdown flush -- accepted as an operational limitation.** The plan
+  required that a graceful SIGTERM flush pending page-view rows. S5 session 1
+  showed a clean shutdown (exit 143) with no row lost, but did not show that a
+  write still in flight at the signal completes, so this is **not fully
+  verified**. The remaining uncertainty is accepted for this merge; no further
+  DEV shutdown test is run. PM2's settings -- `kill_timeout` (at least 1.6 s
+  for the 1,500 ms write deadline) among them -- are unverified and must be
+  checked before deploying to production
+  ([u_environment.md](u_environment.md) "Logs and the audit table in
+  operation").
+- **The final organizer/member walkthrough is satisfied by existing DEV
+  sessions.** The API routes were exercised on DEV in S4 phases A and B
+  (build `adc0190`) as the organizers Maya and Daniel and the members Priya
+  and Tom; no API or shared library code has changed since -- only the three
+  pages and `lib/pageAudit.ts`. Those pages were exercised as Maya
+  (organizer and host), Tom (member) and without a cookie in S5 session 1
+  (build `0a82b83`), and every later commit changes documentation only. The
+  checks were HTTP-level, not click-throughs; M12 changed no rendered UI. No
+  walkthrough is repeated.
+- **The admin persona verified on DEV.** [TASKS.md](../TASKS.md) §7 asks for
+  all five personas, and Sara had no recorded verification. One approved
+  session, 2026-11-17 08:30:32-08:30:41 UTC, from a production build of the
+  current code (with the S1 export change below), other developers notified:
+  four requests as Sara on events Maya hosts -- the board (`board.view`,
+  success), Engineering All-Hands (`event.view`, success, `view: host`), the
+  same with `?edit=1` (`view: edit`), and cancelling the already-cancelled
+  "Postmortem: Checkout Outage" (`event.cancel`, `rejected`, 409,
+  `closed:cancelled`, refused before any write). Verified with read-only
+  SQL: exactly four rows, each with Sara as actor and a request id equal to
+  the response's; event, registration, invite and co-host counts and latest
+  update times unchanged, both events untouched; no warning or error line
+  and nothing naming Sara in the application log. Left on DEV: these four
+  audit rows (table 823 → 827). With S4 and S5's sessions, all five
+  personas have now acted on DEV with M12's code.
+- **Seven unused S1 type exports removed.** `LogLevel`, `LogFormat`,
+  `LogEvent`, `Logger` (`lib/log.ts`) and `RequestContext`, `ActorNote`,
+  `AuditNote` (`lib/requestContext.ts`) were exported but referenced only in
+  their own files. [TASKS.md](../TASKS.md) §7 asks for no unused exports, and
+  the 2026-11-04 entry already applied it to types (`BadgeVariant`,
+  `ButtonSize`), so only the `export` keyword was removed; the declarations
+  stay, and the change is type-only, with no runtime effect. Other unused
+  exports older than M12 were not part of this review.
+
+Consequences: with S6 every M12 slice is implemented and documented. M12 is
+not declared ready to merge here: its remaining non-performance requirements
+are listed in [s_status.md](s_status.md) "Blockers".
+
+## 2026-11-17 — Pre-PR review fixes: the server host behind `tcp:` and `\instance` is redacted, ten more unused exports dropped, connect failures are definite non-writes (M12)
+
+Context: a review of the whole M12 diff (`c108499..6736a5a`) before the PR
+confirmed three defects. None changes a response, a business result or the
+D15 deadline and retry policy, and none touches the D16 findings or their
+waiver.
+
+Decision:
+
+- **Redaction of the server host.** The connection-string redactor masked a
+  server value and its part before the comma. The `mssql` driver also drops a
+  leading `tcp:` and a `\instance` before it connects, and its errors name the
+  bare host that is left -- so `Server=tcp:host,1433`, the Azure portal's own
+  form, and `Server=host\INSTANCE` let the host through into `db.pool_error`,
+  `api.unhandled_error` and `next.request_error`. `lib/data/redact.mts` now
+  also masks the host derived the way the driver derives it. The rule
+  predates M12; M12 is what sends driver errors to a collected log. DEV's
+  connection string uses neither form. The database name and the login name
+  stay readable, as before.
+- **Ten unused exports.** `AUDIT_OPERATIONS`, `AUDIT_OUTCOMES`,
+  `AUDIT_CHANNELS`, `AuditChannel`, `AUDIT_SUBJECT_TYPES`, `AUDIT_LIMITS`
+  (`lib/audit.ts`), `PageAuditOutcome`, `PageAuditDetails`, `PageAudit`
+  (`lib/pageAudit.ts`) and `HandlerOptions` (`lib/apiHandler.ts`) were
+  exported but referenced only in their own files. As with the seven S1 types
+  earlier the same day, only `export` was removed. With these, no export M12
+  added is unused; older unused exports (`lib/date.ts`, `lib/seed.ts`,
+  `lib/session.ts` and others) were not part of M12 and are left for a
+  separate cleanup.
+- **A connect failure is a definite non-write.** The writer classified a
+  failure by its driver code alone, so a pool that could not connect --
+  rejecting with `ESOCKET` or `ETIMEOUT` before any query -- was logged as
+  `ambiguous` (and `ETIMEOUT` as `timeout`), contrary to the 2026-11-15 (S3)
+  decision that a failure to get a connection is a definite non-write.
+  `insertAudit` now marks the attempt unsent until immediately before
+  `.query`; a failure while unsent is `reason: "connection"`,
+  `ambiguous: false`. Whether it is retried is unchanged, and so is an
+  attempt abandoned at the deadline, which stays ambiguous as S3 decided.
+
+Verified locally: `check:redaction` 198 (15 new checks over five server
+forms) and `check:logging` 212 (4 new checks), each new check shown to fail
+with its fix removed; typecheck, lint, build and `check:tsql` clean. No DEV
+access.
+
+Consequences: the [TASKS.md](../TASKS.md) §7 "no unused exports" point is
+met for M12's own exports. The rest of M12's status is unchanged -- see
+[s_status.md](s_status.md) "Blockers".
+
+## 2026-11-17 — PR review fixes: pretty log lines show error codes, and page renders log with their request id (M12)
+
+Context: the automated review of the M12 PR (#56) raised two Medium
+findings. Both were checked against the code and both held.
+
+Decision:
+
+- **Pretty output keeps the error code and SQL number.** `serializeError`
+  already keeps an error's driver code (redacted, bounded) and its SQL
+  Server number, and the JSON format prints them; the pretty format printed
+  only `name: message`. An error reduced to its kind by `errorKind` has no
+  message at all, so a pretty `audit.write_failed` line showed nothing but
+  the name. `lib/log.ts` now appends `[code=… number=…]` to the error and to
+  each `caused by` line, from the same already-redacted values. JSON output
+  is unchanged, and no message, stack or field reaches either format that
+  did not before.
+- **A page render's context gets its request id.** A render's request
+  context (React `cache()`) was created with no id -- only an API handler's
+  is entered with one -- so a line logged during a render had none, though
+  the response and the audit row carry it. `beginPageAudit`, the first
+  statement of every audited page, now sets the render context's id to the
+  validated one it already computes for the row, only when the context has
+  none. Each render has its own context, so concurrent renders cannot share
+  or swap ids; an API handler's id is never replaced. Renders of pages that
+  are not audited still log without an id, as before.
+
+Verified locally: 9 new `check:logging` checks (221 in all), each set shown
+to fail with its fix removed; typecheck, lint, build, `check:tsql` and
+`check:redaction` clean. No DEV access.
+
+Consequences: none for responses, business results, audit rows or the
+accepted D16 findings and limitations.

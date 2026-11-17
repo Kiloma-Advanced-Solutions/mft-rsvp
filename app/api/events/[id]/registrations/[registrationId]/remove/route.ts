@@ -21,7 +21,8 @@
  * `lib/permissions.ts`.
  */
 
-import { ApiError, jsonOk, withErrorHandling } from "@/lib/api";
+import { ApiError, jsonOk } from "@/lib/api";
+import { closedReason, withErrorHandling } from "@/lib/apiHandler";
 import { db } from "@/lib/db";
 import { getEventDetailForViewer } from "@/lib/events";
 import {
@@ -33,6 +34,7 @@ import {
   canManageEvent,
   getAttendeeRemovalAvailability,
 } from "@/lib/permissions";
+import { noteCommitted } from "@/lib/requestContext";
 import { getCurrentUser } from "@/lib/session";
 
 type Context =
@@ -83,7 +85,10 @@ export const POST = withErrorHandling(
     });
 
     if (availability.state === "closed") {
-      throw ApiError.conflict(attendeeRemovalClosedNote(availability.reason));
+      throw ApiError.conflict(
+        attendeeRemovalClosedNote(availability.reason),
+        closedReason(availability.reason),
+      );
     }
 
     // Taking a place back only lowers the `going` count, so it cannot put the
@@ -105,11 +110,13 @@ export const POST = withErrorHandling(
 
     switch (write.outcome) {
       case "updated":
+        noteCommitted();
         return jsonOk({ registration: write.registration });
       case "stale":
-        throw ApiError.conflict(ATTENDEE_ACTION_COPY.stale);
+        throw ApiError.conflict(ATTENDEE_ACTION_COPY.stale, "stale");
       case "gone":
-        throw ApiError.notFound();
+        throw ApiError.notFound(undefined, "gone");
     }
   },
+  { audit: "attendee.remove" },
 );

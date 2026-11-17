@@ -62,6 +62,8 @@
  * Never import this from a Client Component. Client code talks to API routes.
  */
 
+import { writeAudit, type AuditInput, type AuditWriteResult } from "./audit";
+import { insertAudit } from "./data/audit";
 import {
   createEvent,
   getEvent,
@@ -368,6 +370,18 @@ export const db = {
       registrationId: string,
     ): Promise<SeatRestore> {
       return restoreAttendee({ eventId, registrationId, now: now() });
+    },
+  },
+
+  audit: {
+    /**
+     * Appends one audit row -- an independent insert on the pool, never part
+     * of a business transaction -- under the D15 write policy in `lib/audit.ts`.
+     * Never throws: a failure is logged as `audit.write_failed`, and the
+     * business result it describes stands.
+     */
+    async record(input: AuditInput): Promise<AuditWriteResult> {
+      return writeAudit(input, insertAudit);
     },
   },
 };

@@ -6,12 +6,14 @@
  * `scripts/check-target-compatibility.mts`. It used to be copied into all
  * three, which is how all three came to have the same bug.
  *
- * Not application code, and nothing under `app/`, `components/` or `lib/*.ts`
- * imports it: the application never holds a connection string of its own --
- * `lib/data/client.ts` reads the environment variable and hands it straight to
- * the driver. This lives beside its two main callers rather than in `scripts/`
- * so that `lib/data/` does not have to import upwards out of itself. It holds
- * no SQL, so being inside a `check:tsql` scan root costs nothing.
+ * The application uses it in exactly one place: `lib/data/client.ts`, the one
+ * module that reads the connection string, builds a redactor from it and
+ * installs it in the application log (`lib/log.ts`), so a driver error that
+ * quotes the credentials is masked there as well. Nothing else under `app/`,
+ * `components/` or `lib/*.ts` imports it. This lives beside its main callers
+ * rather than in `scripts/` so that `lib/data/` does not have to import upwards
+ * out of itself. It holds no SQL, so being inside a `check:tsql` scan root costs
+ * nothing.
  *
  * WHAT IT IS FOR. A driver error can quote the text it was given, and these
  * commands print driver errors because that is where the useful detail is. So
@@ -201,6 +203,23 @@ function escapeForRegExp(value: string): string {
 }
 
 /**
+ * The host the `mssql` driver connects to, derived from a server value the way
+ * the driver derives it (`lib/base/connection-pool.js`, `data source`): a
+ * leading `tcp:` is dropped, then anything from the last `\` (a named
+ * instance), then anything from the last `,` (a port). `tcp:db.example.net,1433`
+ * and `db.example.net\SQLEXPRESS` both give `db.example.net`, which is what the
+ * driver's connection errors name.
+ */
+function driverHost(server: string): string {
+  let host = server.trim().replace(/^tcp:/i, "");
+  const named = /^(.*)\\(.*)$/.exec(host);
+  if (named) host = named[1];
+  const withPort = /^(.*),(.*)$/.exec(host);
+  if (withPort) host = withPort[1];
+  return host.trim();
+}
+
+/**
  * Builds a masker from the connection string without revealing it.
  *
  * Credentials and the server address are masked wherever they appear, including
@@ -245,6 +264,9 @@ export function createRedactor(connectionString: string): (text: string) => stri
       // Adding the bare host masks it in both forms.
       const [host] = value.split(",");
       if (host !== undefined && host.trim() !== "") add(host.trim());
+      // The driver also drops a `tcp:` prefix and a `\instance` before it
+      // connects, and its errors name what is left -- so mask that too.
+      add(driverHost(value));
     }
   }
 

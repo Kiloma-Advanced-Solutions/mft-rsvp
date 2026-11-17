@@ -19,11 +19,13 @@
  * `lib/permissions.ts` -- the same answers the detail page renders from.
  */
 
-import { ApiError, jsonOk, withErrorHandling } from "@/lib/api";
+import { ApiError, jsonOk } from "@/lib/api";
+import { closedReason, withErrorHandling } from "@/lib/apiHandler";
 import { db } from "@/lib/db";
 import { eventExists, getEventDetailForViewer } from "@/lib/events";
 import { MANAGE_ACTION_COPY, cancellationClosedNote } from "@/lib/labels";
 import { canManageEvent, getCancellationAvailability } from "@/lib/permissions";
+import { noteCommitted } from "@/lib/requestContext";
 import { getCurrentUser } from "@/lib/session";
 
 type Context = RouteContext<"/api/events/[id]/cancel">;
@@ -53,7 +55,10 @@ export const POST = withErrorHandling(
 
     const availability = getCancellationAvailability(detail.event);
     if (availability.state === "closed") {
-      throw ApiError.conflict(cancellationClosedNote(availability.reason));
+      throw ApiError.conflict(
+        cancellationClosedNote(availability.reason),
+        closedReason(availability.reason),
+      );
     }
 
     // Conditional on the row still being published, so two requests that both
@@ -72,10 +77,12 @@ export const POST = withErrorHandling(
       // and this write -- the same 404 as an event that never existed -- or it
       // is still there and the row moved first, which stays a conflict.
       throw (await eventExists(detail.event.id))
-        ? ApiError.conflict(MANAGE_ACTION_COPY.stale)
-        : ApiError.notFound();
+        ? ApiError.conflict(MANAGE_ACTION_COPY.stale, "stale")
+        : ApiError.notFound(undefined, "gone");
     }
+    noteCommitted();
 
     return jsonOk({ event });
   },
+  { audit: "event.cancel" },
 );

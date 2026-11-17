@@ -23,6 +23,7 @@ import "server-only";
 
 import { isPlausibleRecipientEmail } from "@/lib/emails/recipientEmail";
 import type { SendMailResult } from "@/lib/emails/types";
+import { errorKind, log } from "@/lib/log";
 
 const MAIL_SERVICE_URL_VAR = "MAIL_SERVICE_URL";
 const SENDER_NAME_VAR = "EVENTS_MAIL_SENDER_NAME";
@@ -44,8 +45,8 @@ type SenderConfig = {
 };
 
 /**
- * The configured sender, or `null`. Logs which variables are missing or
- * malformed -- by name, never by value.
+ * The configured sender, or `null`. Logs that the sender is not configured --
+ * as a code, never with the values. The variables it reads are named above.
  */
 function readSenderConfig(): SenderConfig | null {
   const senderName = process.env[SENDER_NAME_VAR]?.trim() ?? "";
@@ -61,9 +62,7 @@ function readSenderConfig(): SenderConfig | null {
   ].filter((name): name is string => typeof name === "string");
 
   if (problems.length > 0) {
-    console.warn(
-      `sendMail: ${problems.join(", ")} not set or not valid, skipping`,
-    );
+    log.warn("mail.not_configured", { component: "mail", reason: "no_sender_config" });
     return null;
   }
   return { senderName, senderEmail, systemID };
@@ -78,7 +77,7 @@ export async function sendMail({
 }: SendMailParams): Promise<SendMailResult> {
   const baseUrl = process.env[MAIL_SERVICE_URL_VAR]?.trim();
   if (!baseUrl) {
-    console.warn(`sendMail: ${MAIL_SERVICE_URL_VAR} is not set, skipping`);
+    log.warn("mail.not_configured", { component: "mail", reason: "no_api_url" });
     return { ok: false, reason: "no_api_url" };
   }
 
@@ -108,10 +107,15 @@ export async function sendMail({
     });
 
     if (!response.ok) {
-      // Bounded, as the reference bounds it: enough to diagnose from the log,
-      // never a whole page echoed back.
+      // Bounded, as the reference bounds it. Returned to the caller, which keeps
+      // it from the client; not logged, because a mail service can echo the
+      // addresses and content it was sent. The status is what the log needs.
       const detail = (await response.text().catch(() => "")).slice(0, 500);
-      console.error("sendMail: mail service error", response.status, detail);
+      log.error("mail.send_failed", {
+        component: "mail",
+        reason: "bad_status",
+        status: response.status,
+      });
       return {
         ok: false,
         reason: "bad_status",
@@ -126,11 +130,13 @@ export async function sendMail({
       err instanceof Error &&
       (err.name === "AbortError" || err.name === "TimeoutError");
     if (timedOut) {
-      console.error("sendMail: mail service fetch timed out");
+      log.error("mail.send_failed", { component: "mail", reason: "timeout" });
       return { ok: false, reason: "timeout" };
     }
 
-    console.error("sendMail:", err);
+    // Kind and code only: `fetch`'s message quotes the whole URL, credentials
+    // included, and its cause names the mail service's host and port.
+    log.error("mail.send_failed", { component: "mail", reason: "network", err: errorKind(err) });
     return {
       ok: false,
       reason: "network",

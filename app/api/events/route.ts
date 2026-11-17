@@ -15,7 +15,8 @@
  * overwrite and no ordering bug that could let one through.
  */
 
-import { ApiError, jsonOk, readJson, withErrorHandling } from "@/lib/api";
+import { ApiError, jsonOk, readJson } from "@/lib/api";
+import { scheduleReason, withErrorHandling } from "@/lib/apiHandler";
 import { db } from "@/lib/db";
 import { parseEventBody } from "@/lib/eventInput";
 import {
@@ -24,6 +25,7 @@ import {
   scheduleFieldErrors,
 } from "@/lib/labels";
 import { canCreateEvent, checkEventSchedule } from "@/lib/permissions";
+import { noteAuditEventId, noteCommitted } from "@/lib/requestContext";
 import { getCurrentUser } from "@/lib/session";
 import type { AccentKey } from "@/lib/types";
 
@@ -79,7 +81,11 @@ export const POST = withErrorHandling(async (request: Request) => {
   const body = await readJson(request);
   const parsed = parseEventBody(body);
   if (!parsed.ok) {
-    throw ApiError.badRequest(EVENT_FORM_ERRORS.formRejected, parsed.errors);
+    throw ApiError.badRequest(
+      EVENT_FORM_ERRORS.formRejected,
+      parsed.errors,
+      "validation",
+    );
   }
 
   // Nothing is stored yet, so the start is new by definition and has to be
@@ -89,6 +95,7 @@ export const POST = withErrorHandling(async (request: Request) => {
     throw ApiError.badRequest(
       EVENT_FORM_ERRORS.formRejected,
       scheduleFieldErrors(schedule.errors),
+      scheduleReason(schedule.errors),
     );
   }
 
@@ -101,6 +108,8 @@ export const POST = withErrorHandling(async (request: Request) => {
     status: "draft",
     accent: accentForTitle(parsed.value.title),
   });
+  noteAuditEventId(event.id);
+  noteCommitted();
 
   return jsonOk({ event }, 201);
-});
+}, { audit: "event.create" });

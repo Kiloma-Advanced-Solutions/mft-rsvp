@@ -21,7 +21,8 @@
  * `lib/events.ts`, manageability and both rules from `lib/permissions.ts`.
  */
 
-import { ApiError, jsonOk, withErrorHandling } from "@/lib/api";
+import { ApiError, jsonOk } from "@/lib/api";
+import { closedReason, withErrorHandling } from "@/lib/apiHandler";
 import { db } from "@/lib/db";
 import { getEventDetailForViewer } from "@/lib/events";
 import {
@@ -34,6 +35,7 @@ import {
   getInvitationAvailability,
   getInvitationRevocationAvailability,
 } from "@/lib/permissions";
+import { noteCommitted } from "@/lib/requestContext";
 import { getCurrentUser } from "@/lib/session";
 import type { EventDetailContext, User } from "@/lib/types";
 
@@ -90,13 +92,17 @@ export const POST = withErrorHandling(
 
     const availability = getInvitationAvailability(detail.event, { invitee });
     if (availability.state === "closed") {
-      throw ApiError.conflict(invitationClosedNote(availability.reason));
+      throw ApiError.conflict(
+        invitationClosedNote(availability.reason),
+        closedReason(availability.reason),
+      );
     }
 
     const write = await db.events.invite(detail.event.id, invitee);
 
     switch (write.outcome) {
       case "invited":
+        noteCommitted();
         return jsonOk(
           { invitation: { eventId: detail.event.id, userId: invitee.id } },
           201,
@@ -104,17 +110,19 @@ export const POST = withErrorHandling(
       case "refused":
         // Every refused outcome carries a closed availability; the fallback is
         // what proves that to the compiler rather than a case that can happen.
-        throw ApiError.conflict(
-          write.availability.state === "closed"
-            ? invitationClosedNote(write.availability.reason)
-            : MANAGE_ACTION_COPY.stale,
-        );
+        throw write.availability.state === "closed"
+          ? ApiError.conflict(
+              invitationClosedNote(write.availability.reason),
+              closedReason(write.availability.reason),
+            )
+          : ApiError.conflict(MANAGE_ACTION_COPY.stale, "stale");
       case "gone":
         // Deleted while this request was in flight -- the same 404 as an event
         // that never existed.
-        throw ApiError.notFound();
+        throw ApiError.notFound(undefined, "gone");
     }
   },
+  { audit: "invitation.add" },
 );
 
 /**
@@ -135,6 +143,7 @@ export const DELETE = withErrorHandling(
     if (availability.state === "closed") {
       throw ApiError.conflict(
         invitationRevocationClosedNote(availability.reason),
+        closedReason(availability.reason),
       );
     }
 
@@ -145,15 +154,18 @@ export const DELETE = withErrorHandling(
 
     switch (revocation.outcome) {
       case "revoked":
+        noteCommitted();
         return jsonOk({ revoked: true });
       case "refused":
-        throw ApiError.conflict(
-          revocation.availability.state === "closed"
-            ? invitationRevocationClosedNote(revocation.availability.reason)
-            : MANAGE_ACTION_COPY.stale,
-        );
+        throw revocation.availability.state === "closed"
+          ? ApiError.conflict(
+              invitationRevocationClosedNote(revocation.availability.reason),
+              closedReason(revocation.availability.reason),
+            )
+          : ApiError.conflict(MANAGE_ACTION_COPY.stale, "stale");
       case "gone":
-        throw ApiError.notFound();
+        throw ApiError.notFound(undefined, "gone");
     }
   },
+  { audit: "invitation.revoke" },
 );

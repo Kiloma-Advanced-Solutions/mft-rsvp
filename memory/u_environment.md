@@ -81,11 +81,88 @@ after a `sys.tables` snapshot before and after showed that only
 code from before C5 still sees soft-deleted events as live — see
 [s_status.md](s_status.md) "Known limitations".
 
+**Migration `0004` (M12)** creates `dbo.Events_AuditLog`: 17 columns, a
+nonclustered primary key on `Id`, `UNIQUE(RequestId)`, three CHECK constraints
+(`Channel`, `SubjectType`, `Outcome`), a clustered index on `OccurredAt` and
+three nonclustered indexes -- no defaults, foreign keys or triggers. It was
+applied to the shared Azure SQL DEV database on 2026-11-15 at 14:36:18 UTC,
+from the M12 branch at `1b297e2`, with explicit approval and after the other
+developers were notified, by running `node --env-file=<main checkout>/.env.local
+lib/data/migrate.mts` once (exit 0, 5 batches, about one second): four
+migrations applied, none pending, the new table empty and the existing
+`Events_*` tables unchanged. The before-and-after checks and the first real
+audit write are in [dec_log.md](dec_log.md) (2026-11-15, D11). From S5 on, a server
+running this branch against DEV also writes a row for every render of the
+board, an event's detail page and the create form -- browsing it locally
+writes to DEV. The browser pane keeps its own cookies for `localhost`,
+shared across ports, so a page opened there may run as whichever persona was
+last chosen in the pane, not the default. The audit
+table now holds test rows from M12's DEV sessions (827 rows after S6's
+admin check), and DEV keeps 19
+soft-deleted `[M12 test]` events with their registrations; the time windows
+are in [dec_log.md](dec_log.md) (2026-11-16 and 2026-11-17). The same database holds another
+application's `dbo.AuditLogs` (plural), which is unrelated. Run the runner with
+`node` directly: `npm run db:migrate --status` without the `--` lets npm
+swallow the flag and **applies** migrations instead.
+
 `npm run db:check` reports the target's isolation flavour. On Azure SQL DEV it
 reports `READ_COMMITTED_SNAPSHOT` on; C5 additionally observed that optimized
 locking is on there (`DATABASEPROPERTYEX(DB_NAME(), 'IsOptimizedLockingOn')`),
 which `db:check` does not report. Concurrency results from DEV are evidence about
 that engine only; nothing has been run against a real SQL Server 2008 R2.
+
+**Capacity of DEV** (read-only catalog queries, 2026-11-15, M12 S4). The
+database is Azure SQL **Basic** (service objective `Basic`, not in an elastic
+pool): a 2 GB size limit and a small, shared compute allowance (5 DTU). On that
+day the data file was 64 MB allocated with about 41 MB used, the log file 72 MB
+with about 3% used (5 GB limit, FULL recovery with Azure's own log backups),
+and accelerated database recovery was on, so row versions live in the database
+itself. The `Events_*` tables took under 1 MB. The database is shared with
+other applications' tables. Measured load was close to idle (CPU peak about
+1% over the previous hour). For anything that sends many requests -- a race
+test, a benchmark -- the compute allowance, not storage, is the limit: the
+application's pool opens at most 10 connections, and a Basic database also
+caps concurrent workers. Watch `sys.dm_db_resource_stats` while such a test
+runs. Measured on 2026-11-16: 20 concurrent seat claims sent back to back drove
+CPU to 99.7% within the first minute, while 3-5 concurrent requests with a
+3-second pause between rounds peaked at 21%. A `SELECT 1` through the
+application's pool took a median of about 15 ms. That includes the `mssql`
+driver's default connection check (`validateConnection: true`), which runs its
+own `SELECT 1` each time a connection is taken from the pool, so every
+database call is two round trips.
+
+## Logs and the audit table in operation
+
+- **The application log** goes to stdout and stderr. `LOG_LEVEL` and
+  `LOG_FORMAT` are optional; [.env.example](../.env.example) is authoritative
+  for their values and defaults. `LOG_LEVEL=debug` adds an `audit.written`
+  line per audit row, with its timing -- useful when checking the audit
+  writer, noisy otherwise.
+- **The audit table** is read through SQL only; there is no screen for it.
+  Its rows stay indefinitely, and `db:reset` does not clear it.
+- **Investigating an incident.** Find the audit row by user, event or time in
+  `dbo.Events_AuditLog` and take its `RequestId`; then search the application
+  log -- the PM2 log files -- for that id. The same id is the `X-Request-Id`
+  response header. A request with no audit row can still be found in the log
+  by its id; why a row can be missing is in [a_system.md](a_system.md) "When
+  a row can be missing".
+- **Retention differs.** Audit rows are kept indefinitely; how long log lines
+  are kept is PM2's log configuration.
+
+**PM2 -- unverified, to be checked with operations before deploying to
+production.** The repository contains no PM2 configuration and M12 changes
+none. To confirm:
+
+- the app name, and fork or cluster mode;
+- the log file paths, and who can read them;
+- whether `pm2-logrotate` is installed, with its size, retention and
+  compression settings;
+- whether PM2 adds a timestamp or prefix to each line, which affects reading
+  the JSON lines with `jq`;
+- the stop signal and `kill_timeout`: **at least 1.6 s** so a pending audit
+  write can use its 1,500 ms deadline; 10 s is better. A process killed
+  before that loses the write. A graceful stop letting an in-flight write
+  finish was not verified (see [dec_log.md](dec_log.md), 2026-11-17).
 
 ## Sharing and email
 

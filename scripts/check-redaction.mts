@@ -206,6 +206,26 @@ const WITH_SERVER = `Server=h.example.net,1433;Database=d;User Id=u;Password=Syn
   );
 }
 
+// The driver drops a `tcp:` prefix and a `\instance` before it connects, and
+// its errors name the bare host that is left. Each shape, with the error the
+// driver would raise for it.
+for (const [label, server, message] of [
+  ["tcp: prefix", "tcp:h.example.net,1433", "Failed to connect to h.example.net:1433 - getaddrinfo ENOTFOUND h.example.net"],
+  ["TCP: prefix, no port", "TCP:h.example.net", "Failed to connect to h.example.net:1433 in 15000ms"],
+  ["named instance", "h.example.net\\INST", "Failed to connect to h.example.net:49731 in 15000ms"],
+  ["named instance with port", "h.example.net\\INST,1500", "Failed to connect to h.example.net:1500 in 15000ms"],
+  ["tcp: prefix and named instance", "tcp:h.example.net\\INST", "getaddrinfo ENOTFOUND h.example.net"],
+] as const) {
+  const redact = createRedactor(`Server=${server};Database=d;User Id=u;Password=SyntheticPw19`);
+  const out = redact(message);
+  add(`masks the host the driver reports [${label}]`, !out.includes("h.example.net"), out);
+  add(`still masks the password [${label}]`, !redact(`password SyntheticPw19 rejected`).includes("SyntheticPw19"));
+  add(
+    `still leaves the database name readable [${label}]`,
+    redact(`Cannot open database "d"`).includes(`"d"`),
+  );
+}
+
 /* --------------------------------- 4. the whole connection string is masked */
 
 for (const [label, connectionString] of EXTRACTION) {

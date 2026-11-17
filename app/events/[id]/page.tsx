@@ -25,6 +25,7 @@ import {
   SHARE_LABELS,
   sharingClosedNote,
 } from "@/lib/labels";
+import { beginPageAudit } from "@/lib/pageAudit";
 import {
   getCancellationAvailability,
   getRegistrationAvailability,
@@ -60,14 +61,22 @@ export default async function EventDetailPage({
   params,
   searchParams,
 }: PageProps<"/events/[id]">) {
+  // First, so a render that fails before deciding anything is audited as one.
+  const audit = await beginPageAudit("event.view");
   const [viewer, { id }, query] = await Promise.all([
     getCurrentUser(),
     params,
     searchParams,
   ]);
+  audit.forEvent(id);
   const detail = await getEventDetailForViewer(id, viewer);
 
-  if (!detail) notFound();
+  if (!detail) {
+    // Missing, hidden or deleted alike -- and `invalid` when `id` is not even
+    // an id. The response is the same 404 in every case.
+    audit.notFound();
+    notFound();
+  }
 
   const {
     event,
@@ -96,6 +105,12 @@ export default async function EventDetailPage({
     the event at all has already 404'd above.
   */
   const editing = viewerCanManage && isEditing(query.edit);
+
+  // `host` exactly when the management lists below render, `edit` in edit
+  // mode, and nothing for anyone who cannot manage the event.
+  audit.success({
+    view: editing ? "edit" : viewerCanManage ? "host" : undefined,
+  });
 
   const eventHref = `/events/${event.id}`;
   /*

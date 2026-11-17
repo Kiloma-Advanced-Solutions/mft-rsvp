@@ -213,6 +213,73 @@ answered as "already invited". Every other driver failure — deadlock victims
 failures separately. Why a deadlock is deliberately not mapped:
 [lib/data/errors.ts](../lib/data/errors.ts).
 
+**Audit log.** User actions and page views go to `dbo.Events_AuditLog`
+(migration 0004): one row per request, joined to the application log by the
+request id.
+- [lib/audit.ts](../lib/audit.ts) defines what a row may hold and the write
+  policy. It has no database dependency, so `check:logging` tests it.
+- `insertAudit` in [lib/data/audit.ts](../lib/data/audit.ts) is the one
+  statement. It is an INSERT on the pool, never inside a business transaction.
+- `db.audit.record` joins the two.
+- `getCurrentUser()` records the actor in the request context (`noteActor`).
+- **API actions (S4).** The 14 mutating handlers declare their operation where
+  they are exported -- `withErrorHandling(handler, { audit: "event.publish" })`
+  -- and `withErrorHandling` does the rest after the handler settles: it builds
+  the response exactly as before, derives the row (outcome from the status,
+  event and subject ids from the route parameters, actor from the request
+  context, reason from the thrown `ApiError`'s internal `reason` or its `code`),
+  awaits `db.audit.record`, and only then returns the response. A handler adds
+  only two notes: `noteCommitted()` straight after its data call succeeds (a
+  failure after that is `post_commit_error`), and `noteAuditEventId()` in
+  `POST /api/events`. The session routes declare nothing and write no row.
+  `ApiError.reason` never reaches a response.
+- **Page views (S5).** The board, an event's detail page and the create form
+  start with `const audit = await beginPageAudit(op)` from
+  [lib/pageAudit.ts](../lib/pageAudit.ts). It reads the request id and the
+  prefetch headers during the render, gives the render's request context
+  that id (so a line logged later in the render carries it), keeps the
+  context object for the actor, and registers an `after()` callback whose outcome
+  starts as `error`; the page states `success`, `notFound()` or `denied()`
+  before it renders or 404s. The row is written after the response, one per
+  render, none for a prefetch. Nothing else -- `AppShell`, the `/` redirect,
+  the not-found page -- writes a row.
+
+The table is append-only by convention, enforced on application SQL by
+`check:tsql`. It has no foreign keys and is not cleared by `db:reset`.
+Why, and the write policy: [dec_log.md](dec_log.md) (2026-11-15).
+
+**When a row can be missing.** The audit log is not a complete record; a row
+is lost when:
+
+- the write fails or misses its deadline with no retry left -- the
+  `audit.write_failed` line, which omits the actor, is then the only trace
+  (2026-11-15, S3);
+- the process dies between an API action's commit and its audit write;
+- the process is killed outright (SIGKILL, a crash) before a page view's
+  `after()` write runs. Whether a graceful stop always lets an in-flight write
+  finish is not verified (2026-11-17).
+
+And a page row can say `success` although a child component then failed: the
+`next.request_error` line with the same request id records that (2026-11-16,
+D-S5-3).
+
+**Application log.** Technical failures, not user actions, go to the
+application log in [lib/log.ts](../lib/log.ts): one line each on stdout/stderr,
+where PM2 collects them. The log takes only allowlisted fields and passes every
+string through the connection-string redactor. [proxy.ts](../proxy.ts) gives
+every request except static files a server-chosen `X-Request-Id`.
+Each failure is logged once, where its cause is known:
+
+- `withErrorHandling` covers the API;
+- `lib/data/client.ts` covers pool and rollback failures;
+- `lib/services/` covers mail;
+- [instrumentation.ts](../instrumentation.ts) covers errors Next itself catches
+  (page renders) and process start.
+
+Next prints those page errors to stderr itself, unredacted, before the hook
+runs. That is an accepted residual risk, recorded in
+[dec_log.md](dec_log.md) (2026-11-12).
+
 ### API layer — `app/api/`
 
 Route handlers, not Server Actions, so the authorisation boundary is one obvious
@@ -223,7 +290,14 @@ unwraps the payload and throws the server's message — as a `RequestError`,
 an ordinary `Error` that also carries the HTTP status, for the caller that has
 to tell a stale page (4xx) from a failed service behind the route (5xx).
 [app/api/session/route.ts](../app/api/session/route.ts) is the worked example to
-copy for the house style; the helpers are in [lib/api.ts](../lib/api.ts).
+copy for the house style. The shared helpers are in [lib/api.ts](../lib/api.ts),
+which Client Components also import. The server-only wrapper,
+`withErrorHandling`, is in [lib/apiHandler.ts](../lib/apiHandler.ts), with the
+list of route patterns the log names routes by. A new route needs a line in that
+list, and `npm run check:logging` fails until it has one. A new *mutating*
+handler also needs an audit operation (`{ audit: ... }`, added to the union in
+`lib/audit.ts`), a reason on each refusal it throws, and `noteCommitted()` after
+its write; `check:logging` holds the 14 existing ones to the approved list.
 
 For a handler that has to **authorise** before it writes, the example is
 [app/api/events/\[id\]/registrations/route.ts](../app/api/events/[id]/registrations/route.ts).

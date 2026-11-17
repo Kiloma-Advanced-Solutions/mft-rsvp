@@ -5,6 +5,7 @@ import { PageHeader } from "@/components/ui";
 import { UNLIMITED } from "@/lib/eventInput";
 import type { EventFormValues } from "@/lib/eventInput";
 import { BOARD_LABELS, MANAGE_LABELS } from "@/lib/labels";
+import { beginPageAudit } from "@/lib/pageAudit";
 import { canCreateEvent } from "@/lib/permissions";
 import { getCurrentUser } from "@/lib/session";
 
@@ -28,11 +29,17 @@ export const metadata = {
  * that one is the boundary.
  */
 export default async function NewEventPage() {
+  // First, so a render that fails before deciding anything is audited as one.
+  const audit = await beginPageAudit("event.create_form.view");
   const viewer = await getCurrentUser();
 
   // `notFound()` rather than a bespoke screen: it is the response this codebase
   // already gives for a route you may not have, and the API refuses too.
-  if (!canCreateEvent(viewer)) notFound();
+  if (!canCreateEvent(viewer)) {
+    audit.denied();
+    notFound();
+  }
+  audit.success();
 
   return (
     <div>

@@ -9,43 +9,61 @@
  * Keeping that consistent is what lets the client have a single `fetchJson`
  * helper instead of bespoke error handling at every call site. See
  * `app/api/session/route.ts` for a worked example of the whole pattern.
+ *
+ * Shared with Client Components, so it must stay free of server-only code.
+ * The wrapper that catches a handler's errors and logs them,
+ * `withErrorHandling`, is in `lib/apiHandler.ts` for that reason.
+ *
+ * `./labels.ts` carries its extension so that module can be loaded by the
+ * bare-Node self-check through `lib/apiHandler.ts`.
  */
 
-import { API_ERRORS, requestFailedLabel } from "./labels";
+import { API_ERRORS, requestFailedLabel } from "./labels.ts";
 
-/** Throw this anywhere inside a handler wrapped in `withErrorHandling`. */
+/**
+ * Throw this anywhere inside a handler wrapped in `withErrorHandling`.
+ *
+ * `reason` is for the audit log only: a machine-readable code saying *why*
+ * (`full`, `stale`, `closed:draft`, ...) where `code` only says what kind of
+ * refusal it was. It is never part of the response -- `withErrorHandling`
+ * passes `code` and `details` to `jsonError` and nothing else -- so adding one
+ * changes nothing a client sees. Without one, the audit row falls back to
+ * `code`.
+ */
 export class ApiError extends Error {
   readonly status: number;
   readonly code?: string;
   readonly details?: unknown;
+  readonly reason?: string;
 
   constructor(
     status: number,
     message: string,
-    options?: { code?: string; details?: unknown },
+    options?: { code?: string; details?: unknown; reason?: string },
   ) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.code = options?.code;
     this.details = options?.details;
+    this.reason = options?.reason;
   }
 
-  static badRequest(message: string, details?: unknown) {
-    return new ApiError(400, message, { code: "bad_request", details });
+  static badRequest(message: string, details?: unknown, reason?: string) {
+    return new ApiError(400, message, { code: "bad_request", details, reason });
   }
 
-  static forbidden(message = API_ERRORS.forbidden) {
-    return new ApiError(403, message, { code: "forbidden" });
+  static forbidden(message = API_ERRORS.forbidden, reason?: string) {
+    return new ApiError(403, message, { code: "forbidden", reason });
   }
 
-  static notFound(message = API_ERRORS.notFound) {
-    return new ApiError(404, message, { code: "not_found" });
+  static notFound(message = API_ERRORS.notFound, reason?: string) {
+    return new ApiError(404, message, { code: "not_found", reason });
   }
 
   /** The request made sense but conflicts with the current state. */
-  static conflict(message: string) {
-    return new ApiError(409, message, { code: "conflict" });
+  static conflict(message: string, reason?: string) {
+    return new ApiError(409, message, { code: "conflict", reason });
   }
 }
 
@@ -64,37 +82,12 @@ export function jsonError(
   );
 }
 
-/**
- * Wraps a handler so thrown `ApiError`s become clean responses and anything
- * unexpected becomes a 500 without leaking a stack trace to the client.
- *
- *   export const GET = withErrorHandling(async () => { ... })
- */
-export function withErrorHandling<Args extends unknown[]>(
-  handler: (...args: Args) => Promise<Response>,
-): (...args: Args) => Promise<Response> {
-  return async (...args: Args) => {
-    try {
-      return await handler(...args);
-    } catch (error) {
-      if (error instanceof ApiError) {
-        return jsonError(error.status, error.message, {
-          code: error.code,
-          details: error.details,
-        });
-      }
-      console.error("[api] unhandled error", error);
-      return jsonError(500, API_ERRORS.internal, { code: "internal" });
-    }
-  };
-}
-
 /** Parses a JSON body, turning malformed input into a 400 rather than a 500. */
 export async function readJson<T = unknown>(request: Request): Promise<T> {
   try {
     return (await request.json()) as T;
   } catch {
-    throw ApiError.badRequest(API_ERRORS.invalidJson);
+    throw ApiError.badRequest(API_ERRORS.invalidJson, undefined, "invalid_json");
   }
 }
 

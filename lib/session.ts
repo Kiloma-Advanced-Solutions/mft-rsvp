@@ -13,6 +13,7 @@
 import { cookies } from "next/headers";
 
 import { db } from "./db";
+import { noteActor } from "./requestContext";
 import { DEFAULT_USER_ID, PERSONA_ORDER } from "./seed";
 import type { User } from "./types";
 
@@ -22,13 +23,21 @@ export const SESSION_COOKIE = "eb_persona";
  * The signed-in persona. Falls back to the default when the cookie is missing
  * or points at a user who no longer exists, so this never returns null and
  * callers never have to handle a logged-out state.
+ *
+ * It also tells the request context who it resolved (`noteActor`), so the
+ * audit log can record the actor without a second lookup -- with `fallback`
+ * true only when the default persona stood in. The first resolution in a
+ * request wins. Nothing else about the answer changes.
  */
 export async function getCurrentUser(): Promise<User> {
   const cookieStore = await cookies();
   const id = cookieStore.get(SESSION_COOKIE)?.value;
 
   const user = id ? await db.users.get(id) : null;
-  if (user) return user;
+  if (user) {
+    noteActor(user, false);
+    return user;
+  }
 
   const fallback = await db.users.get(DEFAULT_USER_ID);
   if (!fallback) {
@@ -36,6 +45,7 @@ export async function getCurrentUser(): Promise<User> {
       `Seed data is missing the default persona "${DEFAULT_USER_ID}".`,
     );
   }
+  noteActor(fallback, true);
   return fallback;
 }
 
