@@ -287,13 +287,27 @@ function prettyLine(
   }
   if (error === undefined) return parts.join(" ");
 
-  parts.push(`err=${oneLine(error.name)}: ${oneLine(error.message)}`);
+  parts.push(`err=${describeError(error)}`);
   const lines = [parts.join(" ")];
   for (const frame of stackFrames(error)) lines.push(`    ${oneLine(frame.trim())}`);
   for (let cause = error.cause; cause; cause = cause.cause) {
-    lines.push(`    caused by ${oneLine(cause.name)}: ${oneLine(cause.message)}`);
+    lines.push(`    caused by ${describeError(cause)}`);
   }
   return lines.join("\n");
+}
+
+/**
+ * `name: message`, then the driver code and SQL error number when the error
+ * has them -- the same, already redacted, values the JSON format carries. An
+ * error reduced to its kind has no message, and these are all that is left.
+ */
+function describeError(error: SerializedError): string {
+  const extra = [
+    error.code === undefined ? undefined : `code=${oneLine(error.code)}`,
+    error.number === undefined ? undefined : `number=${error.number}`,
+  ].filter((part) => part !== undefined);
+  const text = `${oneLine(error.name)}: ${oneLine(error.message)}`;
+  return extra.length === 0 ? text : `${text} [${extra.join(" ")}]`;
 }
 
 export function createLogger(options: LoggerOptions): Logger {

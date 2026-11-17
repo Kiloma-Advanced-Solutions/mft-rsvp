@@ -236,8 +236,9 @@ request id.
 - **Page views (S5).** The board, an event's detail page and the create form
   start with `const audit = await beginPageAudit(op)` from
   [lib/pageAudit.ts](../lib/pageAudit.ts). It reads the request id and the
-  prefetch headers during the render, keeps the render's request-context
-  object for the actor, and registers an `after()` callback whose outcome
+  prefetch headers during the render, gives the render's request context
+  that id (so a line logged later in the render carries it), keeps the
+  context object for the actor, and registers an `after()` callback whose outcome
   starts as `error`; the page states `success`, `notFound()` or `denied()`
   before it renders or 404s. The row is written after the response, one per
   render, none for a prefetch. Nothing else -- `AppShell`, the `/` redirect,

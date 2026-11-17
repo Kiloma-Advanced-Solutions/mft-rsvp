@@ -483,6 +483,56 @@ function parse(line: Line | undefined): Record<string, unknown> | undefined {
   );
 }
 
+{
+  // Pretty output keeps the driver code and SQL error number, on the error and
+  // on each cause -- the values JSON already carries, redacted the same way.
+  // An error reduced to its kind (no message) is left with nothing else.
+  const sqlError = Object.assign(new Error(`Invalid object name 'x' on ${HOST}`), {
+    code: "EREQUEST",
+    number: 208,
+    cause: Object.assign(new Error("socket hang up"), { code: "ECONNRESET", originalError: { number: 10054 } }),
+  });
+  const kindOnly = { name: "ConnectionError", code: "ESOCKET" };
+
+  const pretty = capture({ format: "pretty" });
+  pretty.logger.error("api.unhandled_error", { err: sqlError });
+  pretty.logger.error("audit.write_failed", { err: kindOnly });
+  const [first, ...rest] = (pretty.lines[0]?.text ?? "").trimEnd().split("\n");
+  add(
+    "pretty: the error line carries its code and SQL number",
+    first?.endsWith("err=Error: Invalid object name 'x' on *** [code=EREQUEST number=208]") === true,
+    first,
+  );
+  add(
+    "pretty: a cause line carries its own code and number",
+    rest.includes("    caused by Error: socket hang up [code=ECONNRESET number=10054]"),
+    JSON.stringify(rest.filter((line) => line.includes("caused by"))),
+  );
+  add(
+    "pretty: an error with no message still shows its code",
+    pretty.lines[1]?.text.trimEnd().endsWith("err=ConnectionError:  [code=ESOCKET]") === true,
+    pretty.lines[1]?.text,
+  );
+  const plain = capture({ format: "pretty" });
+  plain.logger.error("api.unhandled_error", { err: new Error("no code here") });
+  add(
+    "pretty: an error with neither prints no empty brackets",
+    plain.lines[0]?.text.split("\n")[0]?.endsWith("err=Error: no code here") === true,
+    plain.lines[0]?.text.split("\n")[0],
+  );
+
+  // JSON is unchanged: the same fields, where they always were.
+  const json = capture();
+  json.logger.error("api.unhandled_error", { err: sqlError });
+  const err = parse(json.lines[0])?.err as { code?: string; number?: number; cause?: { code?: string; number?: number } } | undefined;
+  add(
+    "json: code and number are unchanged on the error and its cause",
+    err?.code === "EREQUEST" && err.number === 208 && err.cause?.code === "ECONNRESET" && err.cause.number === 10054 &&
+      json.lines[0]?.text.includes(HOST) === false,
+    json.lines[0]?.text,
+  );
+}
+
 /* ------------------------------------------------ 1g. request id fallback */
 
 {
@@ -2454,6 +2504,77 @@ async function renderPage(
 }
 
 const validRow = (input: AuditInput | undefined) => input !== undefined && toAuditRow(input, newRequestId()).ok;
+
+{
+  // A render's context starts with no request id (only an API handler's is
+  // entered with one). `beginPageAudit` gives it the validated id, so a line
+  // logged later in the render carries the same id as the response and the
+  // audit row. `undefined` here stands in for that empty render context.
+  const asRender = <T,>(work: () => Promise<T>) => runWithRequestContext(undefined as unknown as string, work);
+  // One render, its log line tagged with `tag` so concurrent renders can be
+  // told apart. Output is captured by the caller, once, around all of them.
+  const render = async (headers: Record<string, string>, tag: string) => {
+    const harness = pageHarness(headers);
+    await asRender(async () => {
+      const audit = await harness.beginPageAudit("board.view");
+      await tick(0);
+      log.warn("check.render_line", { component: "app", reason: tag });
+      audit.success({ section: "upcoming" });
+    });
+    await harness.flush();
+    return harness.written[0];
+  };
+  const lineFor = (lines: Captured[], tag: string) =>
+    lines.find((entry) => entry.record?.event === "check.render_line" && entry.record.reason === tag)?.record;
+  const renderAndLog = async (headers: Record<string, string>) => {
+    const { result: row, lines } = await captureOutput(() => render(headers, "one"));
+    return { line: lineFor(lines, "one"), row };
+  };
+
+  const proxied = await renderAndLog(PAGE_HEADERS);
+  add(
+    "s5: a line logged during a render carries the request id of the response and the audit row",
+    proxied.line?.requestId === PAGE_REQUEST_ID && proxied.row?.requestId === PAGE_REQUEST_ID,
+    JSON.stringify({ line: proxied.line?.requestId, row: proxied.row?.requestId }),
+  );
+
+  const forged = await renderAndLog({ [REQUEST_ID_HEADER]: "not-a-uuid" });
+  add(
+    "s5: with no valid id in the headers, the render's line and its row still share one fresh id",
+    typeof forged.line?.requestId === "string" && forged.line.requestId !== "not-a-uuid" &&
+      forged.line.requestId === forged.row?.requestId,
+    JSON.stringify({ line: forged.line?.requestId, row: forged.row?.requestId }),
+  );
+
+  const both = await captureOutput(() =>
+    Promise.all([
+      render({ [REQUEST_ID_HEADER]: "11111111-1111-4111-8111-111111111111" }, "first"),
+      render({ [REQUEST_ID_HEADER]: "22222222-2222-4222-8222-222222222222" }, "second"),
+    ]),
+  );
+  const [firstLine, secondLine] = [lineFor(both.lines, "first"), lineFor(both.lines, "second")];
+  add(
+    "s5: concurrent renders log under their own request ids",
+    firstLine?.requestId === "11111111-1111-4111-8111-111111111111" &&
+      secondLine?.requestId === "22222222-2222-4222-8222-222222222222" &&
+      both.result[0]?.requestId === firstLine.requestId && both.result[1]?.requestId === secondLine.requestId,
+    JSON.stringify([firstLine?.requestId, secondLine?.requestId]),
+  );
+
+  // A context that already has an id keeps it.
+  const kept = newRequestId();
+  const harness = pageHarness(PAGE_HEADERS);
+  const { lines } = await captureOutput(() =>
+    runWithRequestContext(kept, async () => {
+      await harness.beginPageAudit("board.view");
+      log.warn("check.render_line", { component: "app" });
+    }),
+  );
+  add(
+    "s5: an id the context already has is never replaced",
+    lines.find((entry) => entry.record?.event === "check.render_line")?.record?.requestId === kept,
+  );
+}
 
 {
   // The default: nothing decided -- a render that threw -- is `error`.

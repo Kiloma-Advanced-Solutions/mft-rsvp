@@ -3003,3 +3003,36 @@ access.
 Consequences: the [TASKS.md](../TASKS.md) §7 "no unused exports" point is
 met for M12's own exports. The rest of M12's status is unchanged -- see
 [s_status.md](s_status.md) "Blockers".
+
+## 2026-11-17 — PR review fixes: pretty log lines show error codes, and page renders log with their request id (M12)
+
+Context: the automated review of the M12 PR (#56) raised two Medium
+findings. Both were checked against the code and both held.
+
+Decision:
+
+- **Pretty output keeps the error code and SQL number.** `serializeError`
+  already keeps an error's driver code (redacted, bounded) and its SQL
+  Server number, and the JSON format prints them; the pretty format printed
+  only `name: message`. An error reduced to its kind by `errorKind` has no
+  message at all, so a pretty `audit.write_failed` line showed nothing but
+  the name. `lib/log.ts` now appends `[code=… number=…]` to the error and to
+  each `caused by` line, from the same already-redacted values. JSON output
+  is unchanged, and no message, stack or field reaches either format that
+  did not before.
+- **A page render's context gets its request id.** A render's request
+  context (React `cache()`) was created with no id -- only an API handler's
+  is entered with one -- so a line logged during a render had none, though
+  the response and the audit row carry it. `beginPageAudit`, the first
+  statement of every audited page, now sets the render context's id to the
+  validated one it already computes for the row, only when the context has
+  none. Each render has its own context, so concurrent renders cannot share
+  or swap ids; an API handler's id is never replaced. Renders of pages that
+  are not audited still log without an id, as before.
+
+Verified locally: 9 new `check:logging` checks (221 in all), each set shown
+to fail with its fix removed; typecheck, lint, build, `check:tsql` and
+`check:redaction` clean. No DEV access.
+
+Consequences: none for responses, business results, audit rows or the
+accepted D16 findings and limitations.

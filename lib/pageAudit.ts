@@ -177,6 +177,10 @@ async function register(deps: PageAuditDeps, operation: PageAuditOperation): Pro
   context.audit.recorded = true;
 
   const requestId = requestIdFrom(headers as Headers);
+  // A render's context starts with no id -- only an API handler's is entered
+  // with one -- so a line logged later in this render would carry none. Give
+  // it the id the row and the response carry. Never replace one it has.
+  context.requestId ??= requestId;
   let outcome: PageAuditOutcome = "error";
   let reasonCode: string | null = null;
   let eventParam: string | undefined;
