@@ -41,6 +41,8 @@ Then open <http://localhost:3000>, which redirects to the board at `/events`.
 | `npm run typecheck` | Generate route types, then `tsc --noEmit` |
 | `npm run lint` | ESLint |
 | `npm run check:tsql` | Hold the project's T-SQL to the SQL Server 2008 R2 feature floor |
+| `npm run check:logging` | Self-check the application log and the audit log (no database needed) |
+| `npm run check:redaction` | Self-check that connection-string secrets and the server host are masked (no database needed) |
 | `npm run db:check` | Read-only preflight against the configured SQL Server target |
 | `npm run db:migrate` | Apply pending schema migrations (`-- --dry-run`, `-- --status`) |
 | `npm run db:seed` | Insert the development fixtures into an empty SQL schema (`-- --status`) |

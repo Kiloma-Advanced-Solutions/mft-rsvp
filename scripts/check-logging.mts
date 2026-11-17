@@ -1318,6 +1318,64 @@ function lineFor(lines: Captured[], event: string) {
 }
 
 {
+  // The same driver codes, raised while the pool was still connecting -- the
+  // insert reports the query as not yet sent -- are definite non-writes. The
+  // retry policy is unchanged: ESOCKET is still retried once, ETIMEOUT never.
+  const preSend = (props: Record<string, unknown>) => async (attempt: AuditAttempt) => {
+    attempt.sent = false;
+    throw driverError(props);
+  };
+  const sentThen = (props: Record<string, unknown>) => async (attempt: AuditAttempt) => {
+    attempt.sent = true;
+    throw driverError(props);
+  };
+
+  const down = scriptedInsert([preSend({ code: "ESOCKET" }), preSend({ code: "ESOCKET" })]);
+  const downRun = await captureOutput(() => writeAudit(auditInput(), down.insert));
+  const downLine = lineFor(downRun.lines, "audit.write_failed")?.record;
+  add(
+    "d15: a connect failure before the query (ESOCKET) is retried once, then a definite non-write",
+    downRun.result.status === "failed" && down.calls.length === 2 && !downRun.result.ambiguous &&
+      downLine?.reason === "connection" && downLine.ambiguous === false,
+    JSON.stringify(downLine),
+  );
+
+  const slow = scriptedInsert([preSend({ code: "ETIMEOUT" })]);
+  const slowRun = await captureOutput(() => writeAudit(auditInput(), slow.insert));
+  const slowLine = lineFor(slowRun.lines, "audit.write_failed")?.record;
+  add(
+    "d15: a connect timeout before the query (ETIMEOUT) is not retried, a connection failure and a definite non-write",
+    slowRun.result.status === "failed" && slow.calls.length === 1 && !slowRun.result.ambiguous &&
+      slowLine?.reason === "connection" && slowLine.ambiguous === false,
+    JSON.stringify(slowLine),
+  );
+
+  const sent = scriptedInsert([sentThen({ code: "ETIMEOUT" })]);
+  const sentRun = await captureOutput(() => writeAudit(auditInput(), sent.insert));
+  const sentLine = lineFor(sentRun.lines, "audit.write_failed")?.record;
+  const dropped = scriptedInsert([sentThen({ code: "ESOCKET" }), sentThen({ code: "ESOCKET" })]);
+  const droppedRun = await captureOutput(() => writeAudit(auditInput(), dropped.insert));
+  add(
+    "d15: once the query is sent, a timeout or a dropped connection stays an unknown outcome",
+    sentRun.result.ambiguous && sentLine?.reason === "timeout" && sentLine.ambiguous === true &&
+      droppedRun.result.ambiguous && dropped.calls.length === 2,
+    JSON.stringify(sentLine),
+  );
+
+  // The real insert marks the boundary: not sent before getting a connection,
+  // sent immediately before the query.
+  const insertSource = readFileSync(new URL("../lib/data/audit.ts", import.meta.url), "utf8");
+  const body = insertSource.slice(insertSource.indexOf("export async function insertAudit"));
+  const notSentAt = body.indexOf("attempt.sent = false;");
+  const sentAt = body.indexOf("attempt.sent = true;");
+  add(
+    "d15: insertAudit marks the query unsent before getting a connection, and sent right before .query",
+    notSentAt !== -1 && notSentAt < body.indexOf("await getPool()") &&
+      sentAt !== -1 && /^attempt\.sent = true;\s*await request\.query\(INSERT_AUDIT\);/.test(body.slice(sentAt)),
+  );
+}
+
+{
   const { insert, calls } = scriptedInsert([failWith({ code: "ECANCEL" })]);
   const { result } = await captureOutput(() => writeAudit(auditInput(), insert));
   add("d15: a cancellation is never retried", result.status === "failed" && calls.length === 1 && result.ambiguous);

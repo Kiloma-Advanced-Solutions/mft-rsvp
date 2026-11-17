@@ -203,6 +203,23 @@ function escapeForRegExp(value: string): string {
 }
 
 /**
+ * The host the `mssql` driver connects to, derived from a server value the way
+ * the driver derives it (`lib/base/connection-pool.js`, `data source`): a
+ * leading `tcp:` is dropped, then anything from the last `\` (a named
+ * instance), then anything from the last `,` (a port). `tcp:db.example.net,1433`
+ * and `db.example.net\SQLEXPRESS` both give `db.example.net`, which is what the
+ * driver's connection errors name.
+ */
+function driverHost(server: string): string {
+  let host = server.trim().replace(/^tcp:/i, "");
+  const named = /^(.*)\\(.*)$/.exec(host);
+  if (named) host = named[1];
+  const withPort = /^(.*),(.*)$/.exec(host);
+  if (withPort) host = withPort[1];
+  return host.trim();
+}
+
+/**
  * Builds a masker from the connection string without revealing it.
  *
  * Credentials and the server address are masked wherever they appear, including
@@ -247,6 +264,9 @@ export function createRedactor(connectionString: string): (text: string) => stri
       // Adding the bare host masks it in both forms.
       const [host] = value.split(",");
       if (host !== undefined && host.trim() !== "") add(host.trim());
+      // The driver also drops a `tcp:` prefix and a `\instance` before it
+      // connects, and its errors name what is left -- so mask that too.
+      add(driverHost(value));
     }
   }
 

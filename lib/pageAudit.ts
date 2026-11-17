@@ -72,7 +72,7 @@ export type PageAuditOperation = keyof typeof PAGE_AUDIT_ROUTES;
 export const PREFETCH_HEADERS = ["next-router-prefetch", "next-router-segment-prefetch"] as const;
 
 /** The outcomes a page can have: never `rejected`, which is an API's 409. */
-export type PageAuditOutcome = Exclude<AuditOutcome, "rejected">;
+type PageAuditOutcome = Exclude<AuditOutcome, "rejected">;
 
 /** The status each page outcome produces. */
 export const PAGE_STATUS: Record<PageAuditOutcome, number> = {
@@ -84,7 +84,7 @@ export const PAGE_STATUS: Record<PageAuditOutcome, number> = {
 };
 
 /** What a page may add to its row; nothing else reaches `Metadata`. */
-export type PageAuditDetails = {
+type PageAuditDetails = {
   /** The board section shown. */
   section?: string;
   /** The board's parsed filter values. */
@@ -94,7 +94,7 @@ export type PageAuditDetails = {
 };
 
 /** The page's handle on its row. Every method is safe to call more than once; the last call wins. */
-export type PageAudit = {
+type PageAudit = {
   /** The detail page's `[id]`, as given. */
   forEvent(id: string): void;
   success(details?: PageAuditDetails): void;

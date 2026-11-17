@@ -563,9 +563,12 @@ passed (2026-11-17, see [dec_log.md](dec_log.md)). So is the unverified
 flush of an in-flight audit write on a graceful stop.
 
 **M12 is not yet declared ready to merge.** The two [TASKS.md](../TASKS.md)
-§7 points are settled -- the unused S1 type exports were removed, and all
-five personas, Sara (admin) included, have acted on DEV with M12's code
-(2026-11-17, see [dec_log.md](dec_log.md)). Still to do before the PR is
+§7 points are settled -- every unused export M12 added was removed (seven
+S1 types, then ten more found in the pre-PR review), and all five personas,
+Sara (admin) included, have acted on DEV with M12's code (2026-11-17, see
+[dec_log.md](dec_log.md)). The pre-PR review's other two findings -- the
+server host behind `tcp:` or `\instance` reaching the log, and connect
+failures logged as possibly written -- are fixed (same date). Still to do before the PR is
 merged: the command chain in [CLAUDE.md](../CLAUDE.md) on the commit that is
 merged, and the PR description ([TASKS.md](../TASKS.md) §8).
 

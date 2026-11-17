@@ -68,7 +68,7 @@ import { errorKind, log } from "./log.ts";
 /* ----------------------------------------------------------- allowed values */
 
 /** Every operation the audit log records (M12 plan, section E3). */
-export const AUDIT_OPERATIONS = [
+const AUDIT_OPERATIONS = [
   "board.view",
   "event.view",
   "event.create_form.view",
@@ -90,19 +90,19 @@ export const AUDIT_OPERATIONS = [
 export type AuditOperation = (typeof AUDIT_OPERATIONS)[number];
 
 /** `CK_Events_AuditLog_Outcome`. */
-export const AUDIT_OUTCOMES = ["success", "rejected", "denied", "not_found", "invalid", "error"] as const;
+const AUDIT_OUTCOMES = ["success", "rejected", "denied", "not_found", "invalid", "error"] as const;
 export type AuditOutcome = (typeof AUDIT_OUTCOMES)[number];
 
 /** `CK_Events_AuditLog_Channel`. */
-export const AUDIT_CHANNELS = ["api", "page"] as const;
-export type AuditChannel = (typeof AUDIT_CHANNELS)[number];
+const AUDIT_CHANNELS = ["api", "page"] as const;
+type AuditChannel = (typeof AUDIT_CHANNELS)[number];
 
 /** `CK_Events_AuditLog_SubjectType`. */
-export const AUDIT_SUBJECT_TYPES = ["registration", "user"] as const;
+const AUDIT_SUBJECT_TYPES = ["registration", "user"] as const;
 export type AuditSubjectType = (typeof AUDIT_SUBJECT_TYPES)[number];
 
 /** The column limits in migration 0004, in characters. */
-export const AUDIT_LIMITS = {
+const AUDIT_LIMITS = {
   actorName: 200,
   httpMethod: 8,
   route: 200,
@@ -332,6 +332,13 @@ export const AUDIT_WRITE_POLICY = {
 export type AuditAttempt = {
   cancel: (() => void) | undefined;
   abandoned: boolean;
+  /**
+   * Set by an insert that can tell: `false` until the query is handed to the
+   * driver, `true` from then on. A failure while it is `false` -- the pool
+   * could not connect, whatever the driver code -- is a definite non-write.
+   * Left unset, a failure is classified by its driver code alone.
+   */
+  sent?: boolean;
 };
 
 /** Inserts one row. `requestTimeoutMs` is always at least 1. */
@@ -398,6 +405,17 @@ function classify(error: unknown): Failure | "duplicate" {
     return { reason: "writer_bug", retryable: false, ambiguous: false };
   }
   return { reason: "connection", retryable: false, ambiguous: false };
+}
+
+/**
+ * A failure before the query was handed to the driver wrote nothing, so it is
+ * never ambiguous and is a connection failure -- even when the pool's connect
+ * error carries `ESOCKET` or `ETIMEOUT`, codes that mean "possibly sent" once a
+ * query is under way. Whether it may be retried is unchanged.
+ */
+function notSent(failure: Failure | "duplicate", attempt: AuditAttempt): Failure | "duplicate" {
+  if (failure === "duplicate" || attempt.sent !== false || failure.reason === "writer_bug") return failure;
+  return { reason: "connection", retryable: failure.retryable, ambiguous: false };
 }
 
 /** The error's kind, code and SQL number -- never its message. */
@@ -512,7 +530,7 @@ export async function writeAudit(
         return { status: "written", attempts, ambiguous: false };
       }
 
-      const failure = classify(outcome.error);
+      const failure = notSent(classify(outcome.error), attempt);
       if (failure === "duplicate") {
         if (attempts === 1) {
           log.warn("audit.duplicate_request", { ...context(), attempts });

@@ -142,7 +142,7 @@ function requestFields(request: Request | undefined, startedAt: number): LogFiel
 /** The operations an API route may declare: the mutations, never a page view. */
 export type ApiAuditOperation = Exclude<AuditOperation, "board.view" | "event.view" | "event.create_form.view">;
 
-export type HandlerOptions = {
+type HandlerOptions = {
   /** Audit this handler as this operation. Omitted: no audit row (D13). */
   audit?: ApiAuditOperation;
 };

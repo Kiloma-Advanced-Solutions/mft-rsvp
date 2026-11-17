@@ -47,6 +47,9 @@ export async function insertAudit(
   requestTimeoutMs: number,
   attempt: AuditAttempt,
 ): Promise<void> {
+  // Nothing is sent until `.query` below: a failure before then -- the pool
+  // could not connect -- is a definite non-write.
+  attempt.sent = false;
   const pool = await getPool();
   // The writer's deadline passed while this attempt waited for a connection:
   // do not start a query nobody is waiting for.
@@ -56,7 +59,7 @@ export async function insertAudit(
   const request = new RequestWithTimeout(pool, { requestTimeout: Math.max(1, Math.floor(requestTimeoutMs)) });
   attempt.cancel = () => request.cancel();
 
-  await request
+  request
     .input("id", sql.UniqueIdentifier, row.id)
     .input("occurredAt", sql.DateTime2(3), row.occurredAt)
     .input("requestId", sql.UniqueIdentifier, row.requestId)
@@ -73,6 +76,7 @@ export async function insertAudit(
     .input("httpStatus", sql.SmallInt, row.httpStatus)
     .input("reasonCode", sql.NVarChar(64), row.reasonCode)
     .input("durationMs", sql.Int, row.durationMs)
-    .input("metadata", sql.NVarChar(1000), row.metadata)
-    .query(INSERT_AUDIT);
+    .input("metadata", sql.NVarChar(1000), row.metadata);
+  attempt.sent = true;
+  await request.query(INSERT_AUDIT);
 }

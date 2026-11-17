@@ -2956,3 +2956,50 @@ Final pre-merge decisions:
 Consequences: with S6 every M12 slice is implemented and documented. M12 is
 not declared ready to merge here: its remaining non-performance requirements
 are listed in [s_status.md](s_status.md) "Blockers".
+
+## 2026-11-17 — Pre-PR review fixes: the server host behind `tcp:` and `\instance` is redacted, ten more unused exports dropped, connect failures are definite non-writes (M12)
+
+Context: a review of the whole M12 diff (`c108499..6736a5a`) before the PR
+confirmed three defects. None changes a response, a business result or the
+D15 deadline and retry policy, and none touches the D16 findings or their
+waiver.
+
+Decision:
+
+- **Redaction of the server host.** The connection-string redactor masked a
+  server value and its part before the comma. The `mssql` driver also drops a
+  leading `tcp:` and a `\instance` before it connects, and its errors name the
+  bare host that is left -- so `Server=tcp:host,1433`, the Azure portal's own
+  form, and `Server=host\INSTANCE` let the host through into `db.pool_error`,
+  `api.unhandled_error` and `next.request_error`. `lib/data/redact.mts` now
+  also masks the host derived the way the driver derives it. The rule
+  predates M12; M12 is what sends driver errors to a collected log. DEV's
+  connection string uses neither form. The database name and the login name
+  stay readable, as before.
+- **Ten unused exports.** `AUDIT_OPERATIONS`, `AUDIT_OUTCOMES`,
+  `AUDIT_CHANNELS`, `AuditChannel`, `AUDIT_SUBJECT_TYPES`, `AUDIT_LIMITS`
+  (`lib/audit.ts`), `PageAuditOutcome`, `PageAuditDetails`, `PageAudit`
+  (`lib/pageAudit.ts`) and `HandlerOptions` (`lib/apiHandler.ts`) were
+  exported but referenced only in their own files. As with the seven S1 types
+  earlier the same day, only `export` was removed. With these, no export M12
+  added is unused; older unused exports (`lib/date.ts`, `lib/seed.ts`,
+  `lib/session.ts` and others) were not part of M12 and are left for a
+  separate cleanup.
+- **A connect failure is a definite non-write.** The writer classified a
+  failure by its driver code alone, so a pool that could not connect --
+  rejecting with `ESOCKET` or `ETIMEOUT` before any query -- was logged as
+  `ambiguous` (and `ETIMEOUT` as `timeout`), contrary to the 2026-11-15 (S3)
+  decision that a failure to get a connection is a definite non-write.
+  `insertAudit` now marks the attempt unsent until immediately before
+  `.query`; a failure while unsent is `reason: "connection"`,
+  `ambiguous: false`. Whether it is retried is unchanged, and so is an
+  attempt abandoned at the deadline, which stays ambiguous as S3 decided.
+
+Verified locally: `check:redaction` 198 (15 new checks over five server
+forms) and `check:logging` 212 (4 new checks), each new check shown to fail
+with its fix removed; typecheck, lint, build and `check:tsql` clean. No DEV
+access.
+
+Consequences: the [TASKS.md](../TASKS.md) §7 "no unused exports" point is
+met for M12's own exports. The rest of M12's status is unchanged -- see
+[s_status.md](s_status.md) "Blockers".
