@@ -247,6 +247,21 @@ The table is append-only by convention, enforced on application SQL by
 `check:tsql`. It has no foreign keys and is not cleared by `db:reset`.
 Why, and the write policy: [dec_log.md](dec_log.md) (2026-11-15).
 
+**When a row can be missing.** The audit log is not a complete record; a row
+is lost when:
+
+- the write fails or misses its deadline with no retry left -- the
+  `audit.write_failed` line, which omits the actor, is then the only trace
+  (2026-11-15, S3);
+- the process dies between an API action's commit and its audit write;
+- the process is killed outright (SIGKILL, a crash) before a page view's
+  `after()` write runs. Whether a graceful stop always lets an in-flight write
+  finish is not verified (2026-11-17).
+
+And a page row can say `success` although a child component then failed: the
+`next.request_error` line with the same request id records that (2026-11-16,
+D-S5-3).
+
 **Application log.** Technical failures, not user actions, go to the
 application log in [lib/log.ts](../lib/log.ts): one line each on stdout/stderr,
 where PM2 collects them. The log takes only allowlisted fields and passes every

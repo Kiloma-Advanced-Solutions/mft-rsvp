@@ -2826,3 +2826,133 @@ Consequences:
 - S4's D16 concurrency-5 p50 failure, the incomplete 20-concurrent
   verification and the D16 merge gate are unchanged; M12 is not eligible for
   merge under the approved acceptance requirements.
+
+## 2026-11-17 — The documented D16 performance findings are accepted as known risks and do not block the M12 merge (M12)
+
+Context: D16's rule is that on a failure S4 and S5 are not merged until the
+cause is found (2026-11-16, D-S4-9). Several D16 items are open: one failed,
+one warning, one inconclusive and several never completed. Further
+performance work was already deferred (2026-11-16, S4 and S5 session 2).
+
+Decision: an explicit **risk acceptance and waiver of the D16 merge gate**,
+for these findings only:
+
+- S4: Δp50 28.4 ms at concurrency 5 against a 25.4 ms limit -- **failed**
+  (2026-11-16, D-S4-9).
+- S4: the 20-concurrent verification -- **not completed** (2026-11-16,
+  D-S4-8).
+- S5 board: Δp95 +42.7 ms -- **warning** (2026-11-16, S5 session 2).
+- S5 board: Δp50 +7.6 ms, 95% interval up to +19.0 ms -- **not conclusively
+  within** its 10 ms limit (same entry).
+- S5: formal performance acceptance -- **not completed**; Stage 1 was
+  exploratory (same entry).
+- S5: the warning rerun and any further page or mutation benchmark --
+  **deferred**, not run.
+
+These findings stay recorded as they are, as known performance risks. None
+of them passed. The D16 thresholds, the measurements and the earlier entries
+are unchanged; only D16's merge consequence is set aside, and only for the
+list above. A new D16 failure, or any finding not listed, would block again.
+
+The waiver does not cover functional correctness, security, redaction, audit
+integrity, SQL compatibility, or any other requirement. M12's status is
+therefore three separate things:
+
+1. **Functional verification** -- done on DEV for S4 (refusals, success paths,
+   fault injection, a reduced race test) and S5 (session 1).
+2. **Formal performance acceptance** -- not achieved for S4 or S5.
+3. **Merge** -- the open performance findings no longer block it; every
+   non-performance requirement still has to be verified before the PR is
+   merged.
+
+Rationale: the application is not expected to have high traffic, no severe
+regression was shown, and further benchmarking on the shared DEV Basic
+database costs other developers capacity. The risks are accepted knowingly,
+not resolved.
+
+Consequences: [s_status.md](s_status.md) no longer lists the D16 findings as
+a merge blocker; it keeps them as known risks. Revisit them before a
+production load that the low-traffic assumption does not cover.
+
+## 2026-11-17 — M12 decision register, and the final pre-merge decisions (M12 S6)
+
+Context: the M12 plan's decision register (D1-D17, Q1) was agreed in the
+planning session; the plan itself is not in the repository. Each decision
+was recorded in the entry for the slice that implemented it, mostly without
+its id. This register maps each id to its final status and its record, and
+states the few that had no record.
+
+| Id | Decision | Status | Recorded in |
+|---|---|---|---|
+| — | Two logs: the audit log in SQL Server, the application log on stdout/stderr (collected by PM2), joined by the request id | Approved, implemented | 2026-11-12 (S2), 2026-11-15 (S3); [a_system.md](a_system.md) "Audit log", "Application log" |
+| — | A small built-in logger with an allowlist of fields, no logging dependency | Approved, implemented (S1) | here; 2026-11-12 (S2) context |
+| D1 | Audit scope: the board, an event's detail page (with a host flag) and the create form; refreshes yes, prefetches no; plus the 14 API actions | Approved, implemented | 2026-11-15 (S4), 2026-11-16 (S5) |
+| D2 | Table shape: no foreign keys, a `Metadata` column, clustered on `OccurredAt`, `UNIQUE(RequestId)` | Approved, implemented | 2026-11-15 (S3) |
+| D3 | API actions: an independent audit write after the business transaction, awaited before the response; never inside the transaction; an audit failure never changes the business result | Approved, implemented | 2026-11-15 (S3, S4) |
+| D4 | Page views written with `after()` | Approved, implemented | 2026-11-16 (S5) |
+| D5, D6 | Rows kept indefinitely, append-only, no purge, not cleared by `db:reset` | Approved, implemented | 2026-11-15 (S3); `events-audit-append-only` in [docs/sql-server-2008r2-compatibility.md](../docs/sql-server-2008r2-compatibility.md) |
+| D7 | `X-Request-Id` on every request except static files, set by `proxy.ts` | Approved, implemented (S1) | 2026-11-12 (S2) context; [a_system.md](a_system.md) "Application log" |
+| D8 | `Metadata.actorFallback` when the default persona stands in | Approved, implemented | 2026-11-15 (S3) "Actor" |
+| D9 | The connection-string redactor (`createRedactor`) reaches the application through `lib/data/client.ts` | Approved, implemented (S1) | here |
+| D10 | Testing on shared DEV: dedicated test events, bounded concurrency, no tests that change permissions or rename tables, no `db:reset` | Approved, followed | the 2026-11-16 DEV entries |
+| D11 | Migration 0004 applied to DEV only with separate approval | Approved, done 2026-11-15 | 2026-11-15 (D11) |
+| D12 | The audit log is read through SQL access only; there is no product UI for it | Approved | here |
+| D13 | `session.read` and `session.switch` are not audited | Approved, implemented | 2026-11-15 (S4) |
+| D14 | An `ActorSource` column and constraint | **Withdrawn** (column removed; D8 instead) | — |
+| D15 | Audit write timeout and retry: 1,500 ms overall, 1,000 ms first attempt, one retry for quick transient errors | Approved, implemented | 2026-11-15 (S3) "Write policy" |
+| D16 | Performance thresholds, mutations and pages | Approved 2026-11-12, thresholds unchanged; **not met** -- see the findings and their waiver | 2026-11-16 (D-S4-9; S5 session 2), 2026-11-17 (waiver) |
+| D17 | M12 comes before authentication: `Events_Users.Id` stays the identifier, `getCurrentUser()` the entry point, no authentication work in M12 | Approved | here |
+| Q1 | `ActorUserId` is `Events_Users.Id`, `ActorName` a snapshot of the display name, no login column | Approved, implemented | 2026-11-15 (S3) |
+
+The slice-level decisions (D-S4-*, D-S5-*) are in their slices' entries. M12
+is delivered as one PR into `yardenah/events-board`, built in slices, not one
+PR per slice as the plan first proposed.
+
+Final pre-merge decisions:
+
+- **Shutdown flush -- accepted as an operational limitation.** The plan
+  required that a graceful SIGTERM flush pending page-view rows. S5 session 1
+  showed a clean shutdown (exit 143) with no row lost, but did not show that a
+  write still in flight at the signal completes, so this is **not fully
+  verified**. The remaining uncertainty is accepted for this merge; no further
+  DEV shutdown test is run. PM2's settings -- `kill_timeout` (at least 1.6 s
+  for the 1,500 ms write deadline) among them -- are unverified and must be
+  checked before deploying to production
+  ([u_environment.md](u_environment.md) "Logs and the audit table in
+  operation").
+- **The final organizer/member walkthrough is satisfied by existing DEV
+  sessions.** The API routes were exercised on DEV in S4 phases A and B
+  (build `adc0190`) as the organizers Maya and Daniel and the members Priya
+  and Tom; no API or shared library code has changed since -- only the three
+  pages and `lib/pageAudit.ts`. Those pages were exercised as Maya
+  (organizer and host), Tom (member) and without a cookie in S5 session 1
+  (build `0a82b83`), and every later commit changes documentation only. The
+  checks were HTTP-level, not click-throughs; M12 changed no rendered UI. No
+  walkthrough is repeated.
+- **The admin persona verified on DEV.** [TASKS.md](../TASKS.md) §7 asks for
+  all five personas, and Sara had no recorded verification. One approved
+  session, 2026-11-17 08:30:32-08:30:41 UTC, from a production build of the
+  current code (with the S1 export change below), other developers notified:
+  four requests as Sara on events Maya hosts -- the board (`board.view`,
+  success), Engineering All-Hands (`event.view`, success, `view: host`), the
+  same with `?edit=1` (`view: edit`), and cancelling the already-cancelled
+  "Postmortem: Checkout Outage" (`event.cancel`, `rejected`, 409,
+  `closed:cancelled`, refused before any write). Verified with read-only
+  SQL: exactly four rows, each with Sara as actor and a request id equal to
+  the response's; event, registration, invite and co-host counts and latest
+  update times unchanged, both events untouched; no warning or error line
+  and nothing naming Sara in the application log. Left on DEV: these four
+  audit rows (table 823 → 827). With S4 and S5's sessions, all five
+  personas have now acted on DEV with M12's code.
+- **Seven unused S1 type exports removed.** `LogLevel`, `LogFormat`,
+  `LogEvent`, `Logger` (`lib/log.ts`) and `RequestContext`, `ActorNote`,
+  `AuditNote` (`lib/requestContext.ts`) were exported but referenced only in
+  their own files. [TASKS.md](../TASKS.md) §7 asks for no unused exports, and
+  the 2026-11-04 entry already applied it to types (`BadgeVariant`,
+  `ButtonSize`), so only the `export` keyword was removed; the declarations
+  stay, and the change is type-only, with no runtime effect. Other unused
+  exports older than M12 were not part of this review.
+
+Consequences: with S6 every M12 slice is implemented and documented. M12 is
+not declared ready to merge here: its remaining non-performance requirements
+are listed in [s_status.md](s_status.md) "Blockers".

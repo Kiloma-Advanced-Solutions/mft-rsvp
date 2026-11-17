@@ -64,6 +64,25 @@ server's message on failure.
 Route handlers, not Server Actions — that is the convention here, so the
 authorisation boundary is a single obvious layer.
 
+## Logging and audit
+
+- Technical events go through `log` from `lib/log.ts`, never `console.*`. It
+  accepts only the fields named in `LogFields` and redacts every string. A
+  log line never carries a person's name, email or id, a header, a cookie or
+  a request body.
+- Audit rows have exactly two sources: an API action declares its operation
+  on its handler (`withErrorHandling(handler, { audit: "event.publish" })`),
+  and an audited page starts with `const audit = await beginPageAudit(op)`
+  and states its outcome before it renders or calls `notFound()`. Nothing
+  else writes `Events_AuditLog`, and no audit write ever happens inside
+  `inTransaction`.
+- A handler calls `noteCommitted()` straight after its data write succeeds.
+  A new mutating route needs an audit operation and a route pattern;
+  `check:logging` fails until it has them. How the pieces fit:
+  [memory/a_system.md](memory/a_system.md) "Audit log".
+- The audit table is append-only: no `UPDATE`, `DELETE` or `TRUNCATE`
+  against it (`check:tsql` refuses them).
+
 ## Copy
 
 User-facing words live in `lib/labels.ts`. Import them rather than typing
@@ -73,12 +92,15 @@ call a pending request.
 ## Before you say you are done
 
 ```bash
-npm run typecheck && npm run lint && npm run build && npm run check:tsql
+npm run typecheck && npm run lint && npm run build && npm run check:tsql \
+  && npm run check:logging && npm run check:redaction
 ```
 
 `check:tsql` holds application SQL to the SQL Server 2008 R2 feature floor —
 see [docs/sql-server-2008r2-compatibility.md](docs/sql-server-2008r2-compatibility.md).
 It passes trivially until there is SQL to check.
+`check:logging` and `check:redaction` hold the logging, audit and redaction
+rules above; neither needs a database.
 
 Then click through the app as at least two personas — one organizer and one
 member. Most of the bugs in this project are visible only when you switch.

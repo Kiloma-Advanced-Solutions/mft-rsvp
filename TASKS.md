@@ -505,7 +505,13 @@ activity.
 - Choose the logging, storage and provider approach only once the events that
   matter and the people who will read them are known.
 
-**Not yet decided.** The final taxonomy and the logging provider.
+**Decided.** Two logs, joined by a request id: an audit log in SQL Server for
+the three page views and the fourteen mutating API actions, and a dependency-free
+application log on stdout/stderr for technical failures, collected by PM2. No
+external logging provider. The taxonomy, the decisions and their status are in
+[memory/dec_log.md](memory/dec_log.md) (the M12 decision register, 2026-11-17);
+how it works is in [memory/a_system.md](memory/a_system.md) "Audit log" and
+"Application log".
 
 ---
 

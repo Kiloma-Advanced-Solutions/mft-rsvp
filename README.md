@@ -44,7 +44,7 @@ Then open <http://localhost:3000>, which redirects to the board at `/events`.
 | `npm run db:check` | Read-only preflight against the configured SQL Server target |
 | `npm run db:migrate` | Apply pending schema migrations (`-- --dry-run`, `-- --status`) |
 | `npm run db:seed` | Insert the development fixtures into an empty SQL schema (`-- --status`) |
-| `npm run db:reset` | Clear this application's SQL data and re-seed it |
+| `npm run db:reset` | Clear this application's event data and re-seed it (the audit log is kept) |
 | `npm run email:preview` | Preview the email templates on port 3002 |
 
 ## How it fits together
@@ -120,6 +120,11 @@ npm run db:seed -- --status      # row counts in our tables
 
 Migrations are the numbered files in `migrations/`, applied once each, in order,
 one transaction apiece, and recorded in `dbo.Events_SchemaMigrations`.
+
+Migration `0004` adds `dbo.Events_AuditLog`, the audit log: one row per audited
+page view or action, kept indefinitely and only ever appended to. No reset
+clears it, and the application has no screen for it — it is read with SQL.
+What it records and why: [memory/a_system.md](memory/a_system.md) "Audit log".
 
 ### Putting the fixtures back
 

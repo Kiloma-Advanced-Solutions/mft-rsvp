@@ -5,14 +5,35 @@ progresses — it is current state, not a changelog.
 
 ## Active milestone
 
-**C6, host participation — implemented and verified on
-`yardenah/host-participation`, not merged.** The last of the pre-M11
+**M12, application logging and the audit log — implemented, not yet merged**,
+on `yardenah/m12-logging-observability`, as one PR into
+`yardenah/events-board` built in six slices. S1 (`8162ba9`: the application
+log, the request context and request ids), S2 (`8bdbb01`: logging
+application errors and system failures), S3 (`8aa437e`: the audit table and
+its writer), S4 (`1b297e2`: auditing the 14 API actions), S5 (`0a82b83`:
+auditing the three page views) are committed; S6 is the documentation.
+Migration 0004 is applied to the shared DEV database. Three separate things:
+
+- **Functional verification** on DEV is done for S4 (refusals and success
+  paths for all 14 operations, fault injection, a reduced race test) and S5
+  (session 1).
+- **Formal performance acceptance (D16) is not achieved.** S4 fails the p50
+  criterion at concurrency 5 and its 20-concurrent verification was not
+  completed; S5's exploratory page benchmark left a p95 warning on the board,
+  with its p50 not conclusively within the limit, and the rerun and any
+  further benchmark are deferred. None of these passed.
+- **These findings do not block the merge**: you accepted them as known
+  risks and waived D16's merge gate for them only (2026-11-17, see
+  [dec_log.md](dec_log.md)). M12 is still not declared ready to merge -- see
+  "Blockers".
+
+The decision register for M12 is in [dec_log.md](dec_log.md) (2026-11-17).
+
+**C6, host participation — merged** (PR #54). The last of the pre-M11
 stabilization branches. Hosts — the organizer and each co-host — take part in
 their own events by role, with no registration: attendance is the hosts plus
 everyone `going`, capacity is measured against it, and a host cannot register,
-request a place or withdraw there. Delivered as one branch in four slices:
-counting and capacity; the host closure; the attendee list and the cancel and
-delete confirmations; and the seed and documentation. The rules are in
+request a place or withdraw there. The rules are in
 [TASKS.md](../TASKS.md) §4, why in [dec_log.md](dec_log.md), the invariant it
 relies on in [a_system.md](a_system.md) "Seat-taking and concurrency".
 
@@ -36,7 +57,7 @@ desktop widths are unchanged by
 M11: the board, the detail page and the forms keep the shell's 1120px column.
 What M11 delivered is in [TASKS.md](../TASKS.md) §5.
 
-**Pre-M11 stabilization — C1–C5 merged, C6 on its branch.** Eleven fixes and
+**Pre-M11 stabilization — C1–C6 merged.** Eleven fixes and
 behaviour changes requested after M10 were planned in six branches, C1–C6; two
 of them were deferred into M11 — category colours (done in M11 PR 2) and the
 explanatory-note review (done in M11 PR 4). Their temporary plan is retired:
@@ -56,25 +77,10 @@ shareable event links and email sharing (PR #38). The UI is also
 localized to Hebrew and RTL (PR #25), which changed presentation only; what it
 fixed in place is in [a_system.md](a_system.md).
 
-**After C6, M12 — in progress** on `yardenah/m12-logging-observability`, as
-one PR built in slices. S1 (`8162ba9`: the application log, the request
-context and request ids) and S2 (`8bdbb01`: logging application errors and
-system failures) and S3 (`8aa437e`: the audit table and its writer) are
-committed, and so is S4 (`1b297e2`: auditing the 14 API actions). Migration
-0004 is applied to the shared DEV database. S4 is verified on DEV for
-correctness, but **not accepted**: the D16 benchmark fails its p50 criterion
-at concurrency 5, which under D16 blocks merging S4 and S5, and the
-20-concurrent requirement is unverified -- see "Blockers". Further
-performance work is deferred. S5 (auditing the three page views) is
-committed (`0a82b83`) and verified on DEV for its functional behaviour
-(session 1, 2026-11-16), but **not accepted**: an exploratory page benchmark
-(session 2, Stage 1) left a D16 p95 warning on the board open, and further
-performance testing is deferred, so its formal performance acceptance is
-outstanding;
-S6 (docs) has not started. M12 is
+M12 is
 specified in [TASKS.md](../TASKS.md) §5. The
 rest of the original stretch list — the calendar view first, then the waitlist,
-search, "my events", optimistic UI and a theme toggle — is also unstarted.
+search, "my events", optimistic UI and a theme toggle — is unstarted.
 Authoritative requirements for every milestone, extension and stretch goal:
 [TASKS.md](../TASKS.md) §5.
 
@@ -275,8 +281,10 @@ not implemented in this milestone:
   registers nobody and takes no seat.
 - **No sharing a draft, a cancelled event or one that has started.**
 - **No emailing someone who cannot see the event**, and no emailing oneself.
-- **No send history and no notification record.** Nothing records who shared
-  what with whom, or when.
+- **No send history in the product and no notification record.** The
+  product shows nothing about who shared what with whom. Since M12 the audit
+  log records each email-share request -- who, which event, which recipient,
+  when and the outcome -- readable through SQL only ([a_system.md](a_system.md) "Audit log").
 - **No automatic retry and no bulk endpoint.** Emailing several people is one
   request per person, in sequence, best effort; a failed one stays selected for
   the host to send again by hand.
@@ -302,8 +310,9 @@ From M9's scope — why each was decided is in [dec_log.md](dec_log.md):
   only.
 - **No atomic bulk invite.** Inviting several people is one request per person,
   best effort; some may succeed while others are refused.
-- **No invitation metadata and no notifications.** Nothing records who invited
-  whom or when, and nobody is told they were invited.
+- **No invitation metadata in the product and no notifications.** Nobody is
+  told they were invited. Since M12 the audit log records who invited or
+  revoked whom, and when, readable through SQL only ([a_system.md](a_system.md) "Audit log").
 - **No visibility of the list for invitees.** They cannot see who else is
   invited.
 
@@ -316,8 +325,9 @@ From M8's scope — why each was decided is in [dec_log.md](dec_log.md):
   admin. They step back out by withdrawing, like anyone else.
 - **No invitation changes.** Removing and restoring write the registration row
   alone; neither revokes nor grants an invitation.
-- **No removal metadata.** Nothing records who removed someone, when or why,
-  beyond the row's `updatedAt`.
+- **No removal metadata in the product.** Nothing stores why someone was
+  removed. Since M12 the audit log records who removed or restored whom, and
+  when, readable through SQL only ([a_system.md](a_system.md) "Audit log").
 - **No confirmation on restore.** Removing asks first; restoring does not.
 
 From M7's scope — why each was decided is in [dec_log.md](dec_log.md):
@@ -327,7 +337,9 @@ From M7's scope — why each was decided is in [dec_log.md](dec_log.md):
 - **No cancelling a draft or an event that has already started.** Only a
   published event that has not started may be cancelled.
 - **No registration rewrite.** Cancelling changes no registration row.
-- **No cancellation metadata.** Nothing records who cancelled, when, or why.
+- **No cancellation metadata in the product.** Nothing stores why an event
+  was cancelled. Since M12 the audit log records who cancelled it and when,
+  readable through SQL only ([a_system.md](a_system.md) "Audit log").
 
 From M6's scope:
 
@@ -336,8 +348,9 @@ From M6's scope:
 - **No event versioning or ETags**, so content edits stay last-write-wins.
 - **No retry framework and no lock timeout.** With event-first lock ordering no
   known deadlock cycle currently requires one.
-- **No schema beyond today's domain model** — no share-token, logging or
-  waitlist columns. Those belong to the milestones that decide them.
+- **No schema beyond today's domain model** — no share-token or waitlist
+  columns. Those belong to the milestones that decide them. M12's audit log is
+  a separate table (migration 0004), not columns on the domain tables.
 - **No database-level changes and no non-table objects.** The compatibility
   contract forbids `ALTER DATABASE` on the shared database and any view,
   procedure, function or trigger — see
@@ -393,6 +406,7 @@ and 2026-11-16). S4's verification status on DEV, all 2026-11-16:
 - **D16 benchmark (D-S4-9):** passes at concurrency 1; **fails the p50
   criterion at concurrency 5** (Δp50 28.4 ms against a 25.4 ms limit; Δp95
   passes). The cause is not established; further investigation is deferred.
+  Not a pass: accepted as a known risk for the merge (2026-11-17).
 - **Unverified:** S4 at the original 20 concurrent requests (DEV's Basic tier
   saturates), latency under that contention (D-S4-8b has low-load evidence
   only), production performance, and SQL Server 2008 R2.
@@ -411,7 +425,10 @@ ran only as an exploratory Stage 1 (concurrency 1, 50 measured requests per
 run): the detail page was within the limits; the board's Δp95 (+42.7 ms) is
 in the warning band and its Δp50 (+7.6 ms) is not conclusively within its
 10 ms limit. The warning rerun, concurrency 5 and a formal page benchmark are
-deferred by decision, not waived. See [dec_log.md](dec_log.md) (2026-11-16,
+deferred. The thresholds are unchanged and none of this passed; the findings
+are accepted as known risks and no longer block the merge (2026-11-17). A
+graceful stop flushing a write still in flight is likewise accepted as an
+unverified operational limitation. See [dec_log.md](dec_log.md) (2026-11-16,
 M12 S5, S5 session 1 and S5 session 2).
 
 The capacity invariant is held by an application protocol, not a database
@@ -538,17 +555,23 @@ names, or as the default persona if it names none — see
 
 ## Blockers
 
-- **M12 is not mergeable as it stands.** The approved D16 rule says that on a
-  failure S4 and S5 are not merged until the cause is found, and the D16
-  benchmark fails its p50 criterion at concurrency 5 (2026-11-16, see
-  [dec_log.md](dec_log.md)). Further investigation is deferred by decision,
-  not waived: resolving it, or an explicit decision to accept or change the
-  criterion, is needed before the M12 PR is merged. The unverified
-  20-concurrent requirement is also outstanding.
-- **S5's formal performance acceptance is outstanding.** The board's D16 p95
-  warning from the exploratory Stage 1 benchmark is open and its rerun is
-  deferred, not passed; no waiver or exception has been approved
-  (2026-11-17, see [dec_log.md](dec_log.md)).
+**No D16 performance finding blocks the merge.** The open findings -- S4's
+concurrency-5 p50 failure and incomplete 20-concurrent verification, S5's
+board p95 warning and inconclusive p50, the missing formal performance
+acceptance and the deferred benchmarks -- are accepted as known risks, not
+passed (2026-11-17, see [dec_log.md](dec_log.md)). So is the unverified
+flush of an in-flight audit write on a graceful stop.
+
+**M12 is not yet declared ready to merge.** The two [TASKS.md](../TASKS.md)
+§7 points are settled -- the unused S1 type exports were removed, and all
+five personas, Sara (admin) included, have acted on DEV with M12's code
+(2026-11-17, see [dec_log.md](dec_log.md)). Still to do before the PR is
+merged: the command chain in [CLAUDE.md](../CLAUDE.md) on the commit that is
+merged, and the PR description ([TASKS.md](../TASKS.md) §8).
+
+Before production, not before the merge: PM2's settings, `kill_timeout`
+among them, must be checked ([u_environment.md](u_environment.md) "Logs and
+the audit table in operation").
 
 ## Branches and worktrees
 
@@ -564,12 +587,9 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-11-17 — M12 in progress on
-`yardenah/m12-logging-observability`: S1–S5 committed; S5 verified on DEV for
-its functional behaviour, its exploratory page benchmark (Stage 1) left a
-board p95 warning open, and further performance testing is deferred, so S5's
-formal performance acceptance is outstanding. S4's D16 concurrency-5 p50
-failure, the unverified 20-concurrent requirement and the D16 merge gate are
-unchanged; M12 is not mergeable. S6 (docs) not started. M11 complete (PRs #46
-and #48–#53); C6 (host participation) verified on
-`yardenah/host-participation`, not merged.
+Last updated: 2026-11-17 — M12 S1–S6 on
+`yardenah/m12-logging-observability`, not merged. Functional DEV verification
+done; formal D16 performance acceptance not achieved, its findings accepted
+as known risks so they no longer block the merge; the final checks and the PR
+description still to do (see "Blockers"). M11 complete (PRs #46 and #48–#53); C6
+(host participation) merged (PR #54).
