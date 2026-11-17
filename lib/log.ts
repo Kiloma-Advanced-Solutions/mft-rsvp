@@ -43,12 +43,12 @@
 import { currentRequestContext } from "./requestContext.ts";
 
 const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
-export type LogLevel = (typeof LOG_LEVELS)[number];
+type LogLevel = (typeof LOG_LEVELS)[number];
 
-export type LogFormat = "json" | "pretty";
+type LogFormat = "json" | "pretty";
 
 /** `domain.action`, for example `db.pool_error`. */
-export type LogEvent = `${string}.${string}`;
+type LogEvent = `${string}.${string}`;
 
 /**
  * Everything a log line may carry beyond its timestamp, level, event and
@@ -112,7 +112,7 @@ type SerializedError = {
   cause?: SerializedError;
 };
 
-export type Logger = Record<
+type Logger = Record<
   LogLevel,
   (event: LogEvent, fields?: LogFields) => void
 >;

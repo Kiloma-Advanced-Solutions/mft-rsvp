@@ -32,7 +32,7 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { cache } from "react";
 
 /** The actor as resolved for this request, and the snapshot the audit log keeps. */
-export type ActorNote = {
+type ActorNote = {
   /** `Events_Users.Id`. */
   userId: string;
   /** The display name at the time of the request. */
@@ -49,7 +49,7 @@ export type ActorNote = {
  * wrapper cannot work out for itself. Everything else in the row -- operation,
  * route, ids from the URL, outcome, reason -- the wrapper derives.
  */
-export type AuditNote = {
+type AuditNote = {
   /** The event a request created; every other event id comes from the URL. */
   eventId: string | undefined;
   /**
@@ -61,7 +61,7 @@ export type AuditNote = {
   recorded: boolean;
 };
 
-export type RequestContext = {
+type RequestContext = {
   requestId: string | undefined;
   actor: ActorNote | undefined;
   audit: AuditNote;
