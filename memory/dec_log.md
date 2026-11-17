@@ -2725,3 +2725,104 @@ Consequences:
   write, which needs approval); PM2's `kill_timeout` on the server.
 - S4's open D16 failure, the incomplete 20-concurrent verification and the
   merge blocker are unchanged; neither S4 nor M12 is accepted.
+
+## 2026-11-16 — S5 page benchmark, Stage 1 (exploratory): detail page within limits, board p95 warning; further testing deferred (M12 S5, session 2)
+
+Context: D16 sets the performance criteria. Its page-read criteria were not
+yet recorded in the repository; they are recorded here exactly as in the M12
+plan, whose p50/p95 metrics and latency thresholds were approved on
+2026-11-12 ("keep the proposed p50/p95 performance metrics and latency
+thresholds"; start with a smaller benchmark on shared DEV and expand only if
+results are inconclusive or indicate a regression). Δ is candidate minus
+baseline (`c108499`):
+
+| Page reads | Pass | Warning | Fail |
+|---|---|---|---|
+| Δp50, Δp95 | Δp50 ≤ 10 ms and Δp95 ≤ 25 ms | Δp95 between 25 and 50 ms | Δp95 above 50 ms |
+
+Any path also fails on a 5xx the baseline does not show, a changed business
+result or a duplicate audit row. Inconclusive: baseline-vs-baseline (A/A)
+p95 noise above the pass limit. On a warning, D16 reruns once; if it repeats,
+it is investigated and may be accepted with the reason recorded here. For
+this benchmark it was additionally decided, as for S4, that Δp50 above 10 ms
+is a failure even when Δp95 passes. The plan's original method was A B A B
+A B with 20 warm-up and 150 measured requests per run.
+
+Decision -- Stage 1 was approved as a reduced, **exploratory** test, not
+formal D16 acceptance: A (`c108499`) → B (`0a82b83`) → A, concurrency 1,
+`GET /events` and `GET /events/[id]` (Engineering All-Hands,
+`803b769a-…`, tied with a C3 test event for the most registrations among
+Maya-hosted events, 4; the seeded one was chosen), both as
+Maya, 10 warm-up and 50 measured requests per page per run, no think time,
+60 s pauses. Each version was built from a `git archive` export outside the
+repository and run with `next start` and the same environment against DEV.
+A driver outside the repository polled `sys.dm_db_resource_stats` every 5 s
+throughout, with stops at one sample above 50% CPU, data I/O or log writes,
+workers above 30%, any non-200, any request over 5 s, `audit.write_failed`,
+a missing or duplicate B row, or changed business data; a run started only
+below 20% CPU. Percentiles are nearest-rank; Δ is B against A1 and A2
+pooled, as for S4.
+
+Run 2026-11-16 14:26:37-14:29:38 UTC (A1 14:26:39-14:26:49, B
+14:27:52-14:28:04, A2 14:29:07-14:29:17). No stop condition triggered.
+
+| Page | A1 p50 / p95 | B p50 / p95 | A2 p50 / p95 | Δp50 | Δp95 | A/A p95 noise | Exploratory result |
+|---|---|---|---|---|---|---|---|
+| `GET /events` | 72.1 / 123.0 | 80.6 / 158.1 | 73.6 / 111.1 | +7.6 | **+42.7** | 11.9 | **warning** |
+| `GET /events/[id]` | 83.2 / 99.7 | 87.4 / 109.4 | 85.7 / 98.1 | +2.8 | +10.1 | 1.6 | within limits |
+
+(ms.) Against each baseline separately, the board's Δp50 was +8.5 and +7.0
+and its Δp95 +35.1 and +47.0. A resampling 95% interval for Δp50 is
++1.9 to +19.0 ms for the board and -0.7 to +4.6 ms for the detail page.
+
+Verified, from the saved results, server logs and read-only SQL: 360
+requests, all 200, no timeouts or retries; 120 audit rows, all from B, each
+matching exactly one request (`success`, 200, actor Maya, the expected
+operation, route and event id), none missing or duplicated, and no other rows
+in the window; the audit table went from 703 to 823; event, registration,
+invite and co-host counts and latest update times unchanged; no
+`audit.write_failed` or error line; every server stopped with code 143. The
+audit write itself (`audit.written`, after the response): median 20 ms, p95
+40 ms. RTT 13.4 ms before, 13.5 ms after. DEV peaks per 15-second sample:
+CPU 31.1% (A1), 37.2% (B), 35.0% (A2); workers 16.7% and log writes 3.8%,
+both during B; data I/O 0%. CPU was back under 1% within about 30 s of each
+run.
+
+Limitations:
+
+- 50 measured requests per run: p95 is the 48th of 50 and has no bounded
+  95% interval. The board's Δp95 rests on a few slow B requests (128-335 ms,
+  against a baseline maximum of 166 ms).
+- The board's Δp50 interval crosses its 10 ms limit, so its p50 is not
+  conclusively within the limit.
+- Concurrency 5 was not tested.
+- Each run lasted about 10 s, shorter than Azure's 15-second resource
+  samples, which also arrive a few seconds late; a load stop could act only
+  near the end of a run (the first sample after each run was also checked).
+- Laptop to Azure SQL DEV only; nothing about production or SQL Server 2008
+  R2.
+- Why the board's slowest requests were slower under S5 is not established.
+  A plausible cause -- each render's audit write overlapping the next render,
+  which opens up to five pool connections -- is an inference only.
+
+Decision (2026-11-17): no further S5 performance testing for now. The board
+warning is not rerun, there is no concurrency-5 probe and no formal A B A B
+page benchmark, and the warning is not investigated or optimised. Rationale:
+the application is not currently expected to have high traffic, and Stage 1
+showed no severe regression, so the remaining milestone work takes priority
+over more benchmarking. This is a deferral, not a waiver: no D16 waiver or
+performance exception was approved, and the thresholds are unchanged.
+
+Consequences:
+
+- **Open:** the board's p95 warning; the board's p50 is not conclusively
+  within its limit. D16's warning rerun is **deferred, not passed**.
+- S5's functional DEV verification is complete (session 1). Its **formal
+  performance acceptance remains outstanding**; Stage 1 does not establish
+  it. S5 is not accepted.
+- Left on DEV, by design (D-S5-4): 120 page audit rows in the window above.
+  No business data changed. The builds, driver and logs stayed outside the
+  repository.
+- S4's D16 concurrency-5 p50 failure, the incomplete 20-concurrent
+  verification and the D16 merge gate are unchanged; M12 is not eligible for
+  merge under the approved acceptance requirements.

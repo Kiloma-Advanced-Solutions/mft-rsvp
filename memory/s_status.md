@@ -67,7 +67,10 @@ at concurrency 5, which under D16 blocks merging S4 and S5, and the
 20-concurrent requirement is unverified -- see "Blockers". Further
 performance work is deferred. S5 (auditing the three page views) is
 committed (`0a82b83`) and verified on DEV for its functional behaviour
-(session 1, 2026-11-16); its D16 page-path benchmark has not run;
+(session 1, 2026-11-16), but **not accepted**: an exploratory page benchmark
+(session 2, Stage 1) left a D16 p95 warning on the board open, and further
+performance testing is deferred, so its formal performance acceptance is
+outstanding;
 S6 (docs) has not started. M12 is
 specified in [TASKS.md](../TASKS.md) §5. The
 rest of the original stretch list — the calendar view first, then the waitlist,
@@ -403,9 +406,13 @@ page outcome except `error` was verified on a real render, and real browser
 prefetches wrote no row; the `error` outcome is checked by `check:logging`
 only. A graceful stop lost no rows and exited cleanly, but that test did not
 show a write still in flight at the signal, so flushing in-flight writes is
-unproven, as is PM2's `kill_timeout` on the server. The D16 page-path
-benchmark is still to do. See [dec_log.md](dec_log.md) (2026-11-16, M12 S5
-and S5 session 1).
+unproven, as is PM2's `kill_timeout` on the server. The D16 page benchmark
+ran only as an exploratory Stage 1 (concurrency 1, 50 measured requests per
+run): the detail page was within the limits; the board's Δp95 (+42.7 ms) is
+in the warning band and its Δp50 (+7.6 ms) is not conclusively within its
+10 ms limit. The warning rerun, concurrency 5 and a formal page benchmark are
+deferred by decision, not waived. See [dec_log.md](dec_log.md) (2026-11-16,
+M12 S5, S5 session 1 and S5 session 2).
 
 The capacity invariant is held by an application protocol, not a database
 constraint, and a host may still lower capacity below current attendance —
@@ -538,6 +545,10 @@ names, or as the default persona if it names none — see
   not waived: resolving it, or an explicit decision to accept or change the
   criterion, is needed before the M12 PR is merged. The unverified
   20-concurrent requirement is also outstanding.
+- **S5's formal performance acceptance is outstanding.** The board's D16 p95
+  warning from the exploratory Stage 1 benchmark is open and its rerun is
+  deferred, not passed; no waiver or exception has been approved
+  (2026-11-17, see [dec_log.md](dec_log.md)).
 
 ## Branches and worktrees
 
@@ -553,8 +564,12 @@ Verification requirements and their sources are in
 
 ---
 
-Last updated: 2026-11-10 — M11 complete: PRs #46 and #48–#53 merged, the
-last being PR 7 (the board's background illustration, Option G). Pre-M11
-stabilization C1–C5 merged (PRs #41–#45); C6 (host participation) implemented
-and verified on `yardenah/host-participation`, not merged; its temporary plan
-retired. Then M12 (application logging).
+Last updated: 2026-11-17 — M12 in progress on
+`yardenah/m12-logging-observability`: S1–S5 committed; S5 verified on DEV for
+its functional behaviour, its exploratory page benchmark (Stage 1) left a
+board p95 warning open, and further performance testing is deferred, so S5's
+formal performance acceptance is outstanding. S4's D16 concurrency-5 p50
+failure, the unverified 20-concurrent requirement and the D16 merge gate are
+unchanged; M12 is not mergeable. S6 (docs) not started. M11 complete (PRs #46
+and #48–#53); C6 (host participation) verified on
+`yardenah/host-participation`, not merged.

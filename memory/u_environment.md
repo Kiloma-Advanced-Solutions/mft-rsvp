@@ -97,8 +97,8 @@ board, an event's detail page and the create form -- browsing it locally
 writes to DEV. The browser pane keeps its own cookies for `localhost`,
 shared across ports, so a page opened there may run as whichever persona was
 last chosen in the pane, not the default. The audit
-table now holds test rows from M12's DEV sessions (703 rows after S5's
-session 1), and DEV keeps 19
+table now holds test rows from M12's DEV sessions (823 rows after S5's
+session 2), and DEV keeps 19
 soft-deleted `[M12 test]` events with their registrations; the time windows
 are in [dec_log.md](dec_log.md) (2026-11-16). The same database holds another
 application's `dbo.AuditLogs` (plural), which is unrelated. Run the runner with
